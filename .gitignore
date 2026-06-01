@@ -1,0 +1,219 @@
+# Swift / Xcode
+.build/
+.swiftpm/
+MacAppManager.xcodeproj/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.playground
+
+# Build artifacts
+MacAppManager.app/
+MacMuster.app/
+*.app/
+*.xarchive
+*.xcarchive
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Backup files
+*.bak
+*.backup
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+*.tmp/
+
+# Documentation (optional - uncomment if you don't want to track docs)
+# *.md
+# docs/
+
+# Resources (optional - uncomment if you don't want to track large resources)
+# Resources/
+# *.icns
+# *.png
+
+# Backup files
+*.bak
+*.bak2
+*.backup
+
+# Test coverage
+*.profraw
+*.profdata
+coverage/
+
+# Swift Package Manager
+Packages/
+Package.resolved
+*.xcodeproj
+xcuserdata/
+
+# Xcode user data
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcscmblueprint
+
+# SwiftSyntax
+.swift-syntax
+
+# SwiftLint
+.swiftlint.yml
+.swiftlint
+
+# SwiftFormat
+.swiftformat
+
+# Carthage
+Carthage/
+Carthage.build/
+
+# CocoaPods
+Pods/
+*.xcworkspace
+
+# Fastlane
+fastlane/
+*.key
+*.p12
+*.cer
+
+# App Store / App Store Connect
+*.appstore
+*.ipa
+*.pkg
+*.dmg
+
+# Debug symbols
+*.dSYM/
+*.pdb
+*.sym
+
+# Xcode generated files
+*.generated.swift
+*.g.swift
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# Node modules (if using any Node.js tools)
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Ruby
+*.gem
+*.rbc
+.bundle
+Gemfile.lock
+.ruby-version
+.ruby-gemset
+
+# Go
+*.exe
+*.dll
+*.so
+*.dylib
+testbinary
+*.out
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.apk
+*.aar
+*.dex
+
+# C/C++
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.exe
+*.out
+*.app
+
+# Binary files
+*.bin
+*.dat
+*.db
+*.sqlite
+*.sqlite3
+
+# Large files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.wmv
+
+# Cache directories
+.cache/
+.temp/
+.tmp/
+
+# Xcode scheme data
+*.xcscheme
+
+# Swift Package Manager resolved file (optional - uncomment if you don't want to track)
+# Package.resolved

@@ -1,0 +1,616 @@
+import XCTest
+@testable import MacMuster
+
+final class AppModelTests: XCTestCase {
+    
+    private var appModel: AppModel!
+    
+    override func setUpWithError() throws {
+        appModel = AppModel()
+    }
+    
+    override func tearDownWithError() throws {
+        appModel = nil
+    }
+    
+    // MARK: - Application Identity Tests
+    
+    func testApplicationUsesPathAsId() {
+        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        XCTAssertEqual(app.id, "/Applications/Test.app")
+    }
+    
+    func testApplicationEqualityBasedOnPath() {
+        let app1 = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        let app2 = AppModel.Application(name: "Test (2)", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        XCTAssertTrue(app1 == app2)
+    }
+    
+    func testApplicationDifferentPathsAreNotEqual() {
+        let app1 = AppModel.Application(name: "Test1", path: "/Applications/Test1.app", icon: nil, installationDate: Date())
+        let app2 = AppModel.Application(name: "Test2", path: "/Applications/Test2.app", icon: nil, installationDate: Date())
+        XCTAssertNotEqual(app1, app2)
+    }
+    
+    // MARK: - Sorting Tests
+    
+    func testDefaultSortOptionIsName() {
+        XCTAssertEqual(appModel.sortOption, .name)
+    }
+    
+    func testSetSortOptionChangesSortOrder() {
+        let apps = [
+            AppModel.Application(name: "Zulu", path: "/Applications/Zulu.app", icon: nil, installationDate: Date()),
+            AppModel.Application(name: "Alpha", path: "/Applications/Alpha.app", icon: nil, installationDate: Date()),
+        ]
+        appModel.setApplications(apps)
+        XCTAssertEqual(appModel.displayOrder.map { $0.name }, ["Alpha", "Zulu"])
+    }
+    
+    func testSetSortOptionClearsCustomOrder() {
+        let app1 = AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date())
+        let app2 = AppModel.Application(name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app1, app2])
+        appModel.customOrder[app1.path] = 0
+        appModel.customOrder[app2.path] = 1
+        
+        appModel.setSortOption(.name)
+        XCTAssertTrue(appModel.customOrder.isEmpty)
+    }
+    
+    // MARK: - Search Filter Tests
+    
+    func testSearchFilterCaseInsensitive() {
+        appModel.searchText = "test"
+        let apps = [
+            AppModel.Application(name: "TestApp", path: "/Applications/TestApp.app", icon: nil, installationDate: Date()),
+            AppModel.Application(name: "other", path: "/Applications/other.app", icon: nil, installationDate: Date()),
+        ]
+        appModel.setApplications(apps)
+        
+        let filtered = appModel.filteredApplications
+        XCTAssertEqual(filtered.count, 1)
+        XCTAssertEqual(filtered[0].name, "TestApp")
+    }
+    
+    func testSearchFilterEmptyReturnsAllApps() {
+        let apps = [
+            AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date()),
+            AppModel.Application(name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date()),
+        ]
+        appModel.setApplications(apps)
+        appModel.searchText = ""
+        
+        XCTAssertEqual(appModel.filteredApplications.count, 2)
+    }
+    
+    func testSearchFilterNoResults() {
+        appModel.searchText = "nonexistent"
+        let apps = [
+            AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date()),
+        ]
+        appModel.setApplications(apps)
+        
+        XCTAssertTrue(appModel.filteredApplications.isEmpty)
+    }
+    
+    func testClearSearchStateResetsSearchOnly() {
+        let app1 = AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date())
+        let app2 = AppModel.Application(name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app1, app2])
+        appModel.searchText = "test"
+        appModel.customOrder[app1.path] = 0
+        
+        appModel.clearSearchState()
+        
+        XCTAssertTrue(appModel.searchText.isEmpty)
+        XCTAssertEqual(appModel.customOrder[app1.path], 0)
+    }
+    
+    // MARK: - Recent Apps Tests
+    
+    func testRecordAppLaunch() {
+        let appPath = "/Applications/Test.app"
+        appModel.recordAppLaunch(at: appPath)
+        XCTAssertTrue(appModel.isRecentApp(appPath))
+    }
+    
+    func testMaxRecentApps() {
+        // Test that recent apps tracking works (max 10)
+        for i in 0..<15 {
+            appModel.recordAppLaunch(at: "/Applications/App\(i).app")
+        }
+        // We can't directly check the count since it's a private property,
+        // but we can verify the most recent one is tracked
+        XCTAssertTrue(appModel.isRecentApp("/Applications/App14.app"))
+    }
+    
+    func testGetRecentAppsReturnsEmptyWhenNoneRecorded() {
+        let recent = appModel.getRecentApps()
+        XCTAssertTrue(recent.isEmpty)
+    }
+    
+    // MARK: - Custom Order Tests
+    
+    func testUpdateCustomOrder() {
+        let app1 = AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date())
+        let app2 = AppModel.Application(name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date())
+        let app3 = AppModel.Application(name: "App3", path: "/Applications/App3.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app1, app2, app3])
+        
+        // Reverse the order
+        let reversedApps = [app3, app2, app1]
+        appModel.updateCustomOrder(from: reversedApps)
+        
+        XCTAssertEqual(appModel.displayOrder.map { $0.path }, [app3.path, app2.path, app1.path])
+    }
+    
+    // MARK: - Sorted Applications Tests
+    
+    func testSortedApplicationsByName() {
+        let apps = [
+            AppModel.Application(name: "Charlie", path: "/Applications/Charlie.app", icon: nil, installationDate: Date()),
+            AppModel.Application(name: "Alice", path: "/Applications/Alice.app", icon: nil, installationDate: Date()),
+            AppModel.Application(name: "Bob", path: "/Applications/Bob.app", icon: nil, installationDate: Date()),
+        ]
+        
+        let sorted = appModel.sortedApplications(apps)
+        XCTAssertEqual(sorted.map { $0.name }, ["Alice", "Bob", "Charlie"])
+    }
+    
+    func testSortedApplicationsByDate() {
+        let date1 = Date(timeIntervalSince1970: 1000)
+        let date2 = Date(timeIntervalSince1970: 2000)
+        let date3 = Date(timeIntervalSince1970: 3000)
+        
+        let apps = [
+            AppModel.Application(name: "Old", path: "/Applications/Old.app", icon: nil, installationDate: date1),
+            AppModel.Application(name: "New", path: "/Applications/New.app", icon: nil, installationDate: date3),
+            AppModel.Application(name: "Middle", path: "/Applications/Middle.app", icon: nil, installationDate: date2),
+        ]
+        
+        appModel.sortOption = .installationDate
+        let sorted = appModel.sortedApplications(apps)
+        XCTAssertEqual(sorted.map { $0.name }, ["New", "Middle", "Old"])
+    }
+    
+    func testSortedApplicationsWithCustomOrder() {
+        let app1 = AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date())
+        let app2 = AppModel.Application(name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date())
+        let app3 = AppModel.Application(name: "App3", path: "/Applications/App3.app", icon: nil, installationDate: Date())
+        
+        appModel.customOrder[app3.path] = 0
+        appModel.customOrder[app1.path] = 1
+        appModel.customOrder[app2.path] = 2
+        
+        let apps = [app1, app2, app3]
+        let sorted = appModel.sortedApplications(apps)
+        XCTAssertEqual(sorted.map { $0.path }, [app3.path, app1.path, app2.path])
+    }
+    
+    // MARK: - AppCategory Tests
+    
+    func testSystemCategoryForSystemApps() {
+        let app = AppModel.Application(name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date())
+        XCTAssertEqual(appModel.getCategory(for: app), .system)
+    }
+    
+    func testUtilitiesCategoryForUtilityApps() {
+        let app = AppModel.Application(name: "Terminal", path: "/Applications/Utilities/Terminal.app", icon: nil, installationDate: Date())
+        XCTAssertEqual(appModel.getCategory(for: app), .utilities)
+    }
+    
+    func testUserCategoryForUserApps() {
+        let app = AppModel.Application(name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date())
+        XCTAssertEqual(appModel.getCategory(for: app), .user)
+    }
+    
+    func testAllCategoriesExist() {
+        let categories = AppModel.AppCategory.allCases
+        XCTAssertEqual(categories.count, 3)
+        XCTAssertTrue(categories.contains(where: { $0 == .system }))
+        XCTAssertTrue(categories.contains(where: { $0 == .utilities }))
+        XCTAssertTrue(categories.contains(where: { $0 == .user }))
+    }
+    
+    // MARK: - SortOption Tests
+
+    func testSortOptionName() {
+        XCTAssertEqual(ApplicationSorter.SortOption.name.rawValue, "Name")
+    }
+
+    func testSortOptionInstallationDate() {
+        XCTAssertEqual(ApplicationSorter.SortOption.installationDate.rawValue, "Installation Date")
+    }
+
+    // MARK: - High Priority: Icon Loading & Caching Tests
+
+    func testApplyIconsDoesNotTriggerFullRefilter() {
+        let app1 = AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date())
+        let app2 = AppModel.Application(name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app1, app2])
+
+        appModel.searchText = "App1"
+        let initialFiltered = appModel.filteredApplications.count
+        XCTAssertEqual(initialFiltered, 1)
+
+        // Apply icons — should not re-run filter and change results
+        let testIcon = NSImage()
+        appModel.applyIcons([app1.path: testIcon])
+
+        // Filtered result should remain the same
+        XCTAssertEqual(appModel.filteredApplications.count, initialFiltered)
+        XCTAssertEqual(appModel.displayOrder[0].icon, testIcon)
+    }
+
+    func testSelectedAppIndexResetToNegativeOneWhenDisplayedListEmpty() {
+        let app1 = AppModel.Application(name: "SearchMe", path: "/Applications/SearchMe.app", icon: nil, installationDate: Date())
+        let app2 = AppModel.Application(name: "Other", path: "/Applications/Other.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app1, app2])
+
+        // Navigate to first app
+        appModel.selectFirstApp()
+        XCTAssertEqual(appModel.selectedAppIndex, 0)
+
+        // Search that matches nothing
+        appModel.searchText = "nomatch"
+        appModel.updateFilteredApps()
+
+        // selectedAppIndex should reset to -1, not stay at 0
+        XCTAssertEqual(appModel.selectedAppIndex, -1)
+        XCTAssertTrue(appModel.displayedApplications.isEmpty)
+    }
+
+    func testLaunchSelectedAppReturnsFalseWhenNoSelection() {
+        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+
+        // No selection (selectedAppIndex = -1)
+        appModel.searchText = "nomatch"
+        appModel.updateFilteredApps()
+
+        let launched = appModel.launchSelectedApp()
+        XCTAssertFalse(launched)
+    }
+
+    // MARK: - High Priority: Category Counts Tests
+
+    func testCategoryCountsReflectSearchFilter() {
+        let app1 = AppModel.Application(name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date())
+        let app2 = AppModel.Application(name: "Finder", path: "/System/Applications/Finder.app", icon: nil, installationDate: Date())
+        let app3 = AppModel.Application(name: "Xcode", path: "/Applications/Xcode.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app1, app2, app3])
+
+        // Before search: counts show all apps per category
+        XCTAssertEqual(appModel.categoryCounts[.system] ?? 0, 2)
+        XCTAssertEqual(appModel.categoryCounts[.user] ?? 0, 1)
+
+        // Search for "Safari" — only matches app1 in System category
+        appModel.searchText = "Safari"
+        appModel.updateFilteredApps()
+
+        // After search: counts should reflect only matching apps
+        XCTAssertEqual(appModel.categoryCounts[.system] ?? 0, 1)
+        XCTAssertEqual(appModel.categoryCounts[.user] ?? 0, 0)
+    }
+
+    func testCategoryCountsBecomesZeroWhenSearchYieldsNoResults() {
+        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+        XCTAssertEqual(appModel.categoryCounts[.user] ?? 0, 1)
+
+        appModel.searchText = "nomatch"
+        appModel.updateFilteredApps()
+
+        // All category counts should be zero
+        for category in AppModel.AppCategory.allCases {
+            XCTAssertEqual(appModel.categoryCounts[category] ?? 0, 0)
+        }
+    }
+
+    // MARK: - High Priority: Refresh Interval Validation Tests
+
+    func testRefreshIntervalEnforcesMinimumOf30Seconds() {
+        // Try to set a very small interval
+        appModel.refreshInterval = 0.001
+
+        // Should be rejected by the validation (if loading from UserDefaults)
+        // Direct set bypasses validation, but loadPersistedPreferences enforces it
+        XCTAssertGreaterThanOrEqual(appModel.refreshInterval, 30)
+    }
+
+    func testRefreshIntervalDefaultIs300Seconds() {
+        XCTAssertEqual(appModel.refreshInterval, 300)
+    }
+
+    // MARK: - High Priority: Hidden Apps Tests
+
+    func testToggleHiddenAppRemovesFromVisibleList() {
+        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+
+        XCTAssertEqual(appModel.visibleApplications.count, 1)
+
+        appModel.toggleHiddenApp(app.path)
+
+        XCTAssertEqual(appModel.visibleApplications.count, 0)
+    }
+
+    func testToggleHiddenAppTwiceRestoresVisibility() {
+        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+
+        appModel.toggleHiddenApp(app.path)
+        appModel.toggleHiddenApp(app.path)
+
+        XCTAssertEqual(appModel.visibleApplications.count, 1)
+        XCTAssertFalse(appModel.isAppHidden(app.path))
+    }
+
+    // MARK: - High Priority: Search & Navigation Tests
+
+    func testSearchFilterIsCaseInsensitive() {
+        let app = AppModel.Application(name: "TestApp", path: "/Applications/TestApp.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+
+        appModel.searchText = "testapp"
+        XCTAssertEqual(appModel.filteredApplications.count, 1)
+
+        appModel.searchText = "TESTAPP"
+        XCTAssertEqual(appModel.filteredApplications.count, 1)
+
+        appModel.searchText = "TeSt"
+        XCTAssertEqual(appModel.filteredApplications.count, 1)
+    }
+
+    func testNavigationWrapsAroundInCircularFashion() {
+        let app1 = AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date())
+        let app2 = AppModel.Application(name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app1, app2])
+
+        // Navigate forward from -1 → 0 → 1 → 0 (wrap)
+        appModel.selectNextApp()
+        XCTAssertEqual(appModel.selectedAppIndex, 0)
+        appModel.selectNextApp()
+        XCTAssertEqual(appModel.selectedAppIndex, 1)
+        appModel.selectNextApp()
+        XCTAssertEqual(appModel.selectedAppIndex, 0)
+
+        // Navigate backward from 0 → 1 (wrap to end)
+        appModel.selectPreviousApp()
+        XCTAssertEqual(appModel.selectedAppIndex, 1)
+        appModel.selectPreviousApp()
+        XCTAssertEqual(appModel.selectedAppIndex, 0)
+    }
+
+    func testSelectFirstAppAndSelectLastApp() {
+        let apps = [
+            AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date()),
+            AppModel.Application(name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date()),
+            AppModel.Application(name: "App3", path: "/Applications/App3.app", icon: nil, installationDate: Date()),
+        ]
+        appModel.setApplications(apps)
+
+        appModel.selectFirstApp()
+        XCTAssertEqual(appModel.selectedAppIndex, 0)
+
+        appModel.selectLastApp()
+        XCTAssertEqual(appModel.selectedAppIndex, 2)
+    }
+
+    func testSelectAppAtIndexGuardsAgainstOutOfBounds() {
+        let app = AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+
+        appModel.selectApp(at: 100)
+        XCTAssertEqual(appModel.selectedAppIndex, -1)  // Should remain unchanged
+    }
+
+    // MARK: - High Priority: Recent Apps Tests
+
+    func testRecordAppLaunchAddsToRecent() {
+        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+
+        XCTAssertFalse(appModel.isRecentApp(app.path))
+        appModel.recordAppLaunch(at: app.path)
+        XCTAssertTrue(appModel.isRecentApp(app.path))
+    }
+
+    func testRecentAppsLimitedToEightMostRecent() {
+        let apps = (1...15).map { i in
+            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+        }
+        appModel.setApplications(apps)
+
+        // Record 15 launches
+        for i in 0..<15 {
+            appModel.recordAppLaunch(at: apps[i].path)
+            usleep(10)  // Small delay to ensure different timestamps
+        }
+
+        // Most recent 8 should be in recent apps
+        let recentApps = appModel.getRecentApps()
+        XCTAssertLessThanOrEqual(recentApps.count, 8)
+        XCTAssertTrue(appModel.isRecentApp(apps[14].path))  // Last one should be there
+        XCTAssertFalse(appModel.isRecentApp(apps[0].path))  // First one should be evicted
+    }
+
+    // MARK: - High Priority: Sorting Tests (Name Comparison)
+
+    func testSortByNameUsesLowercaseComparison() {
+        let apps = [
+            AppModel.Application(name: "Zebra", path: "/Applications/Zebra.app", icon: nil, installationDate: Date()),
+            AppModel.Application(name: "apple", path: "/Applications/apple.app", icon: nil, installationDate: Date()),
+            AppModel.Application(name: "Banana", path: "/Applications/Banana.app", icon: nil, installationDate: Date()),
+        ]
+        appModel.setApplications(apps)
+        appModel.setSortOption(.name)
+
+        let names = appModel.displayOrder.map { $0.name }
+        XCTAssertEqual(names, ["apple", "Banana", "Zebra"])
+    }
+
+    func testSortByInstallationDateNewest() {
+        let now = Date()
+        let yesterday = now.addingTimeInterval(-86400)
+        let twoDaysAgo = now.addingTimeInterval(-172800)
+
+        let apps = [
+            AppModel.Application(name: "Old", path: "/Applications/Old.app", icon: nil, installationDate: twoDaysAgo),
+            AppModel.Application(name: "New", path: "/Applications/New.app", icon: nil, installationDate: now),
+            AppModel.Application(name: "Middle", path: "/Applications/Middle.app", icon: nil, installationDate: yesterday),
+        ]
+        appModel.setApplications(apps)
+        appModel.setSortOption(.installationDate)
+
+        let names = appModel.displayOrder.map { $0.name }
+        XCTAssertEqual(names, ["New", "Middle", "Old"])
+    }
+
+    // MARK: - High Priority: Clear Search State Tests
+
+    func testClearSearchStateResetsSearch() {
+        appModel.searchText = "test"
+        appModel.clearSearchState()
+
+        XCTAssertTrue(appModel.searchText.isEmpty)
+    }
+
+    // MARK: - High Priority: Grid Navigation Tests
+
+    func testSelectAppUpMovesUpByColumnCount() {
+        let apps = (0..<16).map { i in
+            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+        }
+        appModel.setApplications(apps)
+        appModel.columnCount = 8
+
+        // Start at index 9 (row 1, col 1)
+        appModel.selectedAppIndex = 9
+        appModel.selectAppUp()
+
+        // Should move to index 1 (row 0, col 1)
+        XCTAssertEqual(appModel.selectedAppIndex, 1)
+    }
+
+    func testSelectAppDownMovesDownByColumnCount() {
+        let apps = (0..<16).map { i in
+            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+        }
+        appModel.setApplications(apps)
+        appModel.columnCount = 8
+
+        // Start at index 1 (row 0, col 1)
+        appModel.selectedAppIndex = 1
+        appModel.selectAppDown()
+
+        // Should move to index 9 (row 1, col 1)
+        XCTAssertEqual(appModel.selectedAppIndex, 9)
+    }
+
+    func testSelectAppLeftMovesLeft() {
+        let apps = (0..<8).map { i in
+            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+        }
+        appModel.setApplications(apps)
+        appModel.columnCount = 8
+
+        appModel.selectedAppIndex = 3
+        appModel.selectAppLeft()
+
+        XCTAssertEqual(appModel.selectedAppIndex, 2)
+    }
+
+    func testSelectAppRightMovesRight() {
+        let apps = (0..<8).map { i in
+            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+        }
+        appModel.setApplications(apps)
+        appModel.columnCount = 8
+
+        appModel.selectedAppIndex = 2
+        appModel.selectAppRight()
+
+        XCTAssertEqual(appModel.selectedAppIndex, 3)
+    }
+
+    func testSelectAppUpWrapsToBottomRow() {
+        let apps = (0..<16).map { i in
+            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+        }
+        appModel.setApplications(apps)
+        appModel.columnCount = 8
+
+        // Start at index 1 (row 0, col 1)
+        appModel.selectedAppIndex = 1
+        appModel.selectAppUp()
+
+        // Should wrap to bottom row, same column (index 9)
+        XCTAssertEqual(appModel.selectedAppIndex, 9)
+    }
+
+    func testSelectAppDownWrapsToTopRow() {
+        let apps = (0..<16).map { i in
+            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+        }
+        appModel.setApplications(apps)
+        appModel.columnCount = 8
+
+        // Start at index 9 (row 1, col 1)
+        appModel.selectedAppIndex = 9
+        appModel.selectAppDown()
+
+        // Should wrap to top row, same column (index 1)
+        XCTAssertEqual(appModel.selectedAppIndex, 1)
+    }
+
+    func testSelectAppLeftWrapsToEndOfPreviousRow() {
+        let apps = (0..<16).map { i in
+            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+        }
+        appModel.setApplications(apps)
+        appModel.columnCount = 8
+
+        // Start at index 8 (row 1, col 0) — start of row
+        appModel.selectedAppIndex = 8
+        appModel.selectAppLeft()
+
+        // Should wrap to end of previous row (index 7)
+        XCTAssertEqual(appModel.selectedAppIndex, 7)
+    }
+
+    func testSelectAppRightWrapsToStartOfNextRow() {
+        let apps = (0..<16).map { i in
+            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+        }
+        appModel.setApplications(apps)
+        appModel.columnCount = 8
+
+        // Start at index 7 (row 0, col 7) — end of row
+        appModel.selectedAppIndex = 7
+        appModel.selectAppRight()
+
+        // Should wrap to start of next row (index 8)
+        XCTAssertEqual(appModel.selectedAppIndex, 8)
+    }
+
+    func testGridNavigationWithDifferentColumnCounts() {
+        let apps = (0..<20).map { i in
+            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+        }
+        appModel.setApplications(apps)
+
+        // Test with 4 columns
+        appModel.columnCount = 4
+        appModel.selectedAppIndex = 5  // row 1, col 1
+        appModel.selectAppUp()
+        XCTAssertEqual(appModel.selectedAppIndex, 1)  // row 0, col 1
+
+        // Test with 5 columns
+        appModel.columnCount = 5
+        appModel.selectedAppIndex = 7  // row 1, col 2
+        appModel.selectAppUp()
+        XCTAssertEqual(appModel.selectedAppIndex, 2)  // row 0, col 2
+    }
+}
