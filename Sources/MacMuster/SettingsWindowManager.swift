@@ -47,8 +47,7 @@ class SettingsWindowManager {
     private func createSettingsWindow() {
         guard let appModel else { return }
         
-        let contentView = SettingsContentView()
-            .environmentObject(appModel)
+        let contentView = SettingsContentView(appModel: appModel)
         
         let hostingView = NSHostingView(rootView: contentView)
         

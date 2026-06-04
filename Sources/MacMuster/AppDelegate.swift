@@ -1,8 +1,17 @@
 import AppKit
 
+// MARK: - Shared AppModel Singleton
+
+@MainActor
+final class AppModelContainer {
+    static let shared = AppModelContainer()
+    let appModel = AppModel()
+    
+    private init() {}
+}
+
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private lazy var appModel = AppModel()
     private var appearanceObserver: NSObjectProtocol?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -15,6 +24,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         updateApplicationIcon()
         observeAppearanceChanges()
+        
+        let appModel = AppModelContainer.shared.appModel
         
         // Set up status bar with the app model
         StatusBarManager.shared.setup()
@@ -36,7 +47,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         // Cleanup app model when app terminates
-        appModel.cleanupTimerAndObservers()
+        AppModelContainer.shared.appModel.cleanupTimerAndObservers()
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

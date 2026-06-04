@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - Settings Content View
 
 struct SettingsContentView: View {
-    @EnvironmentObject var appModel: AppModel
+    @Bindable var appModel: AppModel
     @State private var selectedSection: SettingsSection = .general
     
     var body: some View {
@@ -121,17 +121,17 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: kSectionSpacing) {
                 switch selectedSection {
                 case .general:
-                    GeneralSettingsPanel()
+                    GeneralSettingsPanel(appModel: appModel)
                 case .hotCorners:
                     HotCornersSettingsPanel()
                 case .appearance:
-                    AppearanceSettingsPanel()
+                    AppearanceSettingsPanel(appModel: appModel)
                 case .spaces:
                     SpacesSettingsPanel()
                 case .hiddenApps:
-                    HiddenAppsSettingsPanel()
+                    HiddenAppsSettingsPanel(appModel: appModel)
                 case .appDirectories:
-                    AppDirectoriesSettingsPanel()
+                    AppDirectoriesSettingsPanel(appModel: appModel)
                 case .backupRestore:
                     BackupRestoreSettingsPanel()
                 case .updates:
@@ -213,7 +213,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 // MARK: - General Settings Panel
 
 struct GeneralSettingsPanel: View {
-    @EnvironmentObject var appModel: AppModel
+    @Bindable var appModel: AppModel
     @State private var startAtLogin = false
     @State private var startAtLoginError: String?
     
@@ -221,8 +221,8 @@ struct GeneralSettingsPanel: View {
         VStack(alignment: .leading, spacing: kSectionSpacing) {
             // Startup section
             settingsSection(title: "Startup") {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .top, spacing: kLabelSpacing) {
+                VStack(alignment: .leading, spacing: kLabelSpacing) {
+                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
                         VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
                             Text("Start at Login")
                                 .font(.system(size: 14, weight: .medium))
@@ -268,7 +268,9 @@ struct GeneralSettingsPanel: View {
                         }
                         Spacer()
                         Button {
-                            appModel.refreshDisplayOrder()
+                            Task {
+                                await appModel.refreshDisplayOrder()
+                            }
                         } label: {
                             HStack(spacing: kButtonSpacing) {
                                 Image(systemName: "arrow.clockwise")
@@ -351,7 +353,7 @@ struct HotCornersSettingsPanel: View {
 }
 
 struct AppearanceSettingsPanel: View {
-    @EnvironmentObject var appModel: AppModel
+    @Bindable var appModel: AppModel
     @State private var selectedFontFamily: String = "SF Pro Display"
     
     // Available system fonts - these are actual font family names available on macOS
@@ -588,64 +590,172 @@ struct SpacesSettingsPanel: View {
 // MARK: - Hidden Apps Settings Panel
 
 struct HiddenAppsSettingsPanel: View {
-    @EnvironmentObject var appModel: AppModel
+    @Bindable var appModel: AppModel
+    @State private var searchText: String = ""
+    
+    private var allApps: [AppModel.Application] {
+        if searchText.isEmpty {
+            return appModel.displayOrder
+        }
+        let lower = searchText.lowercased()
+        return appModel.displayOrder.filter {
+            $0.name.lowercased().contains(lower)
+            || $0.path.lowercased().contains(lower)
+        }
+    }
+    
+    private var hiddenApps: [AppModel.Application] {
+        allApps.filter { $0.isHidden }
+    }
+    
+    private var visibleApps: [AppModel.Application] {
+        allApps.filter { !$0.isHidden }
+    }
+    
+    private var totalHiddenCount: Int {
+        appModel.displayOrder.filter { $0.isHidden }.count
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Hidden Apps")
-                .font(.system(size: 15, weight: .semibold))
+            // Header
+            HStack {
+                Text("Hidden Apps")
+                    .font(.system(size: 15, weight: .semibold))
+                Spacer()
+                Text("\(totalHiddenCount) hidden, \(appModel.displayOrder.count - totalHiddenCount) visible")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
             
-            Text("Apps listed below are hidden from the launcher view.")
+            Text("Apps hidden from the launcher. Toggle visibility using the checkboxes.")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
+            
+            // Search bar
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .font(.body)
+                TextField("Search applications...", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(kSearchPadding)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: kSearchCornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: kSearchCornerRadius)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
             
             if appModel.displayOrder.isEmpty {
                 Text("No applications found.")
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, kHiddenAppsListPaddingVertical)
             } else {
-                let hiddenApps = appModel.displayOrder.filter { $0.isHidden }
-                
-                if hiddenApps.isEmpty {
-                    Text("No hidden apps")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, kHiddenAppsListPaddingVertical)
-                } else {
-                    List(hiddenApps, id: \.path) { app in
-                        HStack {
-                            if let icon = app.icon {
-                                Image(nsImage: icon)
-                                    .resizable()
-                                    .frame(width: 24, height: 24)
-                            }
-                            Text(app.name)
-                                .font(.system(size: 13))
-                            Spacer()
-                            Button("Show") {
+                // All apps list with checkboxes
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(allApps) { app in
+                            HiddenAppRow(appModel: appModel, app: app) {
                                 appModel.toggleHiddenApp(app.path)
                             }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.blue)
                         }
                     }
-                    .listStyle(.bordered)
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(nsColor: .textBackgroundColor))
+                    )
                 }
             }
         }
     }
 }
 
-// MARK: - App Directories Settings Panel
+// MARK: - Hidden App Row
 
-struct AppDirectoriesSettingsPanel: View {
+struct HiddenAppRow: View {
+    @Bindable var appModel: AppModel
+    let app: AppModel.Application
+    let onToggle: () -> Void
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("App Directories")
-                .font(.system(size: 15, weight: .semibold))
-            Text("Configure which directories are scanned for applications.")
+        HStack(spacing: 10) {
+            // Checkbox
+            Button(action: onToggle) {
+                Image(systemName: app.isHidden ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 16))
+                    .foregroundStyle(app.isHidden ? .blue : .secondary)
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+            
+            // App icon
+            if let icon = app.icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 24, height: 24)
+            } else {
+                Image(systemName: "app.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            
+            // App name
+            Text(app.name)
                 .font(.system(size: 13))
+                .lineLimit(1)
+            
+            Spacer()
+            
+            // Category badge
+            Text(categoryLabel)
+                .font(.system(size: 10))
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.5), in: Capsule())
+            
+            // Hidden indicator
+            if app.isHidden {
+                Image(systemName: "eye.slash")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.red.opacity(0.7))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isHovered ? Color.blue.opacity(0.1) : Color.clear)
+        )
+        .onHover { isHovered in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                self.isHovered = isHovered
+            }
+        }
+    }
+    
+    @State private var isHovered: Bool = false
+    
+    private var categoryLabel: String {
+        switch appModel.getCategory(for: app) {
+        case .system: return "System"
+        case .utilities: return "Utilities"
+        case .user, .mostUsed, .recentlyLaunched, .newlyInstalled: return "User"
         }
     }
 }
@@ -692,6 +802,244 @@ struct FeedbackSettingsPanel: View {
     }
 }
 
+// MARK: - App Directories Settings Panel
+
+struct AppDirectoriesSettingsPanel: View {
+    @Bindable var appModel: AppModel
+    
+    @State private var newDirectoryPath: String = ""
+    @State private var showPicker = false
+    @State private var searchFilter: String = ""
+    
+    private let kSearchPadding: CGFloat = 12
+    private let kSearchCornerRadius: CGFloat = 10
+    private let kSearchBG: Color = Color(nsColor: .controlBackgroundColor)
+    private let kSearchBorder: Color = Color(nsColor: .textBackgroundColor)
+    private let kSearchBorderFocused: Color = Color.blue
+    
+    var filteredDirectories: [String] {
+        if searchFilter.isEmpty {
+            return appModel.customDirectories
+        }
+        return appModel.customDirectories.filter {
+            $0.localizedCaseInsensitiveContains(searchFilter)
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Application Directories")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("Custom directories to scan for additional applications.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+            
+            // Built-in directories info
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("Built-in directories (always scanned):")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(["/Applications", "/Applications/Utilities", "/System/Applications", "/System/Applications/Utilities"], id: \.self) { dir in
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.green)
+                            Text(dir)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(8)
+                .background(Color(nsColor: NSColor.separatorColor))
+                .cornerRadius(8)
+            }
+            
+            Divider()
+            
+            // Custom directories section
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.yellow)
+                    Text("Custom directories (\(filteredDirectories.count) added)")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                
+                // Search bar
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    TextField("Filter directories...", text: $searchFilter)
+                        .textFieldStyle(.plain)
+                    if !searchFilter.isEmpty {
+                        Button(action: { searchFilter = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, kSearchPadding)
+                .padding(.vertical, 10)
+                .background(kSearchBG)
+                .cornerRadius(kSearchCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: kSearchCornerRadius)
+                        .stroke(searchFilter.isEmpty ? kSearchBorder : kSearchBorderFocused, lineWidth: 1)
+                )
+                
+                // Directory list
+                if filteredDirectories.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "folder.badge.questionmark")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.quaternary)
+                        Text(appModel.customDirectories.isEmpty ? "No custom directories added" : "No directories match your search")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 80)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 4) {
+                            ForEach(filteredDirectories, id: \.self) { dir in
+                                AppDirectoryRow(
+                                    path: dir,
+                                    onRemove: {
+                                        appModel.removeCustomDirectory(dir)
+                                        if searchFilter.isEmpty || !searchFilter.contains(dir) {
+                                            // no-op to trigger refresh
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 4)
+                    }
+                    .frame(maxHeight: 120)
+                }
+                
+                // Add directory area
+                HStack(spacing: 8) {
+                    Button(action: { showPicker = true }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 12))
+                            Text("Add Directory")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .fileImporter(
+                        isPresented: $showPicker,
+                        allowedContentTypes: [.item],
+                        allowsMultipleSelection: false
+                    ) { result in
+                        switch result {
+                        case .success(let urls):
+                            if let url = urls.first {
+                                let path = url.path
+                                // Verify it's a directory
+                                if let contents = try? FileManager.default.contentsOfDirectory(atPath: path),
+                                   contents.count >= 0 {
+                                    appModel.addCustomDirectory(path)
+                                    newDirectoryPath = ""
+                                }
+                            }
+                        case .failure:
+                            break
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    if !appModel.customDirectories.isEmpty {
+                        Button(action: {
+                            // Clear all custom directories
+                            for dir in appModel.customDirectories {
+                                appModel.removeCustomDirectory(dir)
+                            }
+                        }) {
+                            Text("Clear All")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.red)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.red, lineWidth: 0.5)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - App Directory Row
+
+struct AppDirectoryRow: View {
+    let path: String
+    let onRemove: () -> Void
+    @State private var isHovered: Bool = false
+    
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "folder.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(.yellow)
+                .frame(width: 24)
+            
+            Text(path)
+                .font(.system(size: 12, design: .monospaced))
+                .lineLimit(1)
+                .foregroundStyle(.primary)
+            
+            Spacer()
+            
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isHovered ? Color.blue.opacity(0.1) : Color.clear)
+        )
+        .onHover { isHovered in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                self.isHovered = isHovered
+            }
+        }
+    }
+}
+
 // MARK: - Danger Zone Panel
 
 struct DangerZoneSettingsPanel: View {
@@ -700,7 +1048,7 @@ struct DangerZoneSettingsPanel: View {
             Text("Danger Zone")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.red)
-            Text("Irreversible actions. Proceed with caution.")
+            Text("These actions are irreversible. Proceed with caution.")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
         }

@@ -38,8 +38,7 @@ class OverlayWindowManager {
         let screen = NSScreen.main ?? NSScreen.screens.first!
         let frame = screen.frame
         
-        let contentView = ContentView()
-            .environmentObject(appModel)
+        let contentView = ContentView(appModel: appModel)
         
         window = OverlayWindow(
             contentRect: frame,
@@ -193,9 +192,8 @@ class OverlayWindowManager {
             appModel?.selectAppRight()
             return true
         case 36, 76: // Return, Enter
-            if appModel?.launchSelectedApp() == true {
-                hide()
-            }
+            appModel?.launchSelectedApp()
+            hide()
             return true
         case 43: // Forward slash (/)
             // Focus search field when / is pressed
