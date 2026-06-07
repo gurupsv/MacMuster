@@ -39,10 +39,10 @@ struct SettingsContentView: View {
                 .padding(.horizontal, kSidebarHeaderPaddingHorizontal)
                 .padding(.vertical, kSidebarHeaderPaddingVertical)
             
-            // Section list
+            // Section list - only show enabled sections
             ScrollView {
                 VStack(alignment: .leading, spacing: kSidebarSectionSpacing) {
-                    ForEach(SettingsSection.allCases) { section in
+                    ForEach(getVisibleSections()) { section in
                         settingsSectionButton(section)
                     }
                 }
@@ -64,6 +64,11 @@ struct SettingsContentView: View {
             .padding(.bottom, kSidebarVersionPaddingBottom)
         }
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+    
+    private func getVisibleSections() -> [SettingsSection] {
+        // Only show sections that are fully implemented
+        return [.general, .appearance, .hiddenApps, .appDirectories, .backupRestore, .updates, .feedback]
     }
     
     private func settingsSectionButton(_ section: SettingsSection) -> some View {
@@ -122,12 +127,8 @@ struct SettingsContentView: View {
                 switch selectedSection {
                 case .general:
                     GeneralSettingsPanel(appModel: appModel)
-                case .hotCorners:
-                    HotCornersSettingsPanel()
                 case .appearance:
                     AppearanceSettingsPanel(appModel: appModel)
-                case .spaces:
-                    SpacesSettingsPanel()
                 case .hiddenApps:
                     HiddenAppsSettingsPanel(appModel: appModel)
                 case .appDirectories:
@@ -138,8 +139,6 @@ struct SettingsContentView: View {
                     UpdatesSettingsPanel()
                 case .feedback:
                     FeedbackSettingsPanel()
-                case .dangerZone:
-                    DangerZoneSettingsPanel()
                 }
             }
             .padding(.horizontal, kContentPaddingHorizontal)
@@ -167,45 +166,36 @@ struct SettingsContentView: View {
 
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general
-    case hotCorners
     case appearance
-    case spaces
     case hiddenApps
     case appDirectories
     case backupRestore
     case updates
     case feedback
-    case dangerZone
     
     var id: String { rawValue }
     
     var title: String {
         switch self {
         case .general: return "General"
-        case .hotCorners: return "Hot Corners"
         case .appearance: return "Appearance"
-        case .spaces: return "Spaces"
         case .hiddenApps: return "Hidden Apps"
         case .appDirectories: return "App Directories"
         case .backupRestore: return "Backup & Restore"
         case .updates: return "Updates & Info"
         case .feedback: return "Feedback"
-        case .dangerZone: return "Danger Zone"
         }
     }
     
     var icon: String {
         switch self {
         case .general: return "gearshape"
-        case .hotCorners: return "square.2.layers.3d"
         case .appearance: return "paintpalette"
-        case .spaces: return "apps"
         case .hiddenApps: return "eye.slash"
         case .appDirectories: return "folder.badge.plus"
         case .backupRestore: return "arrow.triangle.2.circlepath"
         case .updates: return "info.circle"
         case .feedback: return "envelope"
-        case .dangerZone: return "exclamationmark.triangle"
         }
     }
 }
