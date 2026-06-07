@@ -255,6 +255,28 @@ struct GeneralSettingsPanel: View {
                 startAtLogin = SMAppService.mainApp.status == .enabled
             }
             
+            // Folders section
+            settingsSection(title: "Folders") {
+                VStack(alignment: .leading, spacing: kLabelSpacing) {
+                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                            Text("Show Folders First")
+                                .font(.system(size: 14, weight: .medium))
+                            Text("When enabled, folder icons appear at the top of the app list")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $appModel.showFoldersFirst)
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                    }
+                    .padding(kSectionContentPadding)
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+                .cornerRadius(kSectionContentCornerRadius)
+            }
+            
             // App Management section
             settingsSection(title: "App Management") {
                 VStack(alignment: .leading, spacing: kLabelSpacing) {

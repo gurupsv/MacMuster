@@ -34,7 +34,12 @@ struct ContentView: View {
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    StatusBarManager.shared.hideWindow()
+                    // If inside a folder, close the folder and return to root
+                    if appModel.currentFolder != nil {
+                        appModel.closeFolder()
+                    } else {
+                        StatusBarManager.shared.hideWindow()
+                    }
                 }
             
             if appModel.isLoading {
@@ -286,7 +291,12 @@ struct ContentView: View {
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            StatusBarManager.shared.hideWindow()
+                            // If inside a folder, close the folder and return to root
+                            if appModel.currentFolder != nil {
+                                appModel.closeFolder()
+                            } else {
+                                StatusBarManager.shared.hideWindow()
+                            }
                         }
                 )
                 

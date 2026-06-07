@@ -56,6 +56,13 @@ class AppModel {
     var customOrder: [String: Int] = [:]
     var sortOption: ApplicationSorter.SortOption = .name
 
+    // MARK: - Settings
+    var showFoldersFirst: Bool = false {
+        didSet {
+            UserDefaults.standard.set(showFoldersFirst, forKey: "showFoldersFirst")
+        }
+    }
+
     // MARK: - Timer & Observers
     private var refreshTimer: Timer?
 
@@ -131,6 +138,10 @@ class AppModel {
         }
         if let interval = UserDefaults.standard.value(forKey: "refreshInterval") as? Double {
             refreshInterval = interval
+        }
+        // Load showFoldersFirst setting
+        if let showFoldersFirstRaw = UserDefaults.standard.value(forKey: "showFoldersFirst") as? Bool {
+            showFoldersFirst = showFoldersFirstRaw
         }
     }
 
@@ -730,6 +741,10 @@ class AppModel {
         savePersistedPreferences()
     }
 
+    func setShowFoldersFirst(_ value: Bool) {
+        showFoldersFirst = value
+    }
+
     func setApplications(_ apps: [Application]) {
         displayOrder = apps
         rebuildAppPathIndex()
@@ -816,9 +831,14 @@ class AppModel {
                 visibleApplications.first { $0.path == path }
             }
         } else {
-            // At root level: show all visible apps plus folder icons
+            // At root level: show all visible apps that are NOT in any folder, plus folder icons
             var currentApps = visibleApplications
-            // Add folder applications
+            
+            // Remove apps that belong to folders (Feature 1)
+            let appsInFolders = Set(folders.flatMap { $0.appPaths })
+            currentApps = currentApps.filter { !appsInFolders.contains($0.path) }
+            
+            // Add folder applications (only show folders that have at least one visible app)
             for folder in folders {
                 let containedApps = folder.appPaths.compactMap { path -> Application? in
                     visibleApplications.first { $0.path == path }
@@ -832,6 +852,17 @@ class AppModel {
                 let lower = searchTerm.lowercased()
                 currentApps = currentApps.filter { $0.lowercaseName.contains(lower) }
             }
+            
+            // Feature 2: Sort folders to top if enabled
+            if showFoldersFirst && !currentApps.isEmpty {
+                let folders = currentApps.filter { $0.isFolder }
+                let nonFolders = currentApps.filter { !$0.isFolder }
+                
+                if !folders.isEmpty && !nonFolders.isEmpty {
+                    return folders + nonFolders
+                }
+            }
+            
             // Quick Win 3: Only sort by custom order if non-empty, otherwise use default sort
             if !customOrder.isEmpty {
                 currentApps.sort { (a, b) in
