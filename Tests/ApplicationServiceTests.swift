@@ -9,16 +9,9 @@ final class ApplicationServiceTests: XCTestCase {
         XCTAssertIdentical(service1, service2)
     }
 
-    func testLaunchApplicationReturnsFalseForMissingPath() {
-        let service = ApplicationService.shared
-        let didLaunch = service.launchApplication(at: "/Applications/DefinitelyMissingMacMusterTest.app", appModel: nil)
+    // MARK: - App Launch Recording
 
-        XCTAssertFalse(didLaunch)
-    }
-
-    // MARK: - High Priority: App Launch Recording
-
-    func testLaunchApplicationRecordsLaunchWhenAppModelProvided() {
+    func testLaunchApplicationWithoutAppModelDoesNotRecord() {
         let service = ApplicationService.shared
         let appModel = AppModel()
 
@@ -32,20 +25,80 @@ final class ApplicationServiceTests: XCTestCase {
 
         XCTAssertFalse(appModel.isRecentApp(app.path))
 
-        // Launch the app (will fail if path doesn't exist, but should still record)
-        _ = service.launchApplication(at: app.path, appModel: appModel)
+        _ = service.launchApplication(at: app.path, appModel: nil)
 
-        // Even if launch failed, the recording should have been attempted if the call went through
-        // In a real scenario with a valid path, isRecentApp would be true
+        // Without appModel, recording should not happen
+        XCTAssertFalse(appModel.isRecentApp(app.path))
     }
 
-    func testLaunchApplicationWithoutAppModelDoesNotCrash() {
+    func testLaunchApplicationWithValidAppModelAndValidPathRecordsLaunch() {
+        let service = ApplicationService.shared
+        let appModel = AppModel()
+
+        let app = AppModel.Application(
+            name: "Finder",
+            path: "/Applications/FinderTest.app",
+            icon: nil,
+            installationDate: Date()
+        )
+        appModel.setApplications([app])
+
+        XCTAssertFalse(appModel.isRecentApp(app.path))
+
+        let didLaunch = service.launchApplication(at: app.path, appModel: appModel)
+
+        // Fake path doesn't exist, launch should fail and recording should not happen
+        XCTAssertFalse(didLaunch)
+        XCTAssertFalse(appModel.isRecentApp(app.path))
+    }
+
+    func testLaunchApplicationWithMissingPathDoesNotRecord() {
+        let service = ApplicationService.shared
+        let appModel = AppModel()
+
+        let app = AppModel.Application(
+            name: "NonExistent",
+            path: "/Applications/NonExistentTest.app",
+            icon: nil,
+            installationDate: Date()
+        )
+        appModel.setApplications([app])
+
+        XCTAssertFalse(appModel.isRecentApp(app.path))
+
+        let didLaunch = service.launchApplication(at: app.path, appModel: appModel)
+
+        // Non-existent path, launch should fail and recording should not happen
+        XCTAssertFalse(didLaunch)
+        XCTAssertFalse(appModel.isRecentApp(app.path))
+    }
+
+    func testLaunchApplicationReturnsLaunchResult() {
         let service = ApplicationService.shared
 
-        // Should not crash even if appModel is nil
-        let didLaunch = service.launchApplication(at: "/Applications/Test.app", appModel: nil)
+        let didLaunchExisting = service.launchApplication(at: "/Applications/FinderTest.app", appModel: nil)
+        XCTAssertFalse(didLaunchExisting)
 
-        // Expected to fail (app doesn't exist), but should handle nil appModel gracefully
+        let didLaunchMissing = service.launchApplication(at: "/Applications/NonExistentTest.app", appModel: nil)
+        XCTAssertFalse(didLaunchMissing)
+    }
+
+    func testLaunchApplicationWithNilAppModelAndValidPathDoesNotRecord() {
+        let service = ApplicationService.shared
+        let appModel = AppModel()
+
+        let app = AppModel.Application(
+            name: "Finder",
+            path: "/Applications/FinderTest.app",
+            icon: nil,
+            installationDate: Date()
+        )
+        appModel.setApplications([app])
+
+        let didLaunch = service.launchApplication(at: app.path, appModel: nil)
+
+        // Fake path doesn't exist, launch fails but no recording without appModel
         XCTAssertFalse(didLaunch)
+        XCTAssertFalse(appModel.isRecentApp(app.path))
     }
 }

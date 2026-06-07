@@ -5,9 +5,9 @@ struct ContentView: View {
     @Bindable var appModel: AppModel
     @State private var hoveredAppPath: String?
     @FocusState private var isSearchFocused: Bool
-    
-    // Track whether user has explicitly focused the search field
-    @State private var hasFocusedSearchField: Bool = false
+    @State private var showCreateFolder: Bool = false
+    @State private var newFolderName: String = ""
+    @State private var selectedAppPathsForFolder: [String] = []
     
     // Dark mode support - use dynamic colors
     @Environment(\.colorScheme) private var colorScheme
@@ -98,65 +98,138 @@ struct ContentView: View {
                     // Search bar
                     searchBar
                     
-                    // Header with sorting control and category tabs
-                    HStack {
-                        // Category tabs
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(Array(AppModel.AppCategory.allCases.enumerated()), id: \.offset) { _, category in
-                                    categoryTabButton(for: category)
+                    // Breadcrumb navigation when inside a folder
+                    if let folder = appModel.currentFolder {
+                        HStack(spacing: 4) {
+                            Button {
+                                appModel.closeFolder()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "house.fill")
+                                        .font(.caption)
+                                    Text("All Apps")
+                                        .font(.caption)
                                 }
+                                .foregroundStyle(.secondary)
                             }
+                            .buttonStyle(.plain)
+                            
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary.opacity(0.5))
+                            
+                            Text(folder.name)
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                            
+                            Spacer()
+                            
+                            // Create new folder button
+                            Button {
+                                newFolderName = "Folder"
+                                selectedAppPathsForFolder = []
+                                showCreateFolder = true
+                            } label: {
+                                Image(systemName: "folder.badge.plus")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
+                                    .background(.ultraThinMaterial, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            
+                            // Settings button
+                            Button(action: {
+                                SettingsWindowManager.shared.show()
+                            }) {
+                                Image(systemName: "gearshape")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
+                                    .background(.ultraThinMaterial, in: Circle())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        
-                        Spacer()
-                        
-                        // Show app count for current category
-                        let currentApps = appModel.getDisplayedApps()
-                        Text("\(currentApps.count) apps")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        
-                        Spacer()
-                        
-                        Menu {
-                            ForEach(ApplicationSorter.SortOption.allCases, id: \.self) { option in
-                                Button {
-                                    appModel.setSortOption(option)
-                                } label: {
-                                    HStack {
-                                        Text(option.rawValue)
-                                        if appModel.sortOption == option {
-                                            Image(systemName: "checkmark")
-                                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 4)
+                    } else {
+                        // Header with sorting control and category tabs
+                        HStack {
+                            // Category tabs
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(Array(AppModel.AppCategory.allCases.enumerated()), id: \.offset) { _, category in
+                                        categoryTabButton(for: category)
                                     }
                                 }
                             }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text("Sort: \(appModel.sortOption.rawValue)")
-                                    .font(.subheadline)
-                                Image(systemName: "chevron.down")
-                                    .font(.caption)
-                            }
-                            .padding(.horizontal, kSortMenuPaddingHorizontal)
-                            .padding(.vertical, kSortMenuPaddingVertical)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: kSortMenuCornerRadius))
-                        }
-                        
-                        // Settings button
-                        Button(action: {
-                            SettingsWindowManager.shared.show()
-                        }) {
-                            Image(systemName: "gearshape")
-                                .font(.body)
+                            
+                            Spacer()
+                            
+                            // Show app count for current category
+                            Text("\(displayedApps.count) apps")
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                                .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
-                                .background(.ultraThinMaterial, in: Circle())
+                            
+                            Spacer()
+                            
+                            Menu {
+                                ForEach(ApplicationSorter.SortOption.allCases, id: \.self) { option in
+                                    Button {
+                                        appModel.setSortOption(option)
+                                    } label: {
+                                        HStack {
+                                            Text(option.rawValue)
+                                            if appModel.sortOption == option {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text("Sort: \(appModel.sortOption.rawValue)")
+                                        .font(.subheadline)
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption)
+                                }
+                                .padding(.horizontal, kSortMenuPaddingHorizontal)
+                                .padding(.vertical, kSortMenuPaddingVertical)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: kSortMenuCornerRadius))
+                            }
+                            
+                            // Create new folder button
+                            Button {
+                                newFolderName = "Folder"
+                                selectedAppPathsForFolder = []
+                                showCreateFolder = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "folder.badge.plus")
+                                    Text("New Folder")
+                                }
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, kSortMenuPaddingHorizontal)
+                                .padding(.vertical, kSortMenuPaddingVertical)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: kSortMenuCornerRadius))
+                            }
+                            .buttonStyle(.plain)
+                            
+                            // Settings button
+                            Button(action: {
+                                SettingsWindowManager.shared.show()
+                            }) {
+                                Image(systemName: "gearshape")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
+                                    .background(.ultraThinMaterial, in: Circle())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
                     
                     // Recent Apps Section - use cached recent apps from model
                     let recentApps = appModel._recentApps
@@ -191,61 +264,19 @@ struct ContentView: View {
                                     spacing: 20
                                 ) {
                                     ForEach(Array(displayedApps.enumerated()), id: \.element.path) { index, app in
-                                        AppIconView(
-                                            appModel: appModel,
-                                            app: app,
-                                            isHovered: hoveredAppPath == app.path,
-                                            hoveredAppInfo: hoveredAppPath == app.path ? app : nil,
-                                            isSelected: appModel.selectedAppIndex == index
-                                        )
-                                        .id(index)
-                                        .onHover { isHovered in
-                                            withAnimation(.easeInOut(duration: 0.15)) {
-                                                hoveredAppPath = isHovered ? app.path : nil
-                                            }
-                                        }
-                                        .onTapGesture {
-                                            if ApplicationService.shared.launchApplication(at: app.path, appModel: appModel) {
-                                                StatusBarManager.shared.hideWindow()
-                                            }
-                                        }
-                                        .contextMenu {
-                                            if !app.isFolder {
-                                                Button {
-                                                    // Open app folder in Finder
-                                                    let parentPath = (app.path as NSString).deletingLastPathComponent
-                                                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: parentPath)])
-                                                } label: {
-                                                    Label("Show in Finder", systemImage: "folder")
-                                                }
-                                            }
-                                            
-                                            Button {
-                                                appModel.toggleHiddenApp(app.path)
-                                            } label: {
-                                                Label(appModel.isAppHidden(app.path) ? "Show App" : "Hide App", systemImage: appModel.isAppHidden(app.path) ? "eye" : "eye.slash")
-                                            }
-                                            
-                                            Button {
-                                                // Copy app path to clipboard
-                                                NSPasteboard.general.clearContents()
-                                                NSPasteboard.general.setString(app.path, forType: .string)
-                                            } label: {
-                                                Label("Copy Path", systemImage: "doc.on.doc")
-                                            }
-                                        }
+                                        gridItemView(app: app, index: index)
                                     }
                                 }
                                 .padding()
                             }
-                            .onChange(of: appModel.scrollTargetIndex) { newIndex in
-                                if let newIndex, newIndex >= 0, newIndex < displayedApps.count {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        proxy.scrollTo(newIndex, anchor: .center)
-                                    }
-                                    appModel.clearScrollTarget()
-                                }
-                            }
+                             .onChange(of: appModel.scrollTargetIndex) {
+                                 if let newIndex = appModel.scrollTargetIndex, newIndex >= 0, newIndex < displayedApps.count {
+                                     withAnimation(.easeInOut(duration: 0.2)) {
+                                         proxy.scrollTo(displayedApps[newIndex].path, anchor: scrollAnchor)
+                                     }
+                                     appModel.clearScrollTarget()
+                                 }
+                             }
                         }
                     }
                 }
@@ -271,6 +302,9 @@ struct ContentView: View {
         }
         // Only focus search field when user explicitly types or clicks it
         // By default, keyboard events go to the window for arrow key navigation
+        .task {
+            await appModel.startLoading()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .launcherDidShow)) { _ in
             // Don't auto-focus the search field - let arrow keys work immediately
             isSearchFocused = false
@@ -279,6 +313,79 @@ struct ContentView: View {
             // Focus search field when / key is pressed
             isSearchFocused = true
         }
+        .sheet(isPresented: $showCreateFolder) {
+            createFolderSheet
+        }
+    }
+    
+    // MARK: - Create Folder Sheet
+    private var createFolderSheet: some View {
+        VStack(spacing: 16) {
+            Text(selectedAppPathsForFolder.isEmpty ? "Create New Folder" : "Add to Folder")
+                .font(.headline)
+            
+            TextField("Folder Name", text: $newFolderName)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 300)
+                .focused($isSearchFocused, equals: true)
+            
+            if !appModel.folders.isEmpty && !selectedAppPathsForFolder.isEmpty {
+                // Show option to add to existing folders
+                VStack(alignment: .leading) {
+                    Text("Also add to:")
+                        .font(.subheadline)
+                    ForEach(appModel.folders, id: \.id) { folder in
+                        Button {
+                            appModel.addAppToFolder(selectedAppPathsForFolder.first ?? "", folderId: folder.id)
+                        } label: {
+                            HStack {
+                                Text(folder.name)
+                                Spacer()
+                                Text("\(folder.appPaths.count) apps")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.primary)
+                    }
+                }
+            }
+            
+            // Show apps that will be added (when creating new folder)
+            if !selectedAppPathsForFolder.isEmpty {
+                VStack(alignment: .leading) {
+                    Text("Apps to add:")
+                        .font(.subheadline)
+                    ForEach(selectedAppPathsForFolder, id: \.self) { path in
+                        let name = (path as NSString).lastPathComponent.replacingOccurrences(of: ".app", with: "")
+                        Text(name)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    showCreateFolder = false
+                }
+                Button(selectedAppPathsForFolder.isEmpty ? "Create Folder" : "Add") {
+                    if !selectedAppPathsForFolder.isEmpty {
+                        if newFolderName.trimmingCharacters(in: .whitespaces).isEmpty {
+                            appModel.createFolder(name: "Folder", appPaths: selectedAppPathsForFolder)
+                        } else {
+                            appModel.createFolder(name: newFolderName, appPaths: selectedAppPathsForFolder)
+                        }
+                    }
+                    showCreateFolder = false
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+        .frame(width: 400)
     }
     
     // MARK: - Search Bar Extraction
@@ -292,11 +399,6 @@ struct ContentView: View {
                 .textFieldStyle(.plain)
                 .font(.body)
                 .focused($isSearchFocused, equals: true)
-                .onChange(of: isSearchFocused) { newValue in
-                    if newValue {
-                        hasFocusedSearchField = true
-                    }
-                }
             
             if !appModel.searchTerm.isEmpty {
                 Button {
@@ -319,23 +421,127 @@ struct ContentView: View {
     }
     
     private func getCategoryCount(for category: AppModel.AppCategory) -> Int {
-        switch category {
-        case .mostUsed:
-            return appModel._mostUsedApps.isEmpty && appModel.mostUsedDirty
-                ? appModel.visibleApplications.count  // Show visible count as fallback while dirty
-                : appModel._mostUsedApps.count
-        case .recentlyLaunched:
-            return appModel._recentlyLaunchedApps.isEmpty && appModel.recentlyLaunchedDirty
-                ? appModel.visibleApplications.count  // Show visible count as fallback while dirty
-                : appModel._recentlyLaunchedApps.count
-        case .newlyInstalled:
-            // Newly Installed uses visible apps (not filtered by category)
-            return appModel.visibleApplications.count
-        case .system, .utilities, .user:
-            return appModel.categoryCounts[category, default: 0]
-        }
+        appModel.categoryCounts[category, default: 0]
     }
     
+    // MARK: - Grid Item View (Fixes compiler timeout)
+    @ViewBuilder
+    private func gridItemView(app: AppModel.Application, index: Int) -> some View {
+        AppIconView(
+            appModel: appModel,
+            app: app,
+            isHovered: hoveredAppPath == app.path,
+            hoveredAppInfo: hoveredAppPath == app.path ? app : nil,
+            isSelected: appModel.selectedAppIndex == index
+        )
+        .id(app.path)
+        .onHover { isHovered in
+            hoveredAppPath = isHovered ? app.path : nil
+        }
+        .onTapGesture {
+            handleAppTap(app)
+        }
+        .contextMenu { folderContextMenu(app) }
+    }
+
+    private func handleAppTap(_ app: AppModel.Application) {
+        if app.path.hasPrefix("folder:") {
+            let folderPath = app.path.dropFirst(7) // Remove "folder:"
+            let folderId = String(folderPath)
+            if appModel.currentFolderId != folderId {
+                appModel.openFolder(folderId)
+            }
+        } else {
+            if ApplicationService.shared.launchApplication(at: app.path, appModel: appModel) {
+                StatusBarManager.shared.hideWindow()
+            }
+        }
+    }
+
+    private var scrollAnchor: UnitPoint? {
+        guard let anchor = appModel.scrollTargetAnchor else { return nil }
+        switch anchor {
+        case .top: return .top
+        case .center: return .center
+        case .bottom: return .bottom
+        }
+    }
+
+    // MARK: - Context Menu Extraction (Fixes compiler timeout)
+    @ViewBuilder
+    private func folderContextMenu(_ app: AppModel.Application) -> some View {
+        if app.path.hasPrefix("folder:") {
+            let folderPath = app.path.dropFirst(7)
+            let folderId = String(folderPath)
+            if let folder = appModel.folders.first(where: { $0.id == folderId }) {
+                Menu {
+                    ForEach(folder.appPaths, id: \.self) { appPath in
+                        Button {
+                            appModel.removeAppFromFolder(appPath, folderId: folderId)
+                        } label: {
+                            Label("Remove \(appPath.components(separatedBy: "/").last ?? appPath)", systemImage: "minus.circle")
+                        }
+                    }
+                } label: {
+                    Text("Manage Folder Contents")
+                }
+                Divider()
+                Button {
+                    newFolderName = folder.name
+                    selectedAppPathsForFolder = []
+                    showCreateFolder = true
+                } label: {
+                    Label("Rename Folder", systemImage: "pencil")
+                }
+                Button(role: .destructive) {
+                    appModel.deleteFolder(folderId: folderId)
+                } label: {
+                    Label("Delete Folder", systemImage: "trash")
+                }
+            }
+        } else {
+            if !app.isFolder {
+                Button {
+                    let parentPath = (app.path as NSString).deletingLastPathComponent
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: parentPath)])
+                } label: {
+                    Label("Show in Finder", systemImage: "folder")
+                }
+            }
+            Button {
+                selectedAppPathsForFolder = [app.path]
+                newFolderName = "Folder"
+                showCreateFolder = true
+            } label: {
+                Label("Add to Folder", systemImage: "folder.badge.plus")
+            }
+            if !appModel.folders.isEmpty {
+                Menu {
+                    ForEach(appModel.folders, id: \.id) { folder in
+                        Button {
+                            appModel.addAppToFolder(app.path, folderId: folder.id)
+                        } label: {
+                            Text("Add to \(folder.name)")
+                        }
+                    }
+                } label: {
+                    Label("Add to Existing Folder", systemImage: "folder")
+                }
+            }
+            Button {
+                appModel.toggleHiddenApp(app.path)
+            } label: {
+                Label(appModel.isAppHidden(app.path) ? "Show App" : "Hide App", systemImage: appModel.isAppHidden(app.path) ? "eye" : "eye.slash")
+            }
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(app.path, forType: .string)
+            } label: {
+                Label("Copy Path", systemImage: "doc.on.doc")
+            }
+        }
+    }
+
     // MARK: - Category Tab Extraction (Fixes compiler timeout)
     private func categoryTabButton(for category: AppModel.AppCategory) -> some View {
         Button {
@@ -505,11 +711,6 @@ struct AppIconView: View {
         VStack(spacing: 2) {
             if app.isFolder, let contained = app.containedApps, !contained.isEmpty {
                 Text("\(contained.count) app\(contained.count == 1 ? "" : "s")")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            if let size = app.appSize {
-                Text(size)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

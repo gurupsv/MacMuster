@@ -1,0 +1,348 @@
+import XCTest
+@testable import MacMuster
+
+final class PersistenceTests: XCTestCase {
+
+    private var appModel: AppModel!
+
+    override func setUpWithError() throws {
+        appModel = AppModel()
+    }
+
+    override func tearDownWithError() throws {
+        appModel = nil
+    }
+
+    // MARK: - Hidden Apps Persistence Tests
+
+    func testToggleHiddenAppSavesToUserDefaults() {
+        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+        appModel.toggleHiddenApp(app.path)
+        let data = UserDefaults.standard.data(forKey: "hiddenAppPaths")
+        XCTAssertNotNil(data)
+    }
+
+    func testLoadHiddenAppsReadsFromUserDefaults() {
+        let hiddenPaths = Set(["/Applications/Test.app", "/Applications/Other.app"])
+        let savedData = try? JSONEncoder().encode(hiddenPaths)
+        UserDefaults.standard.set(savedData, forKey: "hiddenAppPaths")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.hiddenAppPaths.count, 2)
+        XCTAssertTrue(newAppModel.hiddenAppPaths.contains("/Applications/Test.app"))
+        XCTAssertTrue(newAppModel.hiddenAppPaths.contains("/Applications/Other.app"))
+    }
+
+    func testLoadHiddenAppsWithInvalidDataDoesNothing() {
+        UserDefaults.standard.set("invalid-string", forKey: "hiddenAppPaths")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.hiddenAppPaths.count, 0)
+    }
+
+    func testLoadHiddenAppsWithNoDataDoesNothing() {
+        UserDefaults.standard.removeObject(forKey: "hiddenAppPaths")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.hiddenAppPaths.count, 0)
+    }
+
+    func testIsAppHiddenReturnsTrueForHiddenPath() {
+        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+        appModel.toggleHiddenApp(app.path)
+        XCTAssertTrue(appModel.isAppHidden(app.path))
+    }
+
+    func testIsAppHiddenReturnsFalseForNonHiddenPath() {
+        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+        XCTAssertFalse(appModel.isAppHidden(app.path))
+    }
+
+    func testToggleHiddenAppWithApplicationObject() {
+        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+        appModel.toggleHiddenApp(app)
+        XCTAssertTrue(appModel.isAppHidden(app.path))
+    }
+
+    // MARK: - Custom Directories Persistence Tests
+
+    func testLoadCustomDirectoriesReadsFromUserDefaults() {
+        UserDefaults.standard.set(["/Users/test/CustomApps", "/Users/test/OtherApps"], forKey: "customDirectories")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.customDirectories.count, 2)
+        XCTAssertTrue(newAppModel.customDirectories.contains("/Users/test/CustomApps"))
+        XCTAssertTrue(newAppModel.customDirectories.contains("/Users/test/OtherApps"))
+    }
+
+    func testLoadCustomDirectoriesWithNoDataUsesDefaultOnly() {
+        UserDefaults.standard.removeObject(forKey: "customDirectories")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.customDirectories.count, 0)
+        XCTAssertEqual(newAppModel.allScanDirectories.count, AppModel.defaultScanDirectories.count)
+    }
+
+    func testLoadCustomDirectoriesWithInvalidDataUsesDefaultOnly() {
+        UserDefaults.standard.set("invalid-string", forKey: "customDirectories")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.customDirectories.count, 0)
+        XCTAssertEqual(newAppModel.allScanDirectories.count, AppModel.defaultScanDirectories.count)
+    }
+
+    // MARK: - Font Family Persistence Tests
+
+    func testSetFontFamilySavesToUserDefaults() {
+        appModel.setFontFamily("SF Pro")
+        let font = UserDefaults.standard.string(forKey: "fontFamily")
+        XCTAssertEqual(font, "SF Pro")
+    }
+
+    func testSetFontFamilyUpdatesProperty() {
+        appModel.setFontFamily("SF Pro")
+        XCTAssertEqual(appModel.fontFamily, "SF Pro")
+    }
+
+    func testLoadFontFamilyReadsFromUserDefaults() {
+        UserDefaults.standard.set("Helvetica", forKey: "fontFamily")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.fontFamily, "Helvetica")
+    }
+
+    func testLoadFontFamilyWithNoDataDoesNothing() {
+        UserDefaults.standard.removeObject(forKey: "fontFamily")
+
+        let newAppModel = AppModel()
+        XCTAssertNil(appModel.fontFamily)
+    }
+
+    // MARK: - Column Count Persistence Tests
+
+    func testSetColumnCountSavesToUserDefaults() {
+        appModel.setColumnCount(6)
+        let cols = UserDefaults.standard.value(forKey: "columnCount") as? Int
+        XCTAssertEqual(cols, 6)
+    }
+
+    func testLoadColumnCountReadsFromUserDefaults() {
+        UserDefaults.standard.set(6, forKey: "columnCount")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.columnCount, 6)
+    }
+
+    func testLoadColumnCountWithInvalidDataUsesDefault() {
+        UserDefaults.standard.set("invalid-string", forKey: "columnCount")
+
+        let newAppModel = AppModel()
+        XCTAssertNotNil(newAppModel.columnCount)
+    }
+
+    func testLoadColumnCountWithZeroEnforcesMinimum() {
+        UserDefaults.standard.set(0, forKey: "columnCount")
+
+        let newAppModel = AppModel()
+        XCTAssertGreaterThanOrEqual(newAppModel.columnCount, 1)
+    }
+
+    // MARK: - Sort Option Persistence Tests
+
+    func testSetSortOptionSavesToUserDefaults() {
+        appModel.setSortOption(.installationDate)
+        let sortRaw = UserDefaults.standard.string(forKey: "sortOption")
+        XCTAssertEqual(sortRaw, "Installation Date")
+    }
+
+    func testLoadSortOptionReadsFromUserDefaults() {
+        UserDefaults.standard.set("Installation Date", forKey: "sortOption")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.sortOption, .installationDate)
+    }
+
+    func testLoadSortOptionWithInvalidRawValueUsesDefault() {
+        UserDefaults.standard.set("InvalidOption", forKey: "sortOption")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.sortOption, .name)
+    }
+
+    func testLoadSortOptionWithNoDataUsesDefault() {
+        UserDefaults.standard.removeObject(forKey: "sortOption")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.sortOption, .name)
+    }
+
+    // MARK: - Icon Size Persistence Tests
+
+    func testSetIconSizeSavesToUserDefaults() {
+        appModel.iconSize = .large
+        let iconRaw = UserDefaults.standard.string(forKey: "iconSize")
+        XCTAssertEqual(iconRaw, "Large")
+    }
+
+    func testLoadIconSizeReadsFromUserDefaults() {
+        UserDefaults.standard.set("Medium", forKey: "iconSize")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.iconSize, .medium)
+    }
+
+    func testLoadIconSizeWithInvalidRawValueUsesDefault() {
+        UserDefaults.standard.set("InvalidSize", forKey: "iconSize")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.iconSize, .small)
+    }
+
+    func testLoadIconSizeWithNoDataUsesDefault() {
+        UserDefaults.standard.removeObject(forKey: "iconSize")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.iconSize, .small)
+    }
+
+    // MARK: - Refresh Interval Persistence Tests
+
+    func testSetRefreshIntervalSavesToUserDefaults() {
+        appModel.refreshInterval = 600
+        let interval = UserDefaults.standard.value(forKey: "refreshInterval") as? Double
+        XCTAssertEqual(interval, 600)
+    }
+
+    func testLoadRefreshIntervalReadsFromUserDefaults() {
+        UserDefaults.standard.set(600, forKey: "refreshInterval")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.refreshInterval, 600)
+    }
+
+    func testLoadRefreshIntervalWithNoDataUsesDefault() {
+        UserDefaults.standard.removeObject(forKey: "refreshInterval")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.refreshInterval, 300)
+    }
+
+    // MARK: - Current Folder Id Persistence Tests
+
+    func testOpenFolderSavesCurrentFolderId() {
+        let folder = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
+        let folderId = folder.id
+        appModel.openFolder(folderId)
+        let folderIdStored = UserDefaults.standard.string(forKey: "currentFolderId")
+        XCTAssertEqual(folderIdStored, folderId)
+    }
+
+    func testCloseFolderResetsCurrentFolderId() {
+        let folder = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
+        let folderId = folder.id
+        appModel.openFolder(folderId)
+        appModel.closeFolder()
+        let folderIdStored = UserDefaults.standard.string(forKey: "currentFolderId")
+        XCTAssertNil(folderIdStored)
+    }
+
+    func testLoadCurrentFolderIdReadsFromUserDefaults() {
+        let folder = AppFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
+        UserDefaults.standard.set(folder.id, forKey: "currentFolderId")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.currentFolderId, folder.id)
+    }
+
+    func testLoadCurrentFolderIdWithNoDataDoesNothing() {
+        UserDefaults.standard.removeObject(forKey: "currentFolderId")
+
+        let newAppModel = AppModel()
+        XCTAssertNil(newAppModel.currentFolderId)
+    }
+
+    // MARK: - Custom Order Persistence Tests
+
+    func testSetCustomOrderSavesToUserDefaults() {
+        let apps = [
+            AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date()),
+            AppModel.Application(name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date()),
+        ]
+        appModel.setApplications(apps)
+        appModel.customOrder[apps[0].path] = 0
+        appModel.customOrder[apps[1].path] = 1
+        let data = UserDefaults.standard.data(forKey: "customOrder")
+        XCTAssertNotNil(data)
+    }
+
+    func testLoadCustomOrderReadsFromUserDefaults() {
+        let order = ["/Applications/App1.app": 0, "/Applications/App2.app": 1]
+        let savedData = try? JSONEncoder().encode(order)
+        UserDefaults.standard.set(savedData, forKey: "customOrder")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.customOrder["/Applications/App1.app"], 0)
+        XCTAssertEqual(newAppModel.customOrder["/Applications/App2.app"], 1)
+    }
+
+    func testLoadCustomOrderWithInvalidDataDoesNothing() {
+        UserDefaults.standard.set("invalid-string", forKey: "customOrder")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.customOrder.count, 0)
+    }
+
+    func testLoadCustomOrderWithNoDataDoesNothing() {
+        UserDefaults.standard.removeObject(forKey: "customOrder")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.customOrder.count, 0)
+    }
+
+    // MARK: - Combined Persistence Tests
+
+    func testLoadAllPersistedPreferencesFromUserDefaults() {
+        UserDefaults.standard.set(6, forKey: "columnCount")
+        UserDefaults.standard.set("Development", forKey: "currentFolderId")
+        UserDefaults.standard.set("Installation Date", forKey: "sortOption")
+        UserDefaults.standard.set("Large", forKey: "iconSize")
+        UserDefaults.standard.set(600, forKey: "refreshInterval")
+        UserDefaults.standard.set("Helvetica", forKey: "fontFamily")
+        UserDefaults.standard.set(["/Applications/Test.app"], forKey: "hiddenAppPaths")
+        UserDefaults.standard.set(["/Users/test/CustomApps"], forKey: "customDirectories")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.columnCount, 6)
+        XCTAssertEqual(newAppModel.currentFolderId, "Development")
+        XCTAssertEqual(newAppModel.sortOption, .installationDate)
+        XCTAssertEqual(newAppModel.iconSize, .large)
+        XCTAssertEqual(newAppModel.refreshInterval, 600)
+        XCTAssertEqual(newAppModel.fontFamily, "Helvetica")
+        XCTAssertEqual(newAppModel.hiddenAppPaths.count, 1)
+        XCTAssertEqual(newAppModel.customDirectories.count, 1)
+    }
+
+    func testSaveAllPersistedPreferencesWritesToUserDefaults() {
+        let folder = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
+        let folderId = folder.id
+        appModel.openFolder(folderId)
+        appModel.setSortOption(.installationDate)
+        appModel.iconSize = .large
+        appModel.refreshInterval = 600
+        appModel.setFontFamily("Helvetica")
+        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        appModel.setApplications([app])
+        appModel.toggleHiddenApp(app.path)
+        appModel.addCustomDirectory("/Users/test/CustomApps")
+
+        XCTAssertNotNil(UserDefaults.standard.string(forKey: "currentFolderId"))
+        XCTAssertNotNil(UserDefaults.standard.string(forKey: "sortOption"))
+        XCTAssertNotNil(UserDefaults.standard.string(forKey: "iconSize"))
+        XCTAssertNotNil(UserDefaults.standard.value(forKey: "refreshInterval"))
+        XCTAssertNotNil(UserDefaults.standard.string(forKey: "fontFamily"))
+        XCTAssertNotNil(UserDefaults.standard.data(forKey: "hiddenAppPaths"))
+        XCTAssertNotNil(UserDefaults.standard.stringArray(forKey: "customDirectories"))
+    }
+}

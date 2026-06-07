@@ -3,11 +3,8 @@ import SwiftUI
 
 // MARK: - AppModel Constants
 
-let kIconCacheBatchSize = 12  // Reduced from 24 to distribute blocking over more batches
-let kIconLoadDelay: TimeInterval = 0.01  // Reduced from 0.02 to minimize inter-batch delay
-let kIconLoadDelayAfterInitial: TimeInterval = 0.0  // Removed 300ms delay; start icon loading immediately
+let kIconCacheBatchSize = 12
 let kMaxRecentApps = 8
-let kMaxDirectoryScanSize = 5000
 
 // MARK: - OverlayWindowManager Constants
 

@@ -234,7 +234,7 @@ struct GeneralSettingsPanel: View {
                         Toggle("", isOn: $startAtLogin)
                             .toggleStyle(.switch)
                             .labelsHidden()
-                            .onChange(of: startAtLogin) { newValue in
+                            .onChange(of: startAtLogin) { _, newValue in
                                 updateStartAtLogin(newValue)
                             }
                     }
@@ -300,6 +300,9 @@ struct GeneralSettingsPanel: View {
                         }
                         .fixedSize()
                         .labelsHidden()
+                        .onChange(of: appModel.refreshInterval) { _, _ in
+                            appModel.setRefreshInterval(appModel.refreshInterval)
+                        }
                     }
                 }
                 .padding(kSectionContentPadding)
@@ -356,52 +359,11 @@ struct AppearanceSettingsPanel: View {
     @Bindable var appModel: AppModel
     @State private var selectedFontFamily: String = "SF Pro Display"
     
-    // Available system fonts - these are actual font family names available on macOS
-    private let availableFonts = [
-        "SF Pro Display",
-        "SF Pro Text",
-        "Helvetica Neue",
-        "Helvetica",
-        "Arial",
-        "Arial Hebrew",
-        "Avenir",
-        "Avenir Next",
-        "Avenir Next Condensed",
-        "Baskerville",
-        "Chalkboard SE",
-        "Chalkduster",
-        "Cochin",
-        "Copperplate",
-        "Courier New",
-        "Didot",
-        "Futura",
-        "Georgia",
-        "Gill Sans",
-        "Helvetica",
-        "Helvetica Neue",
-        "Herculanum",
-        "Lucida Grande",
-        "Menlo",
-        "Noteworthy",
-        "Optima",
-        "Palatino",
-        "STIXGeneral",
-        "STIXIntegralsDF",
-        "STIXNonUnicode",
-        "STIXSizeOneSym",
-        "Snell Roundhand",
-        "Times",
-        "Times New Roman",
-        "Trattatello",
-        "Zapfino"
-    ]
-    
-    /// Get actual system font families and filter to only those that exist
+    /// Get actual system font families
     private var systemFontFamilies: [String] {
         NSFontManager.shared.availableFontFamilies.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
     
-    private let fontSizes = [10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 48]
     private let fontWeights = [
         ("Thin", "thin"),
         ("Ultra-Light", "ultralight"),
@@ -433,7 +395,7 @@ struct AppearanceSettingsPanel: View {
                     EmptyView()
                 }
                 .pickerStyle(.menu)
-                .onChange(of: selectedFontFamily) { newValue in
+                .onChange(of: selectedFontFamily) { _, newValue in
                     appModel.setFontFamily(newValue)
                 }
                 .onAppear {
@@ -462,9 +424,6 @@ struct AppearanceSettingsPanel: View {
                         Slider(value: $appModel.fontSize, in: 10...48, step: 1) {
                             Text("Size")
                         }
-                        .onChange(of: appModel.fontSize) { _ in
-                            appModel.applyFontSettings()
-                        }
                     }
                     
                     Divider()
@@ -483,7 +442,7 @@ struct AppearanceSettingsPanel: View {
                             EmptyView()
                         }
                         .pickerStyle(.menu)
-                        .onChange(of: appModel.fontWeight) { newValue in
+                        .onChange(of: appModel.fontWeight) { _, newValue in
                             appModel.setFontWeight(newValue)
                         }
                     }
@@ -539,6 +498,9 @@ struct AppearanceSettingsPanel: View {
                             EmptyView()
                         }
                         .pickerStyle(.segmented)
+                        .onChange(of: appModel.iconSize) { _, _ in
+                            appModel.setIconSize(appModel.iconSize)
+                        }
                     }
                 }
                 .padding(kSectionContentPadding)

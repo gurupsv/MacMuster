@@ -45,8 +45,7 @@ final class OverlayWindowManagerTests: XCTestCase {
         appModel.selectedAppIndex = 9
 
         // Simulate Up arrow — should move to index 1 (first row, second column)
-        let event = NSEvent.keyEvent(
-            with: .keyDown,
+        let event = NSEvent(keyType: .keyDown,
             location: NSPoint.zero,
             modifierFlags: [],
             timestamp: 0,
@@ -55,8 +54,7 @@ final class OverlayWindowManagerTests: XCTestCase {
             characters: "",
             charactersIgnoringModifiers: "",
             isARepeat: false,
-            keyCode: 126
-        ) ?? NSEvent()
+            keyCode: 126) ?? NSEvent()
 
         let handled = manager.handleKeyDown(event)
         XCTAssertTrue(handled)
@@ -74,8 +72,7 @@ final class OverlayWindowManagerTests: XCTestCase {
         appModel.selectedAppIndex = 1
 
         // Simulate Down arrow — should move to index 9 (second row, second column)
-        let event = NSEvent.keyEvent(
-            with: .keyDown,
+        let event = NSEvent(keyType: .keyDown,
             location: NSPoint.zero,
             modifierFlags: [],
             timestamp: 0,
@@ -84,8 +81,7 @@ final class OverlayWindowManagerTests: XCTestCase {
             characters: "",
             charactersIgnoringModifiers: "",
             isARepeat: false,
-            keyCode: 125
-        ) ?? NSEvent()
+            keyCode: 125) ?? NSEvent()
 
         let handled = manager.handleKeyDown(event)
         XCTAssertTrue(handled)
@@ -103,8 +99,7 @@ final class OverlayWindowManagerTests: XCTestCase {
         appModel.selectedAppIndex = 3
 
         // Simulate Left arrow — should move to index 2
-        let event = NSEvent.keyEvent(
-            with: .keyDown,
+        let event = NSEvent(keyType: .keyDown,
             location: NSPoint.zero,
             modifierFlags: [],
             timestamp: 0,
@@ -113,8 +108,7 @@ final class OverlayWindowManagerTests: XCTestCase {
             characters: "",
             charactersIgnoringModifiers: "",
             isARepeat: false,
-            keyCode: 123
-        ) ?? NSEvent()
+            keyCode: 123) ?? NSEvent()
 
         let handled = manager.handleKeyDown(event)
         XCTAssertTrue(handled)
@@ -132,8 +126,7 @@ final class OverlayWindowManagerTests: XCTestCase {
         appModel.selectedAppIndex = 2
 
         // Simulate Right arrow — should move to index 3
-        let event = NSEvent.keyEvent(
-            with: .keyDown,
+        let event = NSEvent(keyType: .keyDown,
             location: NSPoint.zero,
             modifierFlags: [],
             timestamp: 0,
@@ -142,19 +135,15 @@ final class OverlayWindowManagerTests: XCTestCase {
             characters: "",
             charactersIgnoringModifiers: "",
             isARepeat: false,
-            keyCode: 124
-        ) ?? NSEvent()
+            keyCode: 124) ?? NSEvent()
 
         let handled = manager.handleKeyDown(event)
         XCTAssertTrue(handled)
         XCTAssertEqual(appModel.selectedAppIndex, 3)
     }
 
-    func testEscapeUnfocusesSearchWhenFocused() {
-        appModel.isSearchFocused = true
-
-        let event = NSEvent.keyEvent(
-            with: .keyDown,
+    func testEscapeWhenSearchNotFocusedHidesLauncher() {
+        let event = NSEvent(keyType: .keyDown,
             location: NSPoint.zero,
             modifierFlags: [],
             timestamp: 0,
@@ -163,10 +152,9 @@ final class OverlayWindowManagerTests: XCTestCase {
             characters: "\u{001B}",
             charactersIgnoringModifiers: "\u{001B}",
             isARepeat: false,
-            keyCode: 53
-        ) ?? NSEvent()
+            keyCode: 53) ?? NSEvent()
 
-        // Escape when search is focused should unfocus (handled)
+        // Escape when search is not focused should hide launcher (handled)
         let handled = manager.handleKeyDown(event)
         XCTAssertTrue(handled)
     }

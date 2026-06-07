@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "MacMuster",
     platforms: [
-        .macOS(.v26)
+        .macOS(.v14)
     ],
     products: [
         .executable(name: "MacMuster", targets: ["MacMuster"])
