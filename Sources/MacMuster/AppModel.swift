@@ -56,6 +56,24 @@ class AppModel {
     var customOrder: [String: Int] = [:]
     var sortOption: ApplicationSorter.SortOption = .name
 
+    // MARK: - Glow Effect Settings (for overlay window edges)
+    var glowEnabled: Bool = true
+    var glowColor: Color = .white
+    var glowIntensity: Double = 0.3 {
+        didSet {
+            // Clamp intensity between 0 and 1
+            if glowIntensity < 0 { glowIntensity = 0 }
+            if glowIntensity > 1 { glowIntensity = 1 }
+        }
+    }
+    var glowWidth: Double = 40.0 {
+        didSet {
+            if glowWidth < 10 { glowWidth = 10 }
+            if glowWidth > 100 { glowWidth = 100 }
+            UserDefaults.standard.set(glowWidth, forKey: "glowWidth")
+        }
+    }
+
     // MARK: - Settings
     var showFoldersFirst: Bool = false {
         didSet {
@@ -143,7 +161,41 @@ class AppModel {
         if let showFoldersFirstRaw = UserDefaults.standard.value(forKey: "showFoldersFirst") as? Bool {
             showFoldersFirst = showFoldersFirstRaw
         }
+        
+        // Load glow effect settings
+        if let glowEnabledRaw = UserDefaults.standard.value(forKey: "glowEnabled") as? Bool {
+            glowEnabled = glowEnabledRaw
+        }
+        if let glowColorHex = UserDefaults.standard.string(forKey: "glowColor") {
+            // Parse hex color string like "#FFFFFF" or "white"
+            glowColor = parseColor(from: glowColorHex)
+        }
+        if let glowIntensityRaw = UserDefaults.standard.value(forKey: "glowIntensity") as? Double {
+            glowIntensity = max(0, min(1, glowIntensityRaw))
+        }
+        if let glowWidthRaw = UserDefaults.standard.value(forKey: "glowWidth") as? Double {
+            glowWidth = max(10, min(100, glowWidthRaw))
+        }
     }
+    
+    private func parseColor(from hexString: String) -> Color {
+        // Convert hex color string to SwiftUI Color
+        let trimmed = hexString.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        
+        // Named colors
+        switch trimmed {
+        case "#ffffff", "#fff", "white": return .white
+        case "#000000", "black": return .black
+        case "#ff5733", "#f57": return Color(red: 1.0, green: 0.34, blue: 0.2)
+        case "#3366ff", "#36f": return Color(red: 0.2, green: 0.4, blue: 1.0)
+        case "#ff3366", "#f36": return Color(red: 1.0, green: 0.2, blue: 0.4)
+        case "#33ff57", "#3f5": return Color(red: 0.2, green: 1.0, blue: 0.34)
+        case "#33fff5", "#3fb": return Color(red: 0.2, green: 1.0, blue: 0.96)
+        case "#f5ff33", "#f53": return Color(red: 1.0, green: 0.96, blue: 0.2)
+        default: return .white
+        }
+    }
+
 
     private func loadCustomDirectories() {
         if let dirs = UserDefaults.standard.stringArray(forKey: "customDirectories") {
@@ -421,7 +473,8 @@ class AppModel {
                 // Determine if this is a folder containing multiple apps
                 // Check for contained apps both for regular folders and .app bundles (like Xcode)
                 let containedApps = Self.findContainedApps(in: fullPath)
-                let isFolder = (containedApps?.isEmpty == false)
+                // Only create folders for directories with 2 or more apps
+                let isFolder = (containedApps?.count ?? 0) >= 2
 
                 apps.append(Application(
                     id: fullPath,
@@ -663,8 +716,9 @@ class AppModel {
 
     @discardableResult
     func launchSelectedApp() -> Bool {
-        guard selectedAppIndex >= 0, selectedAppIndex < displayOrder.count else { return false }
-        let app = displayOrder[selectedAppIndex]
+        let displayedApps = getDisplayedApps()
+        guard selectedAppIndex >= 0, selectedAppIndex < displayedApps.count else { return false }
+        let app = displayedApps[selectedAppIndex]
         NSWorkspace.shared.open(URL(fileURLWithPath: app.path))
         recordAppLaunch(at: app.path)
         return true
@@ -816,7 +870,29 @@ class AppModel {
         UserDefaults.standard.set(sortOption.rawValue, forKey: "sortOption")
         UserDefaults.standard.set(iconSize.rawValue, forKey: "iconSize")
         UserDefaults.standard.set(refreshInterval, forKey: "refreshInterval")
+        
+        // Save glow effect settings
+        UserDefaults.standard.set(glowEnabled, forKey: "glowEnabled")
+        UserDefaults.standard.set(getHexColorValue(), forKey: "glowColor")
+        UserDefaults.standard.set(glowIntensity, forKey: "glowIntensity")
     }
+    
+    private func getHexColorValue() -> String {
+        // Convert Color to hex string for persistence
+        // For simplicity, return a recognized value based on the color
+        let r = CGFloat(0), g = CGFloat(0), b = CGFloat(0)  // Default values
+        
+        if glowColor == .white { return "#ffffff" }
+        else if glowColor == .black { return "#000000" }
+        else if glowColor == Color(red: 1.0, green: 0.34, blue: 0.2) { return "#ff5733" }
+        else if glowColor == Color(red: 0.2, green: 0.4, blue: 1.0) { return "#3366ff" }
+        else if glowColor == Color(red: 1.0, green: 0.2, blue: 0.4) { return "#ff3366" }
+        else if glowColor == Color(red: 0.2, green: 1.0, blue: 0.34) { return "#33ff57" }
+        else if glowColor == Color(red: 0.2, green: 1.0, blue: 0.96) { return "#33fff5" }
+        else if glowColor == Color(red: 1.0, green: 0.96, blue: 0.2) { return "#f5ff33" }
+        return "#ffffff"
+    }
+
 
     // MARK: - Computed Properties & Display Helpers
 

@@ -5,6 +5,100 @@ extension Notification.Name {
     static let launcherDidShow = Notification.Name("launcherDidShow")
 }
 
+// MARK: - Glow Effect View (SwiftUI overlay for glowing edges)
+
+struct GlowEffectView: View {
+    let appModel: AppModel
+    
+    /// Maximum opacity for the glow at the very edge
+    private let glowMaxOpacity: CGFloat = 1.0
+    
+    var body: some View {
+        if appModel.glowEnabled && appModel.glowIntensity > 0 {
+            let color = appModel.glowColor
+            let intensity = appModel.glowIntensity
+            let glowInset = appModel.glowWidth
+            
+            Rectangle()
+                .fill(.clear)
+                // Top edge glow: brightest at top, fades inward
+                .overlay(
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    color.opacity(intensity * glowMaxOpacity),
+                                    color.opacity(intensity * glowMaxOpacity * 0.6),
+                                    color.opacity(intensity * glowMaxOpacity * 0.15),
+                                    .clear,
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(height: glowInset)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                )
+                // Bottom edge glow
+                .overlay(
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    color.opacity(intensity * glowMaxOpacity),
+                                    color.opacity(intensity * glowMaxOpacity * 0.6),
+                                    color.opacity(intensity * glowMaxOpacity * 0.15),
+                                    .clear,
+                                ],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                        )
+                        .frame(height: glowInset)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                )
+                // Left edge glow
+                .overlay(
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    color.opacity(intensity * glowMaxOpacity),
+                                    color.opacity(intensity * glowMaxOpacity * 0.6),
+                                    color.opacity(intensity * glowMaxOpacity * 0.15),
+                                    .clear,
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: glowInset)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                )
+                // Right edge glow
+                .overlay(
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    color.opacity(intensity * glowMaxOpacity),
+                                    color.opacity(intensity * glowMaxOpacity * 0.6),
+                                    color.opacity(intensity * glowMaxOpacity * 0.15),
+                                    .clear,
+                                ],
+                                startPoint: .trailing,
+                                endPoint: .leading
+                            )
+                        )
+                        .frame(width: glowInset)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                )
+                .allowsHitTesting(false)
+                .drawingGroup(opaque: false)
+        }
+    }
+}
+
 final class OverlayWindow: NSWindow {
     var onKeyDown: ((NSEvent) -> Bool)?
     
@@ -38,7 +132,9 @@ class OverlayWindowManager {
         let screen = NSScreen.main ?? NSScreen.screens.first!
         let frame = screen.frame
         
-        let contentView = ContentView(appModel: appModel)
+        // Glow is rendered inside ContentView, on top of VisualEffectBackground
+        let contentViewWithGlow = ContentView(appModel: appModel)
+            .environment(appModel)
         
         window = OverlayWindow(
             contentRect: frame,
@@ -67,7 +163,7 @@ class OverlayWindowManager {
         window?.standardWindowButton(.zoomButton)?.isHidden = true
         
         // Set SwiftUI content - use safe area inset to avoid notch
-        let hostingView = NSHostingView(rootView: contentView)
+        let hostingView = NSHostingView(rootView: contentViewWithGlow)
         hostingView.frame = frame
         window?.contentView = hostingView
         
@@ -93,7 +189,7 @@ class OverlayWindowManager {
         NSApp.activate(ignoringOtherApps: true)
 
         // Ensure the hosting view resizes to match the new window frame.
-        if let hostingView = window.contentView as? NSHostingView<ContentView> {
+        if let hostingView = window.contentView as? NSHostingView<AnyView> {
             hostingView.frame = screenFrame
         }
 

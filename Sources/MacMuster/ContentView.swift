@@ -42,6 +42,10 @@ struct ContentView: View {
                     }
                 }
             
+            // Glow effect rendered on top of VisualEffectBackground (visible) 
+            // but behind content (non-hittable)
+            GlowEffectView(appModel: appModel)
+            
             if appModel.isLoading {
                 // Loading indicator
                 VStack(spacing: 20) {
@@ -55,55 +59,40 @@ struct ContentView: View {
                 let visibleApps = appModel.visibleApplications
                 let displayedApps = appModel.getDisplayedApps()
 
-                VStack(alignment: .leading, spacing: 16) {
-                    // Keyboard shortcut hints
+                VStack(alignment: .leading, spacing: 10) {
+                    // Top padding
+                    Spacer()
+                        .frame(height: 20)
+                    
+                    // Keyboard hints pill (above categories, shown on first launch)
                     if !visibleApps.isEmpty {
-                        HStack(spacing: 12) {
+                        HStack(spacing: 10) {
                             HStack(spacing: 4) {
                                 Image(systemName: "keyboard.fill")
-                                    .font(.caption2)
                                 Text("↑↓←→ Navigate")
-                                    .font(.caption2)
                             }
-                            .foregroundStyle(.secondary.opacity(0.6))
-                            
                             HStack(spacing: 4) {
                                 Image(systemName: "return")
-                                    .font(.caption2)
                                 Text("Launch")
-                                    .font(.caption2)
                             }
-                            .foregroundStyle(.secondary.opacity(0.6))
-                            
                             HStack(spacing: 4) {
                                 Image(systemName: "slash")
-                                    .font(.caption2)
                                 Text("Search")
-                                    .font(.caption2)
                             }
-                            .foregroundStyle(.secondary.opacity(0.6))
-                            
                             HStack(spacing: 4) {
                                 Image(systemName: "escape")
-                                    .font(.caption2)
-                                Text("Unfocus/Close")
-                                    .font(.caption2)
+                                Text("Close")
                             }
-                            .foregroundStyle(.secondary.opacity(0.6))
-                            
-                            Spacer()
                         }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
                         .padding(.horizontal)
                     }
                     
-                    // Top padding to account for notch/menubar area
-                    Spacer()
-                        .frame(height: 40)
-                    
-                    // Search bar
-                    searchBar
-                    
-                    // Breadcrumb navigation when inside a folder
+                    // Breadcrumb or header
                     if let folder = appModel.currentFolder {
                         HStack(spacing: 4) {
                             Button {
@@ -129,7 +118,6 @@ struct ContentView: View {
                             
                             Spacer()
                             
-                            // Create new folder button
                             Button {
                                 newFolderName = "Folder"
                                 selectedAppPathsForFolder = []
@@ -143,7 +131,6 @@ struct ContentView: View {
                             }
                             .buttonStyle(.plain)
                             
-                            // Settings button
                             Button(action: {
                                 SettingsWindowManager.shared.show()
                             }) {
@@ -158,9 +145,8 @@ struct ContentView: View {
                         .padding(.horizontal)
                         .padding(.bottom, 4)
                     } else {
-                        // Header with sorting control and category tabs
+                        // Header with category tabs and action buttons
                         HStack {
-                            // Category tabs
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
                                     ForEach(Array(AppModel.AppCategory.allCases.enumerated()), id: \.offset) { _, category in
@@ -168,13 +154,6 @@ struct ContentView: View {
                                     }
                                 }
                             }
-                            
-                            Spacer()
-                            
-                            // Show app count for current category
-                            Text("\(displayedApps.count) apps")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
                             
                             Spacer()
                             
@@ -192,36 +171,26 @@ struct ContentView: View {
                                     }
                                 }
                             } label: {
-                                HStack(spacing: 4) {
-                                    Text("Sort: \(appModel.sortOption.rawValue)")
-                                        .font(.subheadline)
-                                    Image(systemName: "chevron.down")
-                                        .font(.caption)
-                                }
-                                .padding(.horizontal, kSortMenuPaddingHorizontal)
-                                .padding(.vertical, kSortMenuPaddingVertical)
-                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: kSortMenuCornerRadius))
+                                Text("Sort: \(appModel.sortOption.rawValue)")
+                                    .font(.subheadline)
+                                    .padding(.horizontal, kSortMenuPaddingHorizontal)
+                                    .padding(.vertical, kSortMenuPaddingVertical)
+                                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: kSortMenuCornerRadius))
                             }
                             
-                            // Create new folder button
                             Button {
                                 newFolderName = "Folder"
                                 selectedAppPathsForFolder = []
                                 showCreateFolder = true
                             } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "folder.badge.plus")
-                                    Text("New Folder")
-                                }
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, kSortMenuPaddingHorizontal)
-                                .padding(.vertical, kSortMenuPaddingVertical)
-                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: kSortMenuCornerRadius))
+                                Image(systemName: "folder.badge.plus")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
+                                    .background(.ultraThinMaterial, in: Circle())
                             }
                             .buttonStyle(.plain)
                             
-                            // Settings button
                             Button(action: {
                                 SettingsWindowManager.shared.show()
                             }) {
@@ -236,7 +205,10 @@ struct ContentView: View {
                         .padding(.horizontal)
                     }
                     
-                    // Recent Apps Section - use cached recent apps from model
+                    // Search bar with integrated keyboard hints
+                    searchBar
+                    
+                    // Recent Apps Section
                     let recentApps = appModel._recentApps
                     if !recentApps.isEmpty {
                         SectionView(appModel: appModel, title: "Recent", apps: recentApps, columns: Self.recentColumns) { app in
@@ -272,6 +244,14 @@ struct ContentView: View {
                                         gridItemView(app: app, index: index)
                                     }
                                 }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if appModel.currentFolder != nil {
+                                        appModel.closeFolder()
+                                    } else {
+                                        StatusBarManager.shared.hideWindow()
+                                    }
+                                }
                                 .padding()
                             }
                              .onChange(of: appModel.scrollTargetIndex) {
@@ -284,6 +264,10 @@ struct ContentView: View {
                              }
                         }
                     }
+                    
+                    // Bottom padding (moved inside VStack for symmetry)
+                    Spacer()
+                        .frame(height: 30)
                 }
                 .frame(minWidth: kWindowMinWidth, minHeight: kWindowMinHeight)
                 .padding(.horizontal)
@@ -291,7 +275,6 @@ struct ContentView: View {
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            // If inside a folder, close the folder and return to root
                             if appModel.currentFolder != nil {
                                 appModel.closeFolder()
                             } else {
@@ -299,9 +282,6 @@ struct ContentView: View {
                             }
                         }
                 )
-                
-                Spacer()
-                    .frame(height: kWindowPadding)  // Bottom padding
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -426,7 +406,7 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: kSearchCornerRadius)
                 .stroke(Color.white.opacity(0.1), lineWidth: 1)
         )
-        .frame(maxWidth: kSearchMaxWidth)
+        .frame(maxWidth: 400, alignment: .center)
         .frame(maxWidth: .infinity, alignment: .center)
     }
     
@@ -691,20 +671,6 @@ struct AppIconView: View {
                     .padding(kAppIconPadding)
             }
             
-            // Folder indicator badge
-            if app.isFolder {
-                VStack {
-                    HStack {
-                        Spacer()
-                        Image(systemName: "chevron.down")
-                            .font(.caption2)
-                            .foregroundStyle(.white)
-                            .padding(3)
-                            .background(.gray, in: Capsule())
-                    }
-                    Spacer()
-                }
-            }
         }
     }
     

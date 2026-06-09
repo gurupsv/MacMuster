@@ -353,6 +353,152 @@ struct GeneralSettingsPanel: View {
     }
 }
 
+// MARK: - Glow Effect Settings Panel
+
+struct GlowSettingsPanel: View {
+    @Bindable var appModel: AppModel
+    
+    // Available colors for glow effect
+    private let availableColors = [
+        ("White", Color.white),
+        ("Black", Color.black),
+        ("Orange", Color(red: 1.0, green: 0.34, blue: 0.2)),
+        ("Blue", Color(red: 0.2, green: 0.4, blue: 1.0)),
+        ("Pink", Color(red: 1.0, green: 0.2, blue: 0.4)),
+        ("Green", Color(red: 0.2, green: 1.0, blue: 0.34)),
+        ("Cyan", Color(red: 0.2, green: 1.0, blue: 0.96)),
+        ("Yellow", Color(red: 1.0, green: 0.96, blue: 0.2))
+    ]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: kSectionSpacing) {
+            // Glow effect toggle
+            settingsSection(title: "Glow Effect") {
+                VStack(alignment: .leading, spacing: kLabelSpacing) {
+                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                            Text("Enable Glow")
+                                .font(.system(size: 14, weight: .medium))
+                            Text("Show glowing edges around the overlay window")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $appModel.glowEnabled)
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                    }
+                    .padding(kSectionContentPadding)
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+                .cornerRadius(kSectionContentCornerRadius)
+            }
+            
+            // Color selection
+            settingsSection(title: "Glow Color") {
+                VStack(alignment: .leading, spacing: kLabelSpacing) {
+                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                            Text("Select Glow Color")
+                                .font(.system(size: 14, weight: .medium))
+                            Text("Choose the color for the overlay window edges")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        
+                        HStack(spacing: 8) {
+                            ForEach(availableColors, id: \.0) { name, color in
+                                Button(action: { appModel.glowColor = color }) {
+                                    Circle()
+                                        .fill(color)
+                                        .frame(width: 24, height: 24)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(appModel.glowColor == color ? Color.white : Color.clear, lineWidth: 2)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(kSectionContentPadding)
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+                .cornerRadius(kSectionContentCornerRadius)
+            }
+            
+            // Intensity slider
+            settingsSection(title: "Glow Intensity") {
+                VStack(alignment: .leading, spacing: kLabelSpacing) {
+                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                            Text("Intensity")
+                                .font(.system(size: 14, weight: .medium))
+                            HStack(spacing: 4) {
+                                Text("Glow strength:")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                Text("\(Int(appModel.glowIntensity * 100))%")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                        Spacer()
+                        
+                        Slider(value: $appModel.glowIntensity, in: 0...1) { _ in
+                            // Intensity is clamped in AppModel
+                        }
+                    }
+                    .padding(kSectionContentPadding)
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+                .cornerRadius(kSectionContentCornerRadius)
+            }
+            
+            // Width slider
+            settingsSection(title: "Glow Width") {
+                VStack(alignment: .leading, spacing: kLabelSpacing) {
+                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                            Text("Width")
+                                .font(.system(size: 14, weight: .medium))
+                            HStack(spacing: 4) {
+                                Text("Glow spread:")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                Text("\(Int(appModel.glowWidth))pt")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                        Spacer()
+                        
+                        Slider(value: $appModel.glowWidth, in: 10...100) { _ in
+                            // Width is clamped in AppModel
+                        }
+                        .frame(width: 180)
+                    }
+                    .padding(kSectionContentPadding)
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+                .cornerRadius(kSectionContentCornerRadius)
+            }
+        }
+    }
+    
+    private func settingsSection<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: kSectionContentSpacing) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+            content()
+        }
+    }
+}
+
 // MARK: - Placeholder Panels
 
 struct HotCornersSettingsPanel: View {
@@ -390,6 +536,11 @@ struct AppearanceSettingsPanel: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
+            // Glow Effect section (before Font)
+            GlowSettingsPanel(appModel: appModel)
+            
+            Divider()
+            
             // Font section
             settingsSection(title: "Font") {
                 VStack(alignment: .leading, spacing: 14) {
@@ -447,7 +598,7 @@ struct AppearanceSettingsPanel: View {
                         Picker(selection: $appModel.fontWeight) {
                             ForEach(fontWeights, id: \.1) { weight in
                                 Text(weight.0)
-                                    .font(.system(size: 14, weight: weightWeightFromString(weight.1)))
+                                    .font(.system(size: 14, weight: weightFromString(weight.1)))
                                     .tag(weight.1)
                             }
                         } label: {
@@ -533,7 +684,7 @@ struct AppearanceSettingsPanel: View {
         }
     }
     
-    private func weightWeightFromString(_ weight: String) -> Font.Weight {
+    private func weightFromString(_ weight: String) -> Font.Weight {
         switch weight {
         case "thin": return .thin
         case "ultralight": return .ultraLight
