@@ -517,10 +517,11 @@ struct AppearanceSettingsPanel: View {
     @Bindable var appModel: AppModel
     @State private var selectedFontFamily: String = "SF Pro Display"
     
-    /// Get actual system font families
-    private var systemFontFamilies: [String] {
+    /// Get actual system font families (cached, computed once per process)
+    private static let cachedFontFamilies: [String] = {
         NSFontManager.shared.availableFontFamilies.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
+    }()
+    private var systemFontFamilies: [String] { Self.cachedFontFamilies }
     
     private let fontWeights = [
         ("Thin", "thin"),
@@ -1083,10 +1084,13 @@ struct AppDirectoriesSettingsPanel: View {
                         switch result {
                         case .success(let urls):
                             if let url = urls.first {
+                                let shouldStopAccess = url.startAccessingSecurityScopedResource()
+                                defer {
+                                    if shouldStopAccess { url.stopAccessingSecurityScopedResource() }
+                                }
                                 let path = url.path
                                 // Verify it's a directory
-                                if let contents = try? FileManager.default.contentsOfDirectory(atPath: path),
-                                   contents.count >= 0 {
+                                if (try? FileManager.default.contentsOfDirectory(atPath: path)) != nil {
                                     appModel.addCustomDirectory(path)
                                     newDirectoryPath = ""
                                 }

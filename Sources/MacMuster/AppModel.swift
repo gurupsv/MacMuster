@@ -24,13 +24,25 @@ class AppModel {
         let timestamp: Date
     }
     private var scanCache: ScanCache?
-    var hiddenAppPaths: Set<String> = []
+    var hiddenAppPaths: Set<String> = [] {
+        didSet {
+            dataVersion += 1
+            updateFilteredApps()
+        }
+    }
     var customDirectories: [String] = []
     var allScanDirectories: [String] = []
 
     // MARK: - Folders
-    var folders: [AppFolder] = []
-    var currentFolderId: String? = nil
+    var folders: [AppFolder] = [] {
+        didSet {
+            dataVersion += 1
+        }
+    }
+    private let folderIconCache = NSCache<NSString, NSImage>()
+    var currentFolderId: String? = nil {
+        didSet { dataVersion += 1 }
+    }
 
     // MARK: - Recent Apps Tracking
     var _recentApps: [Application] = []
@@ -41,7 +53,9 @@ class AppModel {
     var selectedAppIndex: Int = 0
     var scrollTargetIndex: Int?  // Set to trigger scrolling to index
     var scrollTargetAnchor: ScrollAnchor?  // Anchor for scrolling (top, center, bottom)
-    var searchTerm: String = ""
+    var searchTerm: String = "" {
+        didSet { dataVersion += 1 }
+    }
     var fontFamily: String = "SF Pro"
     var fontSize: Double = 14.0
     var fontWeight: String = "normal"
@@ -77,6 +91,7 @@ class AppModel {
     // MARK: - Settings
     var showFoldersFirst: Bool = false {
         didSet {
+            dataVersion += 1
             UserDefaults.standard.set(showFoldersFirst, forKey: "showFoldersFirst")
         }
     }
@@ -89,6 +104,7 @@ class AppModel {
         loadHiddenApps()
         loadFolders()
         loadPersistedPreferences()
+        loadRecentLaunchTimes()
         loadCustomDirectories()
         loadFontFamily()
     }
@@ -114,6 +130,8 @@ class AppModel {
         self.updateFilteredApps()
         self.setupRefreshTimer()
         await self.loadMissingIcons()
+        // Refresh recent apps so _recentApps gets icon-populated Application structs
+        self.updateRecentApps()
     }
 
     // MARK: - Persistence & Setup
@@ -179,21 +197,33 @@ class AppModel {
     }
     
     private func parseColor(from hexString: String) -> Color {
-        // Convert hex color string to SwiftUI Color
         let trimmed = hexString.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         
         // Named colors
         switch trimmed {
-        case "#ffffff", "#fff", "white": return .white
-        case "#000000", "black": return .black
-        case "#ff5733", "#f57": return Color(red: 1.0, green: 0.34, blue: 0.2)
-        case "#3366ff", "#36f": return Color(red: 0.2, green: 0.4, blue: 1.0)
-        case "#ff3366", "#f36": return Color(red: 1.0, green: 0.2, blue: 0.4)
-        case "#33ff57", "#3f5": return Color(red: 0.2, green: 1.0, blue: 0.34)
-        case "#33fff5", "#3fb": return Color(red: 0.2, green: 1.0, blue: 0.96)
-        case "#f5ff33", "#f53": return Color(red: 1.0, green: 0.96, blue: 0.2)
-        default: return .white
+        case "white": return .white
+        case "black": return .black
+        default: break
         }
+        
+        // Strip # prefix
+        let hex = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+        
+        // Parse hex: support 3-digit (#RGB) and 6-digit (#RRGGBB)
+        let hexChars = Array(hex)
+        let red, green, blue: Double
+        if hexChars.count == 6 {
+            red = Double(Int(String(hexChars[0...1]), radix: 16) ?? 255) / 255.0
+            green = Double(Int(String(hexChars[2...3]), radix: 16) ?? 255) / 255.0
+            blue = Double(Int(String(hexChars[4...5]), radix: 16) ?? 255) / 255.0
+        } else if hexChars.count == 3 {
+            red = Double(Int(String(hexChars[0]), radix: 16) ?? 15) / 15.0
+            green = Double(Int(String(hexChars[1]), radix: 16) ?? 15) / 15.0
+            blue = Double(Int(String(hexChars[2]), radix: 16) ?? 15) / 15.0
+        } else {
+            return .white
+        }
+        return Color(red: red, green: green, blue: blue)
     }
 
 
@@ -219,14 +249,13 @@ class AppModel {
         let folder = AppFolder(name: name, appPaths: appPaths)
         folders.append(folder)
         saveFolders()
-        Task { await refreshDisplayOrder() }
         return folder
     }
 
     func deleteFolder(folderId: String) {
         folders.removeAll { $0.id == folderId }
+        folderIconCache.removeObject(forKey: folderId as NSString)
         saveFolders()
-        Task { await refreshDisplayOrder() }
     }
 
     func renameFolder(folderId: String, newName: String) {
@@ -234,7 +263,6 @@ class AppModel {
             folders[index].name = newName
             folders[index].modifiedAt = Date()
             saveFolders()
-            Task { await refreshDisplayOrder() }
         }
     }
 
@@ -243,8 +271,8 @@ class AppModel {
         if !folders[index].appPaths.contains(appPath) {
             folders[index].appPaths.append(appPath)
             folders[index].modifiedAt = Date()
+            folderIconCache.removeObject(forKey: folderId as NSString)
             saveFolders()
-            Task { await refreshDisplayOrder() }
         }
     }
 
@@ -252,12 +280,12 @@ class AppModel {
         guard let index = folders.firstIndex(where: { $0.id == folderId }) else { return }
         folders[index].appPaths.removeAll { $0 == appPath }
         folders[index].modifiedAt = Date()
+        folderIconCache.removeObject(forKey: folderId as NSString)
         saveFolders()
         // If we're viewing this folder and the app was the last one, go back to root
         if folderId == currentFolderId && folders[index].appPaths.isEmpty {
             currentFolderId = nil
         }
-        Task { await refreshDisplayOrder() }
     }
 
     func moveAppInFolder(_ appPath: String, from folderId: String, to toFolderId: String) {
@@ -285,7 +313,7 @@ class AppModel {
     func getFolderApplication(_ folder: AppFolder) -> Application {
         // Optimization P2: Use the index instead of linear search through displayOrder
         let containedApps = folder.appPaths.compactMap { appPathIndex[$0] }
-        let compositeIcon = generateFolderIcon(containedApps)
+        let compositeIcon = generateFolderIcon(containedApps, for: folder.id)
 
         return Application(
             id: "folder:\(folder.id)",
@@ -301,14 +329,19 @@ class AppModel {
         )
     }
 
-    func generateFolderIcon(_ apps: [Application], gridSize: Int = 3) -> NSImage? {
+    func generateFolderIcon(_ apps: [Application], for folderId: String? = nil, gridSize: Int = 3) -> NSImage? {
         guard !apps.isEmpty else { return nil }
+        
+        if let folderId = folderId, let cached = folderIconCache.object(forKey: folderId as NSString) {
+            return cached
+        }
 
         let iconSize: CGFloat = 120
         let cellSize = iconSize / CGFloat(gridSize)
         let image = NSImage(size: NSSize(width: iconSize, height: iconSize))
 
         image.lockFocus()
+        defer { image.unlockFocus() }
         let clipPath = NSBezierPath(roundedRect: NSRect(origin: .zero, size: NSSize(width: iconSize, height: iconSize)), xRadius: 20, yRadius: 20)
         clipPath.addClip()
 
@@ -330,7 +363,6 @@ class AppModel {
                             width: cellSize, height: cellSize)
             icon.draw(in: rect, from: NSRect.zero, operation: .copy, fraction: 1.0)
         }
-        image.unlockFocus()
         return image
     }
 
@@ -425,8 +457,6 @@ class AppModel {
     }
 
     private func updateFilteredApps() {
-        updateRecentApps()
-
         var counts: [AppCategory: Int] = [:]
         let visible = visibleApplications
         for app in visible {
@@ -440,9 +470,10 @@ class AppModel {
     }
 
     // MARK: - Background Scanning
-    static func scanApplications(directories: [String], hiddenPaths: Set<String>) async -> AppScanResult {
+    nonisolated static func scanApplications(directories: [String], hiddenPaths: Set<String>) async -> AppScanResult {
         var apps: [Application] = []
         var metadata: [String: AppMetadata] = [:]
+        var seenPaths: Set<String> = []
 
         for dir in directories {
             guard FileManager.default.fileExists(atPath: dir) else { continue }
@@ -450,6 +481,9 @@ class AppModel {
             let contents = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
             for item in contents {
                 let fullPath = (dir as NSString).appendingPathComponent(item)
+                // Deduplicate: skip if already found (e.g., symlink across directories)
+                guard !seenPaths.contains(fullPath) else { continue }
+                seenPaths.insert(fullPath)
                 guard FileManager.default.fileExists(atPath: fullPath), !hiddenPaths.contains(fullPath) else { continue }
 
                 let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath)
@@ -501,7 +535,7 @@ class AppModel {
     }
 
     /// Finds .app bundles inside a directory, including nested paths like Contents/Developer/Applications/
-    private static func findContainedApps(in directoryPath: String) -> [String]? {
+    nonisolated private static func findContainedApps(in directoryPath: String) -> [String]? {
         guard FileManager.default.fileExists(atPath: directoryPath) else { return nil }
 
         var appBundles: [String] = []
@@ -588,11 +622,36 @@ class AppModel {
         dataVersion += 1
         self.updateFilteredApps()
         await self.loadMissingIcons()
+        // Refresh recent apps so _recentApps gets icon-populated Application structs
+        self.updateRecentApps()
     }
 
     // MARK: - Recent Apps Tracking
     func recordAppLaunch(at path: String) {
         recentAppLaunchTimes[path] = Date()
+        pruneRecentLaunchTimes()
+        updateRecentApps()
+        persistRecentLaunchTimes()
+    }
+    
+    private func pruneRecentLaunchTimes() {
+        let cutoff = Date().addingTimeInterval(-30 * 24 * 60 * 60) // 30 days ago
+        if recentAppLaunchTimes.count > 500 {
+            recentAppLaunchTimes = recentAppLaunchTimes.filter { $0.value > cutoff }
+        }
+    }
+    
+    private func persistRecentLaunchTimes() {
+        if let data = try? JSONEncoder().encode(recentAppLaunchTimes) {
+            UserDefaults.standard.set(data, forKey: "recentAppLaunchTimes")
+        }
+    }
+    
+    private func loadRecentLaunchTimes() {
+        guard let data = UserDefaults.standard.data(forKey: "recentAppLaunchTimes"),
+              let times = try? JSONDecoder().decode([String: Date].self, from: data) else { return }
+        recentAppLaunchTimes = times
+        pruneRecentLaunchTimes()
         updateRecentApps()
     }
 
@@ -782,6 +841,7 @@ class AppModel {
 
     func setSortOption(_ option: ApplicationSorter.SortOption) {
         sortOption = option
+        dataVersion += 1
         savePersistedPreferences()
     }
 
@@ -802,6 +862,7 @@ class AppModel {
     func setApplications(_ apps: [Application]) {
         displayOrder = apps
         rebuildAppPathIndex()
+        updateRecentApps()
         updateFilteredApps()
     }
 
@@ -810,6 +871,7 @@ class AppModel {
             customOrder[app.path] = index
         }
         displayOrder = apps
+        dataVersion += 1
         updateFilteredApps()
         savePersistedPreferences()
     }
@@ -878,19 +940,11 @@ class AppModel {
     }
     
     private func getHexColorValue() -> String {
-        // Convert Color to hex string for persistence
-        // For simplicity, return a recognized value based on the color
-        let r = CGFloat(0), g = CGFloat(0), b = CGFloat(0)  // Default values
-        
-        if glowColor == .white { return "#ffffff" }
-        else if glowColor == .black { return "#000000" }
-        else if glowColor == Color(red: 1.0, green: 0.34, blue: 0.2) { return "#ff5733" }
-        else if glowColor == Color(red: 0.2, green: 0.4, blue: 1.0) { return "#3366ff" }
-        else if glowColor == Color(red: 1.0, green: 0.2, blue: 0.4) { return "#ff3366" }
-        else if glowColor == Color(red: 0.2, green: 1.0, blue: 0.34) { return "#33ff57" }
-        else if glowColor == Color(red: 0.2, green: 1.0, blue: 0.96) { return "#33fff5" }
-        else if glowColor == Color(red: 1.0, green: 0.96, blue: 0.2) { return "#f5ff33" }
-        return "#ffffff"
+        let nsColor = NSColor(glowColor)
+        guard let rgb = nsColor.usingColorSpace(.sRGB) else { return "#ffffff" }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        rgb.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "#%02x%02x%02x", Int(r * 255), Int(g * 255), Int(b * 255))
     }
 
 
@@ -900,17 +954,24 @@ class AppModel {
         displayOrder.filter { !hiddenAppPaths.contains($0.path) }
     }
 
+    private var cachedDisplayedApps: (version: Int, apps: [Application])?
+    
     func getDisplayedApps() -> [Application] {
+        if let cached = cachedDisplayedApps, cached.version == dataVersion {
+            return cached.apps
+        }
+        
+        let apps: [Application]
         // If inside a folder, only show the apps in that folder
         if let folderId = currentFolderId, let folder = folders.first(where: { $0.id == folderId }) {
-            return folder.appPaths.compactMap { path -> Application? in
+            apps = folder.appPaths.compactMap { path -> Application? in
                 visibleApplications.first { $0.path == path }
             }
         } else {
             // At root level: show all visible apps that are NOT in any folder, plus folder icons
             var currentApps = visibleApplications
             
-            // Remove apps that belong to folders (Feature 1)
+            // Remove apps that belong to folders
             let appsInFolders = Set(folders.flatMap { $0.appPaths })
             currentApps = currentApps.filter { !appsInFolders.contains($0.path) }
             
@@ -929,26 +990,38 @@ class AppModel {
                 currentApps = currentApps.filter { $0.lowercaseName.contains(lower) }
             }
             
-            // Feature 2: Sort folders to top if enabled
+            // Sort folders to top if enabled
             if showFoldersFirst && !currentApps.isEmpty {
                 let folders = currentApps.filter { $0.isFolder }
                 let nonFolders = currentApps.filter { !$0.isFolder }
                 
                 if !folders.isEmpty && !nonFolders.isEmpty {
-                    return folders + nonFolders
+                    apps = folders + nonFolders
+                    cachedDisplayedApps = (dataVersion, apps)
+                    return apps
                 }
             }
             
-            // Quick Win 3: Only sort by custom order if non-empty, otherwise use default sort
+            // Only sort by custom order if non-empty, otherwise use default sort
             if !customOrder.isEmpty {
-                currentApps.sort { (a, b) in
-                    (customOrder[a.path] ?? Int.max) < (customOrder[b.path] ?? Int.max)
+                currentApps.sort { a, b in
+                    let aOrder = customOrder[a.path]
+                    let bOrder = customOrder[b.path]
+                    switch (aOrder, bOrder) {
+                    case (nil, nil): return false
+                    case (nil, _): return false
+                    case (_, nil): return true
+                    case (let aVal?, let bVal?): return aVal < bVal
+                    }
                 }
             } else {
                 currentApps = sortedApplications(currentApps)
             }
-            return currentApps
+            apps = currentApps
         }
+        
+        cachedDisplayedApps = (dataVersion, apps)
+        return apps
     }
 
     var filteredApplications: [Application] {

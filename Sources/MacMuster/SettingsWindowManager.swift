@@ -25,7 +25,6 @@ class SettingsWindowManager {
         }
         guard let settingsWindow else { return }
         
-        NSApp.setActivationPolicy(.regular)
         NSApp.unhide(nil)
         
         if !settingsWindow.isVisible {

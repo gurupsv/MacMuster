@@ -189,9 +189,7 @@ class OverlayWindowManager {
         NSApp.activate(ignoringOtherApps: true)
 
         // Ensure the hosting view resizes to match the new window frame.
-        if let hostingView = window.contentView as? NSHostingView<AnyView> {
-            hostingView.frame = screenFrame
-        }
+        window.contentView?.frame = screenFrame
 
         // Install a local event monitor to capture arrow keys even when search field is focused.
         // This is necessary because SwiftUI's TextField intercepts arrow keys before the
@@ -275,18 +273,6 @@ class OverlayWindowManager {
                 hide()
                 return true
             }
-        case 126: // Up arrow — move up by column count (previous row)
-            appModel?.selectAppUp()
-            return true
-        case 125: // Down arrow — move down by column count (next row)
-            appModel?.selectAppDown()
-            return true
-        case 123: // Left arrow — move left
-            appModel?.selectAppLeft()
-            return true
-        case 124: // Right arrow — move right
-            appModel?.selectAppRight()
-            return true
         case 36, 76: // Return, Enter
             appModel?.launchSelectedApp()
             hide()
@@ -303,8 +289,8 @@ class OverlayWindowManager {
     // MARK: - Arrow Key Event Monitoring
 
     private func installArrowKeyMonitor() {
-        // Use a local event monitor to capture arrow keys even when TextField is focused.
-        // This runs before the window's keyDown handler and before SwiftUI processes the event.
+        removeArrowKeyMonitor()
+
         let keyCodesToMonitor: Set<UInt16> = [123, 124, 125, 126]  // Left, Right, Down, Up
 
         arrowKeyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in

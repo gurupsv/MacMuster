@@ -15,8 +15,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var appearanceObserver: NSObjectProtocol?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        print("MacMuster launched")
-        
         // Set activation policy to .regular so the app shows in the dock.
         // Without this, macOS uses .prohibited for menu-bar-only apps and hides the dock icon.
         NSApp.setActivationPolicy(.regular)

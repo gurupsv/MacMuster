@@ -6,6 +6,8 @@
 
 **A beautiful, fast, and fully-featured macOS app launcher — built with Swift & SwiftUI**
 
+**The Place where your Mac Apps gather!!**
+
 [![Swift](https://img.shields.io/badge/Swift-6.2-orange?logo=swift)](https://swift.org)
 [![macOS](https://img.shields.io/badge/macOS-14.0+-blue?logo=apple)](https://apple.com/macos)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
@@ -54,6 +56,21 @@ Built entirely with **Swift 6.2** and **SwiftUI + AppKit**, MacMuster has zero e
 - **Font family, size, weight**: Full typography control
 - **Dark/Light mode**: Automatic + manual toggle
 - **Auto-refresh**: Configurable intervals (5 min – 1 hour)
+
+### ✨ Glow Effect
+
+Enhanced visual edge glow with customizable options:
+
+| Setting | Description |
+|---------|-------------|
+| **Enabled** | Toggle glow effect on/off |
+| **Color** | Choose from: White, Black, Red, Blue, Green, Cyan, Yellow |
+| **Intensity** | 0–1 (default: 0.3) - Controls brightness |
+| **Width** | 10–100 pixels (default: 40px) - Edge gradient size |
+
+The glow effect smoothly fades from full opacity at the screen edges to transparent inward, creating a soft neon-like border around the launcher.
+
+> **Note**: The glow is rendered behind all UI content and won't cover keyboard shortcuts or other elements.
 
 ### 🔒 Privacy & Security
 

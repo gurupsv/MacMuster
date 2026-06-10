@@ -209,7 +209,7 @@ struct ContentView: View {
                     searchBar
                     
                     // Recent Apps Section
-                    let recentApps = appModel._recentApps
+                    let recentApps = appModel.getRecentApps()
                     if !recentApps.isEmpty {
                         SectionView(appModel: appModel, title: "Recent", apps: recentApps, columns: Self.recentColumns) { app in
                             if ApplicationService.shared.launchApplication(at: app.path, appModel: appModel) {
