@@ -2,9 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- S1 FIX: App runs unsandboxed. Removed bogus entitlements:
+         - com.apple.security.system-events (not a real Apple entitlement key)
+         - com.apple.security.accessibility (not an entitlement; TCC is requested at runtime)
+         For distribution, consider enabling app-sandbox with only needed entitlements.
+    -->
     <key>com.apple.security.app-sandbox</key>
     <false/>
-    <key>com.apple.security.files.user-selected.read-only</key>
-    <true/>
 </dict>
 </plist>

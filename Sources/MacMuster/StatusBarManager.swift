@@ -12,20 +12,22 @@ class StatusBarManager {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
         if let iconURL = Bundle.main.url(forResource: "MacMusterMenuBarTemplate", withExtension: "png"),
-           let menuBarIcon = NSImage(contentsOf: iconURL) {
+            let menuBarIcon = NSImage(contentsOf: iconURL) {
             menuBarIcon.isTemplate = true
             menuBarIcon.size = NSSize(width: 18, height: 18)
             if let button = statusItem?.button {
                 button.image = menuBarIcon
                 button.imagePosition = .imageOnly
+                button.target = self
+                button.action = #selector(toggleWindow)
             }
         }
         
         let menu = NSMenu()
         
-        let showItem = NSMenuItem(title: "Show MacMuster", action: #selector(showWindow), keyEquivalent: "")
-        showItem.target = self
-        menu.addItem(showItem)
+        let toggleItem = NSMenuItem(title: "Show MacMuster", action: #selector(showWindow), keyEquivalent: "")
+        toggleItem.target = self
+        menu.addItem(toggleItem)
         
         menu.addItem(NSMenuItem.separator())
         
@@ -38,6 +40,15 @@ class StatusBarManager {
     
     func setAppModel(_ model: AppModel) {
         appModel = model
+    }
+    
+    @objc func toggleWindow() {
+        // Toggle launcher visibility on menu bar button click
+        if OverlayWindowManager.shared.isWindowVisible {
+            hideWindow()
+        } else {
+            showWindow()
+        }
     }
     
     @objc func showWindow() {

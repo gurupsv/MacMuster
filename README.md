@@ -284,14 +284,13 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 ## 🙏 Acknowledgments
 
 - **Apple** — Swift, SwiftUI, AppKit frameworks
-- **Community** — Inspiration from Alfred, Raycast, Launchpad
 - **Contributors** — All who helped improve MacMuster
 
 ---
 
 <div align="center">
 
-**Made with ❤️ for macOS**
+**Made In BHARATH with ❤️ for macOS**
 
 [Report Bug](https://github.com/yourusername/MacMuster/issues) · [Request Feature](https://github.com/yourusername/MacMuster/issues) · [Discussions](https://github.com/yourusername/MacMuster/discussions)
 

@@ -474,7 +474,7 @@ struct GlowSettingsPanel: View {
                         }
                         Spacer()
                         
-                        Slider(value: $appModel.glowWidth, in: 10...100) { _ in
+                        Slider(value: $appModel.glowWidth, in: 5...40) { _ in
                             // Width is clamped in AppModel
                         }
                         .frame(width: 180)

@@ -82,9 +82,9 @@ class AppModel {
     }
     var glowWidth: Double = 40.0 {
         didSet {
-            if glowWidth < 10 { glowWidth = 10 }
-            if glowWidth > 100 { glowWidth = 100 }
-            UserDefaults.standard.set(glowWidth, forKey: "glowWidth")
+            // Clamp width between 5 and 40
+            if glowWidth < 5 { glowWidth = 5 }
+            if glowWidth > 40 { glowWidth = 40 }
         }
     }
 
@@ -192,7 +192,7 @@ class AppModel {
             glowIntensity = max(0, min(1, glowIntensityRaw))
         }
         if let glowWidthRaw = UserDefaults.standard.value(forKey: "glowWidth") as? Double {
-            glowWidth = max(10, min(100, glowWidthRaw))
+            glowWidth = max(5, min(40, glowWidthRaw))
         }
     }
     
@@ -249,6 +249,10 @@ class AppModel {
         let folder = AppFolder(name: name, appPaths: appPaths)
         folders.append(folder)
         saveFolders()
+        // Critical fix Issue 2: rebuild appPathIndex on folder changes
+        rebuildAppPathIndex()
+        // Critical fix Issue 1: explicit cache invalidation on folder changes
+        cachedDisplayedApps = nil
         return folder
     }
 
@@ -256,6 +260,10 @@ class AppModel {
         folders.removeAll { $0.id == folderId }
         folderIconCache.removeObject(forKey: folderId as NSString)
         saveFolders()
+        // Critical fix Issue 2: rebuild appPathIndex on folder changes
+        rebuildAppPathIndex()
+        // Critical fix Issue 1: explicit cache invalidation on folder changes
+        cachedDisplayedApps = nil
     }
 
     func renameFolder(folderId: String, newName: String) {
@@ -274,6 +282,10 @@ class AppModel {
             folderIconCache.removeObject(forKey: folderId as NSString)
             saveFolders()
         }
+        // Critical fix Issue 2: rebuild appPathIndex on folder changes
+        rebuildAppPathIndex()
+        // Critical fix Issue 1: explicit cache invalidation on folder changes
+        cachedDisplayedApps = nil
     }
 
     func removeAppFromFolder(_ appPath: String, folderId: String) {
@@ -282,6 +294,10 @@ class AppModel {
         folders[index].modifiedAt = Date()
         folderIconCache.removeObject(forKey: folderId as NSString)
         saveFolders()
+        // Critical fix Issue 2: rebuild appPathIndex on folder changes
+        rebuildAppPathIndex()
+        // Critical fix Issue 1: explicit cache invalidation on folder changes
+        cachedDisplayedApps = nil
         // If we're viewing this folder and the app was the last one, go back to root
         if folderId == currentFolderId && folders[index].appPaths.isEmpty {
             currentFolderId = nil
@@ -298,11 +314,19 @@ class AppModel {
     func openFolder(_ folderId: String) {
         currentFolderId = folderId
         savePersistedPreferences()
+        // Critical fix Issue 2: rebuild appPathIndex on folder state changes
+        rebuildAppPathIndex()
+        // Critical fix Issue 1: explicit cache invalidation on folder state changes
+        cachedDisplayedApps = nil
     }
 
     func closeFolder() {
         currentFolderId = nil
         savePersistedPreferences()
+        // Critical fix Issue 2: rebuild appPathIndex on folder state changes
+        rebuildAppPathIndex()
+        // Critical fix Issue 1: explicit cache invalidation on folder state changes
+        cachedDisplayedApps = nil
     }
 
     var currentFolder: AppFolder? {
@@ -504,30 +528,98 @@ class AppModel {
                 let date = attributes?[.modificationDate] as? Date ?? Date()
                 let size = attributes?[.size] as? Int
 
-                // Determine if this is a folder containing multiple apps
-                // Check for contained apps both for regular folders and .app bundles (like Xcode)
+                // Check for contained apps (nested .app bundles inside)
                 let containedApps = Self.findContainedApps(in: fullPath)
-                // Only create folders for directories with 2 or more apps
-                let isFolder = (containedApps?.count ?? 0) >= 2
 
-                apps.append(Application(
-                    id: fullPath,
-                    name: name,
-                    path: fullPath,
-                    icon: nil,
-                    installationDate: date,
-                    isFolder: isFolder,
-                    containedApps: containedApps,
-                    appSize: size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
-                    bundleDescription: bundle?.infoDictionary?["CFBundleShortVersionString"] as? String,
-                    isHidden: false
-                ))
+                // Distinguish between .app bundles and regular directories:
+                // - .app bundles are always treated as regular apps (isFolder = false)
+                // - regular directories are treated as folders only if they contain 2+ .app bundles
+                let isFolder: Bool
+                if item.hasSuffix(".app") {
+                    // This is an .app bundle - treat as regular app, never as folder
+                    isFolder = false
+                    // Add parent app
+                    apps.append(Application(
+                        id: fullPath,
+                        name: name,
+                        path: fullPath,
+                        icon: nil,
+                        installationDate: date,
+                        isFolder: false,
+                        containedApps: containedApps,
+                        appSize: size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
+                        bundleDescription: bundle?.infoDictionary?["CFBundleShortVersionString"] as? String,
+                        isHidden: false
+                    ))
 
-                metadata[fullPath] = AppMetadata(
-                    modificationDate: date,
-                    size: size,
-                    bundleIdentifier: bundle?.bundleIdentifier
-                )
+                    metadata[fullPath] = AppMetadata(
+                        modificationDate: date,
+                        size: size,
+                        bundleIdentifier: bundle?.bundleIdentifier
+                    )
+
+                    // Add each nested app as a separate entry
+                    if let nestedApps = containedApps {
+                        for nestedItem in nestedApps {
+                            let nestedFullPath = (fullPath as NSString).appendingPathComponent(nestedItem)
+                            guard FileManager.default.fileExists(atPath: nestedFullPath), !hiddenPaths.contains(nestedFullPath) else { continue }
+                            // Deduplicate: skip if already found
+                            guard !seenPaths.contains(nestedFullPath) else { continue }
+                            seenPaths.insert(nestedFullPath)
+
+                            let nestedBundlePath = (nestedFullPath as NSString).appendingPathComponent("Contents")
+                            guard FileManager.default.fileExists(atPath: nestedBundlePath) else { continue }
+
+                            let nestedBundle = Bundle(path: nestedBundlePath)
+                            let nestedName = nestedBundle?.infoDictionary?["CFBundleName"] as? String ?? nestedItem.replacingOccurrences(of: ".app", with: "")
+                            let nestedAttributes = try? FileManager.default.attributesOfItem(atPath: nestedFullPath)
+                            let nestedDate = nestedAttributes?[.modificationDate] as? Date ?? Date()
+                            let nestedSize = nestedAttributes?[.size] as? Int
+
+                            // Nested apps are also regular apps (never folders)
+                            apps.append(Application(
+                                id: nestedFullPath,
+                                name: nestedName,
+                                path: nestedFullPath,
+                                icon: nil,
+                                installationDate: nestedDate,
+                                isFolder: false,
+                                containedApps: nil,
+                                appSize: nestedSize.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
+                                bundleDescription: nestedBundle?.infoDictionary?["CFBundleShortVersionString"] as? String,
+                                isHidden: false
+                            ))
+
+                            metadata[nestedFullPath] = AppMetadata(
+                                modificationDate: nestedDate,
+                                size: nestedSize,
+                                bundleIdentifier: nestedBundle?.bundleIdentifier
+                            )
+                        }
+                    }
+                } else {
+                    // This is a regular directory - treat as folder only if it contains 2+ .app bundles
+                    isFolder = (containedApps?.count ?? 0) >= 2
+
+                    apps.append(Application(
+                        id: fullPath,
+                        name: name,
+                        path: fullPath,
+                        icon: nil,
+                        installationDate: date,
+                        isFolder: isFolder,
+                        containedApps: containedApps,
+                        appSize: size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
+                        bundleDescription: bundle?.infoDictionary?["CFBundleShortVersionString"] as? String,
+                        isHidden: false
+                    ))
+
+                    metadata[fullPath] = AppMetadata(
+                        modificationDate: date,
+                        size: size,
+                        bundleIdentifier: bundle?.bundleIdentifier
+                    )
+                }
             }
         }
 
@@ -796,6 +888,8 @@ class AppModel {
             hiddenAppPaths.insert(path)
         }
         saveHiddenApps()
+        // Critical fix Issue 1: explicit cache invalidation on hidden app changes
+        cachedDisplayedApps = nil
     }
 
     func toggleHiddenApp(_ app: Application) {
@@ -857,6 +951,8 @@ class AppModel {
 
     func setShowFoldersFirst(_ value: Bool) {
         showFoldersFirst = value
+        dataVersion += 1
+        cachedDisplayedApps = nil
     }
 
     func setApplications(_ apps: [Application]) {
@@ -961,67 +1057,136 @@ class AppModel {
             return cached.apps
         }
         
-        let apps: [Application]
-        // If inside a folder, only show the apps in that folder
-        if let folderId = currentFolderId, let folder = folders.first(where: { $0.id == folderId }) {
-            apps = folder.appPaths.compactMap { path -> Application? in
-                visibleApplications.first { $0.path == path }
+        // Collect the set of all app paths that live inside any folder (used in multiple places below)
+        let appsInAnyFolder: Set<String> = folders.reduce(into: Set()) { $0.formUnion($1.appPaths) }
+
+        // Determine the set of apps to display based on current folder context
+        let baseApps: [Application]
+        if let folderId = currentFolderId {
+            // Inside a folder: show only apps that belong to this folder (and its child folders)
+            baseApps = getAllAppsIncludingChildFolders(for: folderId)
+        } else {
+            // At root level (no active folder):
+            // - loose apps (not in any folder) are shown individually
+            // - apps that belong to a folder are hidden behind the folder icon
+            let looseApps = visibleApplications.filter { !appsInAnyFolder.contains($0.path) }
+
+            // Build folder icons, but only for folders that have at least one visible app
+            let folderIcons: [Application] = folders.compactMap { folder in
+                let hasVisible = folder.appPaths.contains { path in
+                    !hiddenAppPaths.contains(path) && appPathIndex[path] != nil
+                }
+                return hasVisible ? getFolderApplication(folder) : nil
+            }
+
+            baseApps = looseApps + folderIcons
+        }
+
+        // Apply search filter
+        var result: [Application]
+        if !searchTerm.isEmpty {
+            let lower = searchTerm.lowercased()
+
+            if currentFolderId == nil {
+                // Root-level search: match against ALL visible apps (loose + inside folders).
+                // This lets the user find an app regardless of which folder it was moved to.
+                // Folder icons are not included — results are the actual apps.
+                result = sortedApplications(visibleApplications.filter { $0.lowercaseName.contains(lower) })
+            } else {
+                // Inside a folder: filter the folder's apps by name
+                var filtered = baseApps.filter { $0.lowercaseName.contains(lower) }
+                filtered = sortedApplications(filtered)
+                result = filtered
             }
         } else {
-            // At root level: show all visible apps that are NOT in any folder, plus folder icons
-            var currentApps = visibleApplications
-            
-            // Remove apps that belong to folders
-            let appsInFolders = Set(folders.flatMap { $0.appPaths })
-            currentApps = currentApps.filter { !appsInFolders.contains($0.path) }
-            
-            // Add folder applications (only show folders that have at least one visible app)
-            for folder in folders {
-                let containedApps = folder.appPaths.compactMap { path -> Application? in
-                    visibleApplications.first { $0.path == path }
-                }
-                if !containedApps.isEmpty {
-                    currentApps.append(getFolderApplication(folder))
+            // No search — display baseApps with optional folder-first ordering
+            var ordered = baseApps
+            if showFoldersFirst && !ordered.isEmpty {
+                let folderApps    = ordered.filter { $0.isFolder }
+                let nonFolderApps = ordered.filter { !$0.isFolder }
+                if !folderApps.isEmpty && !nonFolderApps.isEmpty {
+                    ordered = folderApps + nonFolderApps
                 }
             }
 
-            if !searchTerm.isEmpty {
-                let lower = searchTerm.lowercased()
-                currentApps = currentApps.filter { $0.lowercaseName.contains(lower) }
-            }
-            
-            // Sort folders to top if enabled
-            if showFoldersFirst && !currentApps.isEmpty {
-                let folders = currentApps.filter { $0.isFolder }
-                let nonFolders = currentApps.filter { !$0.isFolder }
-                
-                if !folders.isEmpty && !nonFolders.isEmpty {
-                    apps = folders + nonFolders
-                    cachedDisplayedApps = (dataVersion, apps)
-                    return apps
-                }
-            }
-            
-            // Only sort by custom order if non-empty, otherwise use default sort
             if !customOrder.isEmpty {
-                currentApps.sort { a, b in
-                    let aOrder = customOrder[a.path]
-                    let bOrder = customOrder[b.path]
-                    switch (aOrder, bOrder) {
+                result = ordered.sorted {
+                    let a = customOrder[$0.path], b = customOrder[$1.path]
+                    switch (a, b) {
                     case (nil, nil): return false
-                    case (nil, _): return false
-                    case (_, nil): return true
-                    case (let aVal?, let bVal?): return aVal < bVal
+                    case (nil, _):   return false
+                    case (_, nil):   return true
+                    case (let av?, let bv?): return av < bv
                     }
                 }
             } else {
-                currentApps = sortedApplications(currentApps)
+                // When showFoldersFirst is enabled, preserve the folder-first arrangement
+                // Otherwise use default alphabetical sorting
+                if showFoldersFirst && !ordered.isEmpty {
+                    let folderApps    = ordered.filter { $0.isFolder }
+                    let nonFolderApps = ordered.filter { !$0.isFolder }
+                    if !folderApps.isEmpty && !nonFolderApps.isEmpty {
+                        result = folderApps + nonFolderApps
+                    } else {
+                        result = sortedApplications(ordered)
+                    }
+                } else {
+                    result = sortedApplications(ordered)
+                }
             }
-            apps = currentApps
         }
         
-        cachedDisplayedApps = (dataVersion, apps)
-        return apps
+        cachedDisplayedApps = (dataVersion, result)
+        return result
+    }
+    
+    // MARK: - Recursive Child Folder Search
+    
+    /// Get all apps from a folder and its child folders (recursively).
+    /// A child folder is one that contains at least one app from the parent folder's appPaths.
+    private func getAllAppsIncludingChildFolders(for folderId: String) -> [Application] {
+        guard folders.first(where: { $0.id == folderId }) != nil else { return [] }
+
+        var result: [Application] = []
+        var visitedFolders: Set<String> = []  // start empty; collectApps adds ids as it visits them
+
+        func collectApps(from currentFolderId: String) {
+            guard !visitedFolders.contains(currentFolderId),
+                  let currentFolder = folders.first(where: { $0.id == currentFolderId })
+            else { return }
+            visitedFolders.insert(currentFolderId)
+
+            let containedApps = currentFolder.appPaths.compactMap { appPathIndex[$0] }
+            result.append(contentsOf: containedApps)
+
+            // Child folders share at least one appPath with this folder — recurse into them
+            for childFolder in folders where !visitedFolders.contains(childFolder.id) {
+                if childFolder.appPaths.contains(where: { currentFolder.appPaths.contains($0) }) {
+                    collectApps(from: childFolder.id)
+                }
+            }
+        }
+
+        collectApps(from: folderId)
+
+        // Respect hidden-app setting inside folders too
+        result = result.filter { !hiddenAppPaths.contains($0.path) }
+
+        if !customOrder.isEmpty {
+            result.sort {
+                let a = customOrder[$0.path], b = customOrder[$1.path]
+                switch (a, b) {
+                case (nil, nil): return false
+                case (nil, _):   return false
+                case (_, nil):   return true
+                case (let av?, let bv?): return av < bv
+                }
+            }
+        } else {
+            result = sortedApplications(result)
+        }
+
+        return result
     }
 
     var filteredApplications: [Application] {

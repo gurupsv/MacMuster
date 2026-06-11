@@ -34,12 +34,8 @@ struct ContentView: View {
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    // If inside a folder, close the folder and return to root
-                    if appModel.currentFolder != nil {
-                        appModel.closeFolder()
-                    } else {
-                        StatusBarManager.shared.hideWindow()
-                    }
+                    // Tap on background outside app grid - hide launcher
+                    StatusBarManager.shared.hideWindow()
                 }
             
             // Glow effect rendered on top of VisualEffectBackground (visible) 
@@ -271,17 +267,6 @@ struct ContentView: View {
                 }
                 .frame(minWidth: kWindowMinWidth, minHeight: kWindowMinHeight)
                 .padding(.horizontal)
-                .background(
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if appModel.currentFolder != nil {
-                                appModel.closeFolder()
-                            } else {
-                                StatusBarManager.shared.hideWindow()
-                            }
-                        }
-                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -579,6 +564,9 @@ struct SectionView: View {
     let columns: [GridItem]
     let onLaunch: (AppModel.Application) -> Void
     
+    // Track hovered app path for glow effect
+    @State private var hoveredAppPath: String?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -593,9 +581,12 @@ struct SectionView: View {
                 spacing: 16
             ) {
                 ForEach(apps) { app in
-                    AppIconView(appModel: appModel, app: app, isHovered: false, hoveredAppInfo: nil)
+                    AppIconView(appModel: appModel, app: app, isHovered: hoveredAppPath == app.path, hoveredAppInfo: nil)
                         .onTapGesture {
                             onLaunch(app)
+                        }
+                        .onHover { isHovered in
+                            hoveredAppPath = isHovered ? app.path : nil
                         }
                 }
             }

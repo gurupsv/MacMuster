@@ -103,7 +103,7 @@ fi
 
 # Get version
 VERSION=$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "1.0.0")
-BUNDLE_ID="com.yourcompany.MacMuster"
+BUNDLE_ID="com.macmuster.app"
 APP_BUNDLE="${APP_NAME}.app"
 
 # Create app bundle structure
@@ -133,7 +133,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST_EOF
     <key>CFBundleDisplayName</key>
     <string>MacMuster</string>
     <key>CFBundleIdentifier</key>
-    <string>com.yourcompany.MacMuster</string>
+    <string>${BUNDLE_ID}</string>
     <key>CFBundleExecutable</key>
     <string>MacMuster</string>
     <key>CFBundleVersion</key>
@@ -163,14 +163,28 @@ PLIST_EOF
 # Code sign with ad-hoc signature (for local testing only)
 # Note: Ad-hoc signing has limitations - "Sealed Resources=none" is expected
 # For distribution, use a Developer ID certificate and notarize
-echo "Code signing (ad-hoc for local testing)..."
+echo "Code signing..."
 # Remove extended attributes that can cause signing failures
 xattr -cr "$APP_BUNDLE"
-codesign --force --deep --sign - --options runtime --timestamp "$APP_BUNDLE" 2>/dev/null || codesign --force --deep --sign - "$APP_BUNDLE"
 
-# Verify the binary runs
+# S2 FIX: Sign properly (not --deep, which is deprecated and breaks TCC across rebuilds).
+# For local testing: ad-hoc signing (identity "-").
+# For distribution: sign with Developer ID (see instructions below).
+if [ -n "$DEVELOPER_ID" ]; then
+    # Production signing with Developer ID (set DEVELOPER_ID env var to sign for distribution)
+    codesign --force --sign "$DEVELOPER_ID" --options runtime --timestamp "$APP_BUNDLE"
+else
+    # Local ad-hoc signing (no stable cdhash, so TCC grants will not persist)
+    codesign --force --sign - "$APP_BUNDLE"
+fi
+
+# Verify the binary runs (non-blocking - launch app in background and terminate after timeout)
 echo "Verifying binary..."
-"$APP_BUNDLE/Contents/MacOS/MacMuster" --help 2>&1 | head -1 || true
+"$APP_BUNDLE/Contents/MacOS/MacMuster" &
+APP_PID=$!
+sleep 2
+kill "$APP_PID" 2>/dev/null || true
+wait "$APP_PID" 2>/dev/null || true
 
 if [ "${BUILD_UNIVERSAL:-0}" = "1" ]; then
     echo ""
