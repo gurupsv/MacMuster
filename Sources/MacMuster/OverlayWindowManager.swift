@@ -139,10 +139,6 @@ class OverlayWindowManager {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let frame = screen.frame
         
-        // Glow is rendered inside ContentView, on top of VisualEffectBackground
-        let contentViewWithGlow = ContentView(appModel: appModel)
-            .environment(appModel)
-        
         window = OverlayWindow(
             contentRect: frame,
             styleMask: [.borderless],
@@ -152,7 +148,7 @@ class OverlayWindowManager {
         
 // Keep the launcher above ordinary app windows. Dock/menu bar hiding is
 // handled with presentation options while the launcher is visible.
-window?.level = .floating
+// window?.level = .floating
         
         // Configure collection behavior for overlay behavior
         window?.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
@@ -169,8 +165,8 @@ window?.level = .floating
         window?.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window?.standardWindowButton(.zoomButton)?.isHidden = true
         
-        // Set SwiftUI content - use safe area inset to avoid notch
-        let hostingView = NSHostingView(rootView: contentViewWithGlow)
+        // Set SwiftUI content - use LaunchWrapperView for first-launch zoom-out animation
+        let hostingView = NSHostingView(rootView: LaunchWrapperView(appModel: appModel))
         hostingView.frame = CGRect(origin: .zero, size: frame.size)
         hostingView.autoresizingMask = [.width, .height]
         window?.contentView = hostingView
@@ -184,8 +180,8 @@ window?.level = .floating
         guard let window else { return }
 
 // Make the window visible, screen-sized, and key for input.
-window.level = .floating
-enterLauncherPresentationMode()
+// window.level = .floating
+// enterLauncherPresentationMode()
 
 guard let targetScreen = preferredScreen(for: window) else { return }
 // Use full frame for all screens to cover the entire display including the notch area.
@@ -277,8 +273,7 @@ window.makeKeyAndOrderFront(nil)
     
     private func handleKeyDown(_ event: NSEvent) -> Bool {
         switch event.keyCode {
-case 53:
-// Escape: if search is focused, unfocus it; otherwise hide launcher
+case 53: // Escape: if search is focused, unfocus it; otherwise hide launcher
 if window?.firstResponder is NSTextView || window?.firstResponder is NSTextField {
 // Search field is focused - unfocus it
 window?.makeFirstResponder(nil)
@@ -339,10 +334,10 @@ return true
     private func installArrowKeyMonitor() {
         removeArrowKeyMonitor()
 
-        let keyCodesToMonitor: Set<UInt16> = [123, 124, 125, 126]  // Left, Right, Down, Up
+        let arrowKeyCodes: Set<UInt16> = [123, 124, 125, 126]  // Left, Right, Down, Up
 
         arrowKeyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard keyCodesToMonitor.contains(event.keyCode) else { return event }
+            guard arrowKeyCodes.contains(event.keyCode) else { return event }
 
             // Only consume arrow keys when search is empty - allow cursor movement when searching
             if let appModel = self?.appModel, !appModel.searchTerm.isEmpty {
@@ -362,6 +357,38 @@ return true
         if let monitor = arrowKeyEventMonitor {
             NSEvent.removeMonitor(monitor)
             arrowKeyEventMonitor = nil
+        }
+    }
+}
+
+// MARK: - Launch Wrapper View (zoom-out animation on first launch)
+
+struct LaunchWrapperView: View {
+    let appModel: AppModel
+    @State private var scale: CGFloat = 1.0
+
+    var body: some View {
+        ZStack {
+            // Background and glow remain at full screen size (not scaled)
+            VisualEffectBackground()
+                .ignoresSafeArea()
+            GlowEffectView(appModel: appModel)
+
+            // Only content scales — zoom-out effect applied to UI grid
+            ContentView(appModel: appModel)
+                .scaleEffect(scale)
+        }
+        .onAppear {
+            guard !appModel.hasShownLauncher else { return }
+            // Set the starting scale *before* the next render tick so SwiftUI
+            // picks up the initial value, then animate back to 1.0.
+            scale = kLaunchZoomOutStartScale
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: kLaunchZoomOutDuration)) {
+                    scale = 1.0
+                }
+            }
+            appModel.hasShownLauncher = true
         }
     }
 }

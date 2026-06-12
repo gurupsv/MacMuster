@@ -13,6 +13,11 @@ let kWindowMinWidth: CGFloat = 900
 let kWindowMinHeight: CGFloat = 700
 let kWindowPadding: CGFloat = 40
 
+// MARK: - Launch Animation Constants
+
+let kLaunchZoomOutStartScale: CGFloat = 1.25
+let kLaunchZoomOutDuration: TimeInterval = 0.8
+
 // MARK: - SettingsWindowManager Constants
 
 let kSettingsWindowWidth: CGFloat = 820

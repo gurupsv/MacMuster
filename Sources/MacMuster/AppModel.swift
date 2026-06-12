@@ -95,6 +95,11 @@ class AppModel {
             UserDefaults.standard.set(showFoldersFirst, forKey: "showFoldersFirst")
         }
     }
+    var hasShownLauncher: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hasShownLauncher, forKey: "hasShownLauncher")
+        }
+    }
 
     // MARK: - Timer & Observers
     private var refreshTimer: Timer?
@@ -180,6 +185,8 @@ class AppModel {
         if let showFoldersFirstRaw = UserDefaults.standard.value(forKey: "showFoldersFirst") as? Bool {
             showFoldersFirst = showFoldersFirstRaw
         }
+        // Load first-launch flag
+        hasShownLauncher = UserDefaults.standard.bool(forKey: "hasShownLauncher")
         
         // Load glow effect settings
         if let glowEnabledRaw = UserDefaults.standard.value(forKey: "glowEnabled") as? Bool {
@@ -1069,6 +1076,7 @@ class AppModel {
         UserDefaults.standard.set(glowEnabled, forKey: "glowEnabled")
         UserDefaults.standard.set(getHexColorValue(), forKey: "glowColor")
         UserDefaults.standard.set(glowIntensity, forKey: "glowIntensity")
+        UserDefaults.standard.set(glowWidth, forKey: "glowWidth")
     }
     
     private func getHexColorValue() -> String {
