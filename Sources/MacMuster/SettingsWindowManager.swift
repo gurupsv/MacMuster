@@ -51,7 +51,7 @@ class SettingsWindowManager {
         let hostingView = NSHostingView(rootView: contentView)
         
         // Use a larger initial size that accommodates the content comfortably
-        let screenFrame = NSScreen.main?.visibleFrame ?? NSScreen.screens.first!.visibleFrame
+        let screenFrame = (NSScreen.main ?? NSScreen.screens.first).map(\.visibleFrame) ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let windowX = screenFrame.midX - (kSettingsWindowWidth / 2)
         let windowY = screenFrame.midY - (kSettingsWindowHeight / 2)
         

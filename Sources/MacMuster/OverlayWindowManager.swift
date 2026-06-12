@@ -136,7 +136,7 @@ class OverlayWindowManager {
         // Store reference for later use in StatusBarManager
         StatusBarManager.shared.setAppModel(appModel)
         
-        let screen = NSScreen.main ?? NSScreen.screens.first!
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let frame = screen.frame
         
         // Glow is rendered inside ContentView, on top of VisualEffectBackground
@@ -187,15 +187,9 @@ window?.level = .floating
 window.level = .floating
 enterLauncherPresentationMode()
 
-let targetScreen = preferredScreen(for: window)
-// Use visibleFrame for main screen to avoid menu bar overlap,
-// use full frame for secondary displays to cover everything
-let screenFrame: NSRect
-if targetScreen == NSScreen.main {
-    screenFrame = targetScreen.visibleFrame
-} else {
-    screenFrame = targetScreen.frame
-}
+guard let targetScreen = preferredScreen(for: window) else { return }
+// Use full frame for all screens to cover the entire display including the notch area.
+let screenFrame: NSRect = targetScreen.frame
 
 window.setFrame(screenFrame, display: true)
 showBackgroundWindows(excluding: targetScreen)
@@ -223,32 +217,20 @@ window.makeKeyAndOrderFront(nil)
         removeArrowKeyMonitor()
     }
     
-    private func preferredScreen(for window: NSWindow) -> NSScreen {
+    private func preferredScreen(for window: NSWindow) -> NSScreen? {
         let mouseLocation = NSEvent.mouseLocation
-        
-        // First, check if the mouse is on any screen
         let allScreens = NSScreen.screens
+
         for screen in allScreens {
-            // Use containsPoint to handle negative coordinates correctly
-            // NSMouseInRect may not work correctly when screens have negative origins
-            let rectInWindowCoords = CGRect(x: screen.frame.origin.x, y: screen.frame.origin.y, width: screen.frame.size.width, height: screen.frame.size.height)
-            if rectInWindowCoords.contains(mouseLocation) {
-                return screen
-            }
+            let r = CGRect(origin: screen.frame.origin, size: screen.frame.size)
+            if r.contains(mouseLocation) { return screen }
         }
-        
-        // If mouse isn't over a screen (e.g., all screens covered by launcher),
-        // use the window's current screen or main screen
+
         if let windowScreen = window.screen, allScreens.contains(windowScreen) {
             return windowScreen
         }
-        
-        if let mainScreen = NSScreen.main, allScreens.contains(mainScreen) {
-            return mainScreen
-        }
-        
-        // Fallback to first available screen
-        return allScreens.first!
+
+        return NSScreen.main ?? allScreens.first
     }
     
     private func showBackgroundWindows(excluding targetScreen: NSScreen) {
@@ -307,15 +289,26 @@ hide()
 return true
 }
         case 36, 76: // Return, Enter
-            // Critical fix Issue 39: contextual Enter behavior
-            // If search has results, launch first result; if navigating, launch selected app
             if let appModel = appModel, !appModel.searchTerm.isEmpty {
                 let displayedApps = appModel.getDisplayedApps()
-                if !displayedApps.isEmpty {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: displayedApps[0].path))
-                    appModel.recordAppLaunch(at: displayedApps[0].path)
+                if let first = displayedApps.first {
+                    if first.isFolder, let folderId = first.path.hasPrefix("folder:") ? String(first.path.dropFirst(7)) : nil {
+                        appModel.openFolder(folderId)
+                        // Don't hide — user navigated into a folder
+                        return true
+                    }
+                    ApplicationService.shared.launchApplication(at: first.path, appModel: appModel)
                 }
             } else {
+                if let appModel = appModel {
+                    let displayedApps = appModel.getDisplayedApps()
+                    let idx = appModel.selectedAppIndex
+                    if idx >= 0, idx < displayedApps.count, displayedApps[idx].isFolder {
+                        // Folder selected — navigate in, don't hide
+                        appModel.launchSelectedApp()
+                        return true
+                    }
+                }
                 appModel?.launchSelectedApp()
             }
             hide()

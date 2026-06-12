@@ -1,21 +1,42 @@
 #!/bin/bash
+# Quick local dev build for MacMuster.
+# Uses the same bundle ID and signing approach as build_production.sh.
+# For distribution (Developer ID + notarization) use build_production.sh instead.
 
-APP_DIR="MacMuster.app"
-BIN_DIR=$(swift build --show-bin-path)
+set -e
+
+APP_NAME="MacMuster"
+APP_DIR="${APP_NAME}.app"
+BUNDLE_ID="com.macmuster.app"
+ENTITLEMENTS="entitlements.plist"
+
+# Build release binary (debug builds can mask performance issues)
+echo "Building ${APP_NAME}..."
+swift build -c release
+
+BIN_DIR=$(swift build -c release --show-bin-path)
+BINARY="${BIN_DIR}/${APP_NAME}"
+
+if [ ! -f "$BINARY" ]; then
+    echo "Error: binary not found at $BINARY"
+    exit 1
+fi
+
+# (Re)create the bundle structure
+rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
-rm -rf "$APP_DIR/Contents/Resources"
 mkdir -p "$APP_DIR/Contents/Resources"
-cp "$BIN_DIR/MacMuster" "$APP_DIR/Contents/MacOS/"
 
-cp Resources/MacMusterIconDark.icns "$APP_DIR/Contents/Resources/MacAppIcon.icns"
-cp Resources/MacMusterIconLight.icns "$APP_DIR/Contents/Resources/"
-cp Resources/MacMusterIconDark.icns "$APP_DIR/Contents/Resources/"
-cp Resources/MacMusterIconLight.png "$APP_DIR/Contents/Resources/"
-cp Resources/MacMusterIconDark.png "$APP_DIR/Contents/Resources/"
-cp Resources/MacMusterMenuBarTemplate.png "$APP_DIR/Contents/Resources/"
-echo "MacMuster icons added"
+cp "$BINARY" "$APP_DIR/Contents/MacOS/"
 
-cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
+# Copy resources
+RESOURCES_DIR="Resources"
+if [ -d "$RESOURCES_DIR" ]; then
+    cp -R "$RESOURCES_DIR"/* "$APP_DIR/Contents/Resources/"
+fi
+
+# Write Info.plist (must match build_production.sh for stable bundle identity)
+cat > "$APP_DIR/Contents/Info.plist" << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -25,10 +46,12 @@ cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
     <key>CFBundleDisplayName</key>
     <string>MacMuster</string>
     <key>CFBundleIdentifier</key>
-    <string>com.yourcompany.MacMuster</string>
+    <string>${BUNDLE_ID}</string>
     <key>CFBundleExecutable</key>
     <string>MacMuster</string>
     <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
     <string>1.0.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
@@ -39,15 +62,31 @@ cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
     <key>CFBundleIconName</key>
     <string>MacAppIcon</string>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>14.0</string>
     <key>NSRequiresAquaSystemAppearance</key>
     <false/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
 </dict>
 </plist>
-EOF
+PLIST_EOF
 
-codesign --force --deep --sign - "$APP_DIR"
+# Code sign — apply entitlements so TCC behaviour matches what is documented
+echo "Code signing..."
+xattr -cr "$APP_DIR"
 
-echo "App bundle created: $APP_DIR"
-ls -la "$APP_DIR/Contents/MacOS/"
-ls -la "$APP_DIR/Contents/Resources/"
+if [ -n "$DEVELOPER_ID" ]; then
+    codesign --force --sign "$DEVELOPER_ID" --options runtime --timestamp \
+        --entitlements "$ENTITLEMENTS" "$APP_DIR"
+else
+    # Ad-hoc for local testing (no stable cdhash, so TCC grants don't persist)
+    if [ -f "$ENTITLEMENTS" ]; then
+        codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP_DIR"
+    else
+        codesign --force --sign - "$APP_DIR"
+    fi
+fi
+
+echo ""
+echo "App bundle created: ${APP_DIR}"
+echo "Bundle size: $(du -sh "${APP_DIR}" | cut -f1)"

@@ -9,30 +9,22 @@ class ApplicationService {
     @discardableResult
     func launchApplication(at path: String, appModel: AppModel? = nil) -> Bool {
         let url = URL(fileURLWithPath: path)
-        
-        // Check if the app is already running
-        let apps = NSWorkspace.shared.runningApplications
-        if let bundleIdentifier = Bundle(url: url)?.bundleIdentifier,
-           apps.contains(where: { $0.bundleIdentifier == bundleIdentifier }) {
-            // App is already running - bring it to front instead of minimizing
-            if let app = apps.first(where: { $0.bundleIdentifier == bundleIdentifier }) {
-                app.activate(options: [.activateAllWindows])
-                // Record the launch for recent apps tracking
-                if let appModel = appModel {
-                    appModel.recordAppLaunch(at: path)
-                }
-                return true
-            }
+        let resolvedURL = url.resolvingSymlinksInPath()
+
+        // Match on bundle URL (path identity), not just bundle ID, so a rogue process
+        // that claims the same bundle identifier doesn't intercept activation.
+        let running = NSWorkspace.shared.runningApplications
+        if let match = running.first(where: {
+            guard let burl = $0.bundleURL else { return false }
+            return burl.resolvingSymlinksInPath() == resolvedURL
+        }) {
+            match.activate(options: [.activateAllWindows])
+            appModel?.recordAppLaunch(at: path)
+            return true
         }
-        
-        // App is not running or we couldn't determine bundle ID - open normally
+
         let didLaunch = NSWorkspace.shared.open(url)
-        
-        // Record the launch for recent apps tracking
-        if didLaunch, let appModel = appModel {
-            appModel.recordAppLaunch(at: path)
-        }
-        
+        if didLaunch { appModel?.recordAppLaunch(at: path) }
         return didLaunch
     }
 }

@@ -168,14 +168,21 @@ echo "Code signing..."
 xattr -cr "$APP_BUNDLE"
 
 # S2 FIX: Sign properly (not --deep, which is deprecated and breaks TCC across rebuilds).
+# S1 FIX: Apply entitlements.plist so the documented trust model is actually enforced.
 # For local testing: ad-hoc signing (identity "-").
 # For distribution: sign with Developer ID (see instructions below).
+ENTITLEMENTS="entitlements.plist"
 if [ -n "$DEVELOPER_ID" ]; then
     # Production signing with Developer ID (set DEVELOPER_ID env var to sign for distribution)
-    codesign --force --sign "$DEVELOPER_ID" --options runtime --timestamp "$APP_BUNDLE"
+    codesign --force --sign "$DEVELOPER_ID" --options runtime --timestamp \
+        --entitlements "$ENTITLEMENTS" "$APP_BUNDLE"
 else
     # Local ad-hoc signing (no stable cdhash, so TCC grants will not persist)
-    codesign --force --sign - "$APP_BUNDLE"
+    if [ -f "$ENTITLEMENTS" ]; then
+        codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP_BUNDLE"
+    else
+        codesign --force --sign - "$APP_BUNDLE"
+    fi
 fi
 
 # Verify the binary runs (non-blocking - launch app in background and terminate after timeout)

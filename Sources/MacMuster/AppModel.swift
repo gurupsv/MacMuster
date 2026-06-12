@@ -98,6 +98,7 @@ class AppModel {
 
     // MARK: - Timer & Observers
     private var refreshTimer: Timer?
+    private var persistDebounceTask: Task<Void, Never>?
 
     // MARK: - Initialization
     init() {
@@ -229,11 +230,26 @@ class AppModel {
 
     private func loadCustomDirectories() {
         if let dirs = UserDefaults.standard.stringArray(forKey: "customDirectories") {
-            customDirectories = dirs
-            allScanDirectories = Self.defaultScanDirectories + dirs
+            let validDirs = dirs.filter { Self.isValidCustomDirectory($0) }
+            customDirectories = validDirs
+            allScanDirectories = Self.defaultScanDirectories + validDirs
         } else {
             allScanDirectories = Self.defaultScanDirectories
         }
+    }
+
+    /// Returns true only for absolute paths that are directories and not world-writable.
+    static func isValidCustomDirectory(_ path: String) -> Bool {
+        guard path.hasPrefix("/") else { return false }
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { return false }
+        if let attrs = try? fm.attributesOfItem(atPath: path),
+           let posixPerms = attrs[.posixPermissions] as? Int,
+           (posixPerms & 0o002) != 0 {
+            return false  // world-writable — reject
+        }
+        return true
     }
 
     private func loadFontFamily() {
@@ -355,7 +371,8 @@ class AppModel {
 
     func generateFolderIcon(_ apps: [Application], for folderId: String? = nil, gridSize: Int = 3) -> NSImage? {
         guard !apps.isEmpty else { return nil }
-        
+
+        // P5: Check cache first (cache is now always written on generation)
         if let folderId = folderId, let cached = folderIconCache.object(forKey: folderId as NSString) {
             return cached
         }
@@ -373,21 +390,30 @@ class AppModel {
         for index in 0..<min(apps.count, gridSize * gridSize) {
             let row = index / gridSize
             let col = index % gridSize
-            let app = apps[index]
-
-            let icon: NSImage
-            if let appIcon = app.icon {
-                icon = appIcon
-            } else {
-                icon = workspace.icon(forFile: app.path)
-            }
-
+            let icon = apps[index].icon ?? workspace.icon(forFile: apps[index].path)
             let rect = NSRect(x: CGFloat(col) * cellSize,
-                            y: CGFloat(gridSize - 1 - row) * cellSize,
-                            width: cellSize, height: cellSize)
+                              y: CGFloat(gridSize - 1 - row) * cellSize,
+                              width: cellSize, height: cellSize)
             icon.draw(in: rect, from: NSRect.zero, operation: .copy, fraction: 1.0)
         }
+
+        // P5: Store to cache so subsequent calls hit the fast path
+        if let folderId = folderId {
+            folderIconCache.setObject(image, forKey: folderId as NSString)
+        }
         return image
+    }
+
+    // P5: Regenerate all folder icons eagerly (called after app icons finish loading),
+    // so the render path always hits the cache.
+    private func refreshAllFolderIcons() {
+        for folder in folders {
+            folderIconCache.removeObject(forKey: folder.id as NSString)
+            let apps = folder.appPaths.compactMap { appPathIndex[$0] }
+            _ = generateFolderIcon(apps, for: folder.id)
+        }
+        cachedDisplayedApps = nil
+        dataVersion += 1
     }
 
     private static let _cachedDefaultScanDirectories: [String] = {
@@ -419,43 +445,42 @@ class AppModel {
     func cleanupTimerAndObservers() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+        // Flush any pending debounced write before teardown
+        persistDebounceTask?.cancel()
+        if let data = try? JSONEncoder().encode(recentAppLaunchTimes) {
+            UserDefaults.standard.set(data, forKey: "recentAppLaunchTimes")
+        }
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
     private func loadMissingIcons() async {
-        let missingPaths = displayOrder.filter { $0.icon == nil }.map(\.path)
-        guard !missingPaths.isEmpty else { return }
-
-        // Load icons in batches to avoid blocking the main thread for too long
-        let workspace = NSWorkspace.shared
-        var icons: [String: NSImage] = [:]
-        for (i, path) in missingPaths.enumerated() {
-            icons[path] = workspace.icon(forFile: path)
-            if i.isMultiple(of: kIconCacheBatchSize) { await Task.yield() }
+        // Build path→index map once so in-place mutation is O(1) per icon
+        var pathToIndex: [String: Int] = [:]
+        for (i, app) in displayOrder.enumerated() where app.icon == nil {
+            pathToIndex[app.path] = i
         }
+        guard !pathToIndex.isEmpty else { return }
 
-        let updatedApps = self.displayOrder.map { app in
-            if let icon = icons[app.path] {
-                Application(
-                    id: app.id,
-                    name: app.name,
-                    path: app.path,
-                    icon: icon,
-                    installationDate: app.installationDate,
-                    isFolder: app.isFolder,
-                    containedApps: app.containedApps,
-                    appSize: app.appSize,
-                    bundleDescription: app.bundleDescription,
-                    isHidden: app.isHidden
-                )
-            } else {
-                app
+        let missingPaths = Array(pathToIndex.keys)
+
+        // P3: Load all icons off the main actor, then apply in a single batch
+        let loadedIcons: [(String, NSImage)] = await Task.detached(priority: .userInitiated) {
+            let workspace = NSWorkspace.shared
+            return missingPaths.map { ($0, workspace.icon(forFile: $0)) }
+        }.value
+
+        // P3: Mutate displayOrder in-place (icon is var) — no full array rebuild
+        for (path, icon) in loadedIcons {
+            if let idx = pathToIndex[path] {
+                displayOrder[idx].icon = icon
             }
         }
-        self.displayOrder = updatedApps
 
-        // Keep appPathIndex in sync so recent apps, folders, etc. get icon-populated objects
         rebuildAppPathIndex()
+        cachedVisibleApps = nil
+        cachedDisplayedApps = nil
+        // Refresh folder icons now that app icons are available
+        refreshAllFolderIcons()
     }
 
     private func applicationsPreservingLoadedIcons(from scannedApps: [Application]) -> [Application] {
@@ -560,8 +585,7 @@ class AppModel {
 
                     // Add each nested app as a separate entry
                     if let nestedApps = containedApps {
-                        for nestedItem in nestedApps {
-                            let nestedFullPath = (fullPath as NSString).appendingPathComponent(nestedItem)
+                        for nestedFullPath in nestedApps {
                             guard FileManager.default.fileExists(atPath: nestedFullPath), !hiddenPaths.contains(nestedFullPath) else { continue }
                             // Deduplicate: skip if already found
                             guard !seenPaths.contains(nestedFullPath) else { continue }
@@ -571,7 +595,7 @@ class AppModel {
                             guard FileManager.default.fileExists(atPath: nestedBundlePath) else { continue }
 
                             let nestedBundle = Bundle(path: nestedBundlePath)
-                            let nestedName = nestedBundle?.infoDictionary?["CFBundleName"] as? String ?? nestedItem.replacingOccurrences(of: ".app", with: "")
+                            let nestedName = nestedBundle?.infoDictionary?["CFBundleName"] as? String ?? (nestedFullPath as NSString).lastPathComponent.replacingOccurrences(of: ".app", with: "")
                             let nestedAttributes = try? FileManager.default.attributesOfItem(atPath: nestedFullPath)
                             let nestedDate = nestedAttributes?[.modificationDate] as? Date ?? Date()
                             let nestedSize = nestedAttributes?[.size] as? Int
@@ -626,7 +650,8 @@ class AppModel {
         return AppScanResult(metadata: metadata, apps: apps)
     }
 
-    /// Finds .app bundles inside a directory, including nested paths like Contents/Developer/Applications/
+    /// Finds .app bundles inside a directory, including nested paths like Contents/Developer/Applications/.
+    /// Returns full paths (not just item names) so scanApplications can use them directly.
     nonisolated private static func findContainedApps(in directoryPath: String) -> [String]? {
         guard FileManager.default.fileExists(atPath: directoryPath) else { return nil }
 
@@ -634,7 +659,14 @@ class AppModel {
 
         // Check for .app bundles at the top level
         if let contents = try? FileManager.default.contentsOfDirectory(atPath: directoryPath) {
-            appBundles = contents.filter { $0.hasSuffix(".app") }
+            for item in contents where item.hasSuffix(".app") {
+                let fullPath = (directoryPath as NSString).appendingPathComponent(item)
+                var isDirectory: ObjCBool = false
+                if FileManager.default.fileExists(atPath: fullPath, isDirectory: &isDirectory),
+                   isDirectory.boolValue {
+                    appBundles.append(fullPath)
+                }
+            }
         }
 
         // Also check common nested locations where apps might be stored (e.g., Xcode)
@@ -653,7 +685,7 @@ class AppModel {
                     var itemIsDirectory: ObjCBool = false
                     if FileManager.default.fileExists(atPath: itemPath, isDirectory: &itemIsDirectory),
                        itemIsDirectory.boolValue {
-                        appBundles.append(item)
+                        appBundles.append(itemPath)
                     }
                 }
             }
@@ -678,30 +710,26 @@ class AppModel {
         let hiddenPaths = hiddenAppPaths
         let allDirs = allScanDirectories
 
-        // Optimization P1: Check if directories have actually changed before re-scanning
-        if let cache = scanCache {
-            var hasChanged = false
-            for dir in allDirs {
-                let currentMtime = (try? FileManager.default.attributesOfItem(atPath: dir)[.modificationDate] as? Date) ?? Date()
-                if currentMtime != cache.dirMtimes[dir] {
-                    hasChanged = true
-                    break
-                }
+        // P6: Stat every directory exactly once; reuse the result for both the staleness check
+        // and building the new cache entry (previously the code did two full passes).
+        var currentMtimes: [String: Date] = [:]
+        for dir in allDirs {
+            if let mtime = try? FileManager.default.attributesOfItem(atPath: dir)[.modificationDate] as? Date {
+                currentMtimes[dir] = mtime
             }
+            // If stat fails, omit the entry — the cache comparison below will treat it as changed,
+            // which is the safe/correct behaviour (directory may have been removed).
+        }
 
-            // Only re-scan if a directory changed or the interval has passed (e.g., to catch internal bundle changes)
+        if let cache = scanCache {
+            let hasChanged = allDirs.contains { currentMtimes[$0] != cache.dirMtimes[$0] }
             if !hasChanged && Date().timeIntervalSince(cache.timestamp) < refreshInterval * 2 {
-                return // Skip scan, data is still fresh
+                return
             }
         }
 
         let result = await Self.scanApplications(directories: allDirs, hiddenPaths: hiddenPaths)
 
-        // Update Cache
-        var currentMtimes: [String: Date] = [:]
-        for dir in allDirs {
-            currentMtimes[dir] = (try? FileManager.default.attributesOfItem(atPath: dir)[.modificationDate] as? Date) ?? Date()
-        }
         scanCache = ScanCache(apps: result.apps, metadata: result.metadata, dirMtimes: currentMtimes, timestamp: Date())
 
         self.appMetadataCache = result.metadata
@@ -734,8 +762,14 @@ class AppModel {
     }
     
     private func persistRecentLaunchTimes() {
-        if let data = try? JSONEncoder().encode(recentAppLaunchTimes) {
-            UserDefaults.standard.set(data, forKey: "recentAppLaunchTimes")
+        // P7: Debounce — coalesce rapid launches into a single write after 3 seconds of quiet
+        persistDebounceTask?.cancel()
+        persistDebounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled, let self else { return }
+            if let data = try? JSONEncoder().encode(self.recentAppLaunchTimes) {
+                UserDefaults.standard.set(data, forKey: "recentAppLaunchTimes")
+            }
         }
     }
     
@@ -870,8 +904,11 @@ class AppModel {
         let displayedApps = getDisplayedApps()
         guard selectedAppIndex >= 0, selectedAppIndex < displayedApps.count else { return false }
         let app = displayedApps[selectedAppIndex]
-        NSWorkspace.shared.open(URL(fileURLWithPath: app.path))
-        recordAppLaunch(at: app.path)
+        if app.isFolder, let folderId = app.path.hasPrefix("folder:") ? String(app.path.dropFirst(7)) : nil {
+            openFolder(folderId)
+            return true
+        }
+        ApplicationService.shared.launchApplication(at: app.path, appModel: self)
         return true
     }
 
@@ -913,10 +950,9 @@ class AppModel {
     }
 
     func addCustomDirectory(_ path: String) {
-        if !customDirectories.contains(path) {
-            customDirectories.append(path)
-            allScanDirectories = Self.defaultScanDirectories + customDirectories
-        }
+        guard Self.isValidCustomDirectory(path), !customDirectories.contains(path) else { return }
+        customDirectories.append(path)
+        allScanDirectories = Self.defaultScanDirectories + customDirectories
     }
 
     func setFontFamily(_ family: String) {
@@ -1047,17 +1083,25 @@ class AppModel {
     // MARK: - Computed Properties & Display Helpers
 
     var visibleApplications: [Application] {
-        displayOrder.filter { !hiddenAppPaths.contains($0.path) }
+        if let c = cachedVisibleApps, c.version == dataVersion { return c.apps }
+        let apps = displayOrder.filter { !hiddenAppPaths.contains($0.path) }
+        cachedVisibleApps = (dataVersion, apps)
+        return apps
     }
 
+    // P2: Cache visibleApplications — recomputed only when dataVersion changes
+    private var cachedVisibleApps: (version: Int, apps: [Application])?
+
     private var cachedDisplayedApps: (version: Int, apps: [Application])?
-    
+
     func getDisplayedApps() -> [Application] {
         if let cached = cachedDisplayedApps, cached.version == dataVersion {
             return cached.apps
         }
         
-        // Collect the set of all app paths that live inside any folder (used in multiple places below)
+        // Collect the set of all app paths that belong to user-created folders only (used in multiple places below).
+        // Nested apps inside .app bundles (like Xcode/Contents/Developer/Applications/Create ML.app) are NOT excluded here
+        // — they are treated as loose apps and shown individually at root level.
         let appsInAnyFolder: Set<String> = folders.reduce(into: Set()) { $0.formUnion($1.appPaths) }
 
         // Determine the set of apps to display based on current folder context
