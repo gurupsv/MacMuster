@@ -1,8 +1,7 @@
 import Foundation
 
 // MARK: - Constants
-
-private let kSortBatchSize = 100
+// kSortBatchSize removed (Code Review Fix 3): unused constant
 
 class ApplicationSorter {
     enum SortOption: String, CaseIterable {

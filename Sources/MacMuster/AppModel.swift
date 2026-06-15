@@ -299,6 +299,11 @@ class AppModel {
 
     func addAppToFolder(_ appPath: String, folderId: String) {
         guard let index = folders.firstIndex(where: { $0.id == folderId }) else { return }
+        // Code Review Fix 4: Validate that the path exists and is a valid .app bundle before adding
+        guard FileManager.default.fileExists(atPath: appPath) else { return }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: appPath, isDirectory: &isDir), isDir.boolValue else { return }
+        guard appPath.hasSuffix(".app") else { return }
         if !folders[index].appPaths.contains(appPath) {
             folders[index].appPaths.append(appPath)
             folders[index].modifiedAt = Date()
@@ -1043,19 +1048,9 @@ class AppModel {
         selectedAppIndex = index
     }
 
-    func refreshMostUsedApps() {
-        mostUsedDirty = false
-        // Placeholder logic for most-used sorting
-    }
-
-    func refreshRecentlyLaunchedApps() {
-        recentlyLaunchedDirty = false
-        // Placeholder logic for recently launched sorting
-    }
-
-    func refreshNewlyInstalledApps() {
-        // Placeholder logic for newly installed sorting
-    }
+    // Placeholder functions removed (Code Review Fix 1): These categories (mostUsed, recentlyLaunched, newlyInstalled)
+    // are not yet implemented. The AppCategory enum retains these cases for future implementation.
+    // When the logic is implemented, these functions should be restored with real sorting logic.
 
     private func saveHiddenApps() {
         if let data = try? JSONEncoder().encode(hiddenAppPaths) {

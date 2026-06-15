@@ -146,12 +146,12 @@ class OverlayWindowManager {
             defer: false
         )
         
-// Keep the launcher above ordinary app windows. Dock/menu bar hiding is
-// handled with presentation options while the launcher is visible.
-// window?.level = .floating
+// Keep the launcher above ordinary app windows and dock — set window level to .floating.
+// (Fix: dock visible issue on macOS Tahoe; .fullScreenAuxiliary alone is insufficient.)
         
         // Configure collection behavior for overlay behavior
         window?.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        window?.level = .floating
         window?.isMovableByWindowBackground = false
         window?.isOpaque = false
         window?.backgroundColor = .clear
@@ -179,10 +179,9 @@ class OverlayWindowManager {
     func show() {
         guard let window else { return }
 
-// Make the window visible, screen-sized, and key for input.
-// window.level = .floating
-// enterLauncherPresentationMode()
-
+// Make the window visible, screen-sized, and key for input, and hide the dock/menu bar.
+// enterLauncherPresentationMode() restores autoHideDock + autoHideMenuBar — previously
+// commented out during Fix 2, but it is required for full-screen Launchpad-like behavior.
 guard let targetScreen = preferredScreen(for: window) else { return }
 // Use full frame for all screens to cover the entire display including the notch area.
 let screenFrame: NSRect = targetScreen.frame
@@ -191,6 +190,7 @@ window.setFrame(screenFrame, display: true)
 showBackgroundWindows(excluding: targetScreen)
 window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        enterLauncherPresentationMode()
 
         // Ensure the hosting view resizes to match the new window frame.
         window.contentView?.frame = CGRect(origin: .zero, size: screenFrame.size)

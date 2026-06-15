@@ -9,8 +9,7 @@ struct ContentView: View {
     @State private var newFolderName: String = ""
     @State private var selectedAppPathsForFolder: [String] = []
     
-    // Dark mode support - use dynamic colors
-    @Environment(\.colorScheme) private var colorScheme
+    // Dark mode support — SwiftUI .primary/.secondary handle this automatically; colorScheme removed (Code Review Fix 8: unused)
     
     // Cache grid columns to avoid allocation on every body render.
     // Invalidates when columnCount changes.
@@ -60,8 +59,8 @@ struct ContentView: View {
                     Spacer()
                         .frame(height: 20)
                     
-                    // Keyboard hints pill (above categories, shown on first launch)
-                    if !visibleApps.isEmpty {
+                    // Keyboard hints pill (above categories, shown only on first launch)
+                    if !visibleApps.isEmpty && !appModel.hasShownLauncher {
                         HStack(spacing: 10) {
                             HStack(spacing: 4) {
                                 Image(systemName: "keyboard.fill")
@@ -232,10 +231,10 @@ struct ContentView: View {
                     } else {
                         ScrollViewReader { proxy in
                             ScrollView {
-                                LazyVGrid(
-                                    columns: gridColumns,
-                                    spacing: 20
-                                ) {
+LazyVGrid(
+columns: gridColumns,
+spacing: kGridSpacing
+) {
                                     ForEach(Array(displayedApps.enumerated()), id: \.element.path) { index, app in
                                         gridItemView(app: app, index: index)
                                     }
@@ -520,18 +519,8 @@ struct ContentView: View {
     // MARK: - Category Tab Extraction (Fixes compiler timeout)
     private func categoryTabButton(for category: AppModel.AppCategory) -> some View {
         Button {
-            // Lazy load system categories when first selected
-            switch category {
-            case .mostUsed where appModel.mostUsedDirty:
-                appModel.refreshMostUsedApps()
-            case .recentlyLaunched where appModel.recentlyLaunchedDirty:
-                appModel.refreshRecentlyLaunchedApps()
-            case .newlyInstalled:
-                // Newly installed is fast, always refresh
-                appModel.refreshNewlyInstalledApps()
-            default:
-                break
-            }
+            // Category selection — mostUsed, recentlyLaunched, newlyInstalled are not yet implemented
+            // (placeholder functions removed, Code Review Fix 1). These tabs show counts from visibleApplications.
             withAnimation(.easeInOut(duration: 0.2)) {
                 appModel.selectedCategory = category
             }
