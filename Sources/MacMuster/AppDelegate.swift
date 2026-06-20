@@ -46,6 +46,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Cleanup app model when app terminates
         AppModelContainer.shared.appModel.cleanupTimerAndObservers()
+        
+        // Persist recent launch times on termination
+        RecentAppsTracker.shared.persistRecentLaunchTimes()
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

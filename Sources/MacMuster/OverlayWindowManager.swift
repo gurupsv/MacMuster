@@ -313,15 +313,19 @@ return true
             NotificationCenter.default.post(name: NSNotification.Name("focusSearchField"), object: nil)
             return true
         case 123: // Left arrow - move selection left
+            NotificationCenter.default.post(name: NSNotification.Name("keyboardNavigationDidStart"), object: nil)
             appModel?.selectAppLeft()
             return true
         case 124: // Right arrow - move selection right
+            NotificationCenter.default.post(name: NSNotification.Name("keyboardNavigationDidStart"), object: nil)
             appModel?.selectAppRight()
             return true
         case 125: // Down arrow - move selection down
+            NotificationCenter.default.post(name: NSNotification.Name("keyboardNavigationDidStart"), object: nil)
             appModel?.selectAppDown()
             return true
         case 126: // Up arrow - move selection up
+            NotificationCenter.default.post(name: NSNotification.Name("keyboardNavigationDidStart"), object: nil)
             appModel?.selectAppUp()
             return true
         default:

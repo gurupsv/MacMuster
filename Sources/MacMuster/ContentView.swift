@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 struct ContentView: View {
@@ -14,7 +15,12 @@ struct ContentView: View {
     // Cache grid columns to avoid allocation on every body render.
     // Invalidates when columnCount changes.
     @State private var gridColumnCache: (count: Int, columns: [GridItem])?
-    private static let recentColumns: [GridItem] = Array(repeating: GridItem(.flexible(), spacing: kGridSpacing), count: kRecentColumnCount)
+    // Tracks whether keyboard navigation has been used — controls selection ring visibility
+    @State private var hasUsedKeyboard: Bool = false
+    // Search bar is hidden until the user clicks the search icon or presses /
+    @State private var isSearchExpanded: Bool = false
+    @State private var isDraggingAppPath: String? = nil
+    @State private var pressedAppPath: String? = nil
     
     private var gridColumns: [GridItem] {
         let count = appModel.columnCount
@@ -112,7 +118,9 @@ struct ContentView: View {
                                 .foregroundStyle(.primary)
                             
                             Spacer()
-                            
+
+                            searchIconButton
+
                             Button {
                                 newFolderName = "Folder"
                                 selectedAppPathsForFolder = []
@@ -125,7 +133,7 @@ struct ContentView: View {
                                     .background(.ultraThinMaterial, in: Circle())
                             }
                             .buttonStyle(.plain)
-                            
+
                             Button(action: {
                                 SettingsWindowManager.shared.show()
                             }) {
@@ -144,14 +152,16 @@ struct ContentView: View {
                         HStack {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
-                                    ForEach(Array(AppModel.AppCategory.allCases.enumerated()), id: \.offset) { _, category in
+                                    ForEach(Array(AppCategory.allCases.enumerated()), id: \.offset) { _, category in
                                         categoryTabButton(for: category)
                                     }
                                 }
                             }
                             
                             Spacer()
-                            
+
+                            searchIconButton
+
                             Menu {
                                 ForEach(ApplicationSorter.SortOption.allCases, id: \.self) { option in
                                     Button {
@@ -166,13 +176,16 @@ struct ContentView: View {
                                     }
                                 }
                             } label: {
-                                Text("Sort: \(appModel.sortOption.rawValue)")
-                                    .font(.subheadline)
-                                    .padding(.horizontal, kSortMenuPaddingHorizontal)
-                                    .padding(.vertical, kSortMenuPaddingVertical)
-                                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: kSortMenuCornerRadius))
+                                Image(systemName: "arrow.up.arrow.down")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
+                                    .background(.ultraThinMaterial, in: Circle())
                             }
-                            
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
+                            .help("Sort: \(appModel.sortOption.rawValue)")
+
                             Button {
                                 newFolderName = "Folder"
                                 selectedAppPathsForFolder = []
@@ -185,7 +198,7 @@ struct ContentView: View {
                                     .background(.ultraThinMaterial, in: Circle())
                             }
                             .buttonStyle(.plain)
-                            
+
                             Button(action: {
                                 SettingsWindowManager.shared.show()
                             }) {
@@ -200,18 +213,27 @@ struct ContentView: View {
                         .padding(.horizontal)
                     }
                     
-                    // Search bar with integrated keyboard hints
-                    searchBar
-                    
-                    // Recent Apps Section
-                    let recentApps = appModel.getRecentApps()
-                    if !recentApps.isEmpty {
-                        SectionView(appModel: appModel, title: "Recent", apps: recentApps, columns: Self.recentColumns) { app in
-                            if ApplicationService.shared.launchApplication(at: app.path, appModel: appModel) {
-                                StatusBarManager.shared.hideWindow()
-                            }
-                        }
+                    // Search bar — shown only when expanded via icon or / key
+                    if isSearchExpanded || !appModel.searchTerm.isEmpty {
+                        searchBar
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .top).combined(with: .opacity),
+                                removal: .opacity
+                            ))
                     }
+                    
+                      // Recent Apps Section
+                      if appModel.showRecentApps {
+                          let recentApps = appModel.getRecentApps()
+                          if !recentApps.isEmpty {
+                              let recentAppsToShow = Array(recentApps.prefix(appModel.columnCount))
+                              SectionView(appModel: appModel, title: "Recent", apps: recentAppsToShow, columns: gridColumns) { app in
+                                  if ApplicationService.shared.launchApplication(at: app.path, appModel: appModel) {
+                                      StatusBarManager.shared.hideWindow()
+                                  }
+                              }
+                          }
+                      }
                     
                     // App grid
                     if displayedApps.isEmpty {
@@ -236,7 +258,7 @@ columns: gridColumns,
 spacing: kGridSpacing
 ) {
                                     ForEach(Array(displayedApps.enumerated()), id: \.element.path) { index, app in
-                                        gridItemView(app: app, index: index)
+                                        gridItemView(app: app, index: index, keyboardActive: hasUsedKeyboard)
                                     }
                                 }
                                 .contentShape(Rectangle())
@@ -280,12 +302,21 @@ spacing: kGridSpacing
             await appModel.startLoading()
         }
         .onReceive(NotificationCenter.default.publisher(for: .launcherDidShow)) { _ in
-            // Don't auto-focus the search field - let arrow keys work immediately
             isSearchFocused = false
+            hasUsedKeyboard = false
+            withAnimation(.easeInOut(duration: 0.2)) { isSearchExpanded = false }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("keyboardNavigationDidStart"))) { _ in
+            hasUsedKeyboard = true
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("focusSearchField"))) { _ in
-            // Focus search field when / key is pressed
+            withAnimation(.easeInOut(duration: 0.2)) { isSearchExpanded = true }
             isSearchFocused = true
+        }
+        .onChange(of: isSearchFocused) { _, focused in
+            if !focused && appModel.searchTerm.isEmpty {
+                withAnimation(.easeInOut(duration: 0.2)) { isSearchExpanded = false }
+            }
         }
         .sheet(isPresented: $showCreateFolder) {
             createFolderSheet
@@ -394,31 +425,74 @@ spacing: kGridSpacing
         .frame(maxWidth: .infinity, alignment: .center)
     }
     
-    private func getCategoryCount(for category: AppModel.AppCategory) -> Int {
+    // MARK: - Search Icon Button
+    private var searchIconButton: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { isSearchExpanded.toggle() }
+            if isSearchExpanded { isSearchFocused = true }
+        } label: {
+            Image(systemName: "magnifyingglass")
+                .font(.body)
+                .foregroundStyle(isSearchExpanded || !appModel.searchTerm.isEmpty ? Color.primary : Color.secondary)
+                .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
+                .background(
+                    Circle()
+                        .fill(isSearchExpanded || !appModel.searchTerm.isEmpty
+                              ? Color.primary.opacity(0.15)
+                              : Color.clear)
+                )
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Search (/)")
+    }
+
+    private func getCategoryCount(for category: AppCategory) -> Int {
         appModel.categoryCounts[category, default: 0]
     }
     
     // MARK: - Grid Item View (Fixes compiler timeout)
     @ViewBuilder
-    private func gridItemView(app: AppModel.Application, index: Int) -> some View {
+    private func gridItemView(app: Application, index: Int, keyboardActive: Bool = false) -> some View {
+        let isDropTarget = isDraggingAppPath == app.path
+        let isPressed = pressedAppPath == app.path
         AppIconView(
             appModel: appModel,
             app: app,
-            isHovered: hoveredAppPath == app.path,
+            isHovered: hoveredAppPath == app.path || isDropTarget,
             hoveredAppInfo: hoveredAppPath == app.path ? app : nil,
-            isSelected: appModel.selectedAppIndex == index
+            isSelected: keyboardActive && appModel.selectedAppIndex == index,
+            isPressed: (isDropTarget || isPressed) && appModel.pressFeedbackEnabled,
+            feedbackEnabled: appModel.pressFeedbackEnabled
         )
         .id(app.path)
         .onHover { isHovered in
             hoveredAppPath = isHovered ? app.path : nil
         }
+        .overlay(
+            PressTracker(pressedAppPath: $pressedAppPath, appPath: app.path)
+        )
         .onTapGesture {
             handleAppTap(app)
         }
         .contextMenu { folderContextMenu(app) }
+        .draggable(app.path)
+        .dropDestination(for: String.self) { items, location in
+            if let droppedPath = items.first {
+                handleDrop(of: droppedPath, onto: app)
+                return true
+            }
+            return false
+        } isTargeted: { isTargeted in
+            if isTargeted {
+                isDraggingAppPath = app.path
+            } else {
+                isDraggingAppPath = nil
+            }
+        }
     }
 
-    private func handleAppTap(_ app: AppModel.Application) {
+    private func handleAppTap(_ app: Application) {
         if app.path.hasPrefix("folder:") {
             let folderPath = app.path.dropFirst(7) // Remove "folder:"
             let folderId = String(folderPath)
@@ -426,10 +500,77 @@ spacing: kGridSpacing
                 appModel.openFolder(folderId)
             }
         } else {
-            if ApplicationService.shared.launchApplication(at: app.path, appModel: appModel) {
-                StatusBarManager.shared.hideWindow()
+            // Record the launch for recent apps
+            appModel.recordAppLaunch(at: app.path)
+            // Launch the application asynchronously to avoid blocking the UI
+            Task {
+                let launched = ApplicationService.shared.launchApplication(at: app.path, appModel: nil)
+                await MainActor.run {
+                    if launched {
+                        StatusBarManager.shared.hideWindow()
+                    }
+                }
             }
         }
+    }
+    
+    private func handleDrop(of droppedPath: String, onto targetApp: Application) {
+        // Prevent dropping an item on itself
+        if droppedPath == targetApp.path {
+            return
+        }
+        
+        // If dropping on a folder icon, add the dropped app to that folder
+        if targetApp.path.hasPrefix("folder:") {
+            let folderId = String(targetApp.path.dropFirst(7))
+            // Only add if it's not already in the folder and it's a valid app
+            if !droppedPath.hasPrefix("folder:") {
+                appModel.addAppToFolder(droppedPath, folderId: folderId)
+            }
+            return
+        }
+        
+        // If dragging a folder icon (shouldn't happen in normal usage, but handle it)
+        if droppedPath.hasPrefix("folder:") {
+            // If dropping folder on app, add app to folder
+            if !targetApp.path.hasPrefix("folder:") {
+                let folderId = String(droppedPath.dropFirst(7))
+                appModel.addAppToFolder(targetApp.path, folderId: folderId)
+            }
+            // If dropping folder on folder, do nothing (or could merge folders)
+            return
+        }
+        
+        // If neither is a folder, dropping app on app should create a new folder
+        // This matches the requirement: "dropping an application on another should create new Directory"
+        if !targetApp.path.hasPrefix("folder:") && !droppedPath.hasPrefix("folder:") {
+            // Set up to create new folder with both apps
+            selectedAppPathsForFolder = [droppedPath, targetApp.path]
+            newFolderName = "Folder"
+            showCreateFolder = true
+            return
+        }
+        
+        // Note: True reordering (drop-between) requires more sophisticated drag handling
+        // that detects drop position between items. For now, we prioritize folder creation
+        // as specified in the requirements. Users can reorder apps through settings
+        // or by using the custom order features accessible elsewhere in the UI.
+    }
+    
+    private func updateCustomOrderAfterDrop(droppedPath: String, targetPath: String) {
+        // Find indices of dropped and target apps
+        guard let droppedIndex = appModel.displayOrder.firstIndex(where: { $0.path == droppedPath }),
+              let targetIndex = appModel.displayOrder.firstIndex(where: { $0.path == targetPath }) else {
+            return
+        }
+        
+        // Create a new array with the dropped item moved to target position
+        var newOrder = appModel.displayOrder
+        let droppedItem = newOrder.remove(at: droppedIndex)
+        newOrder.insert(droppedItem, at: targetIndex)
+        
+        // Update customOrder based on new positions
+        appModel.updateCustomOrder(from: newOrder)
     }
 
     private var scrollAnchor: UnitPoint? {
@@ -443,7 +584,7 @@ spacing: kGridSpacing
 
     // MARK: - Context Menu Extraction (Fixes compiler timeout)
     @ViewBuilder
-    private func folderContextMenu(_ app: AppModel.Application) -> some View {
+    private func folderContextMenu(_ app: Application) -> some View {
         if app.path.hasPrefix("folder:") {
             let folderPath = app.path.dropFirst(7)
             let folderId = String(folderPath)
@@ -517,10 +658,9 @@ spacing: kGridSpacing
     }
 
     // MARK: - Category Tab Extraction (Fixes compiler timeout)
-    private func categoryTabButton(for category: AppModel.AppCategory) -> some View {
-        Button {
-            // Category selection — mostUsed, recentlyLaunched, newlyInstalled are not yet implemented
-            // (placeholder functions removed, Code Review Fix 1). These tabs show counts from visibleApplications.
+    private func categoryTabButton(for category: AppCategory) -> some View {
+        let isSelected = appModel.selectedCategory == category
+        return Button {
             withAnimation(.easeInOut(duration: 0.2)) {
                 appModel.selectedCategory = category
             }
@@ -528,16 +668,20 @@ spacing: kGridSpacing
             HStack(spacing: 4) {
                 Text(category.rawValue)
                     .font(.subheadline)
+                    .fontWeight(isSelected ? .semibold : .regular)
                 Text("\(getCategoryCount(for: category))")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isSelected
+                                     ? Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                                     : Color.secondary)
             }
             .padding(.horizontal, kCategoryTabPaddingHorizontal)
             .padding(.vertical, kCategoryTabPaddingVertical)
             .background(
-                RoundedRectangle(cornerRadius: kCategoryTabCornerRadius)
-                    .fill(appModel.selectedCategory == category ? Color.white.opacity(0.15) : Color.clear)
+                Capsule()
+                    .fill(isSelected ? Color.primary.opacity(0.9) : Color.clear)
             )
+            .foregroundStyle(isSelected ? Color(nsColor: .windowBackgroundColor) : Color.secondary)
         }
         .buttonStyle(.plain)
         .disabled(getCategoryCount(for: category) == 0)
@@ -549,9 +693,9 @@ spacing: kGridSpacing
 struct SectionView: View {
     @Bindable var appModel: AppModel
     let title: String
-    let apps: [AppModel.Application]
+    let apps: [Application]
     let columns: [GridItem]
-    let onLaunch: (AppModel.Application) -> Void
+    let onLaunch: (Application) -> Void
     
     // Track hovered app path for glow effect
     @State private var hoveredAppPath: String?
@@ -602,10 +746,12 @@ struct VisualEffectBackground: NSViewRepresentable {
 
 struct AppIconView: View {
     @Bindable var appModel: AppModel
-    let app: AppModel.Application
+    let app: Application
     var isHovered: Bool = false
-    var hoveredAppInfo: AppModel.Application?
+    var hoveredAppInfo: Application?
     var isSelected: Bool = false
+    var isPressed: Bool = false
+    var feedbackEnabled: Bool = true
     
     // Dark mode support
     @Environment(\.colorScheme) private var colorScheme
@@ -621,8 +767,8 @@ struct AppIconView: View {
                 RoundedRectangle(cornerRadius: kAppIconCornerRadius)
                     .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
             )
-            .scaleEffect(isSelected || isHovered ? kAppIconHoverScale : 1.0)
-            .shadow(color: isSelected ? Color.accentColor.opacity(0.5) : (isHovered ? Color.accentColor.opacity(0.3) : Color.clear), radius: kAppIconShadowRadius, x: 0, y: kAppIconShadowOffsetY)
+            .scaleEffect(isSelected || isHovered || (isPressed && feedbackEnabled) ? kAppIconHoverScale : 1.0)
+            .shadow(color: (isSelected ? Color.accentColor.opacity(0.5) : (isHovered ? Color.accentColor.opacity(0.3) : (isPressed && feedbackEnabled ? Color.accentColor.opacity(0.3) : Color.clear))), radius: kAppIconShadowRadius, x: 0, y: kAppIconShadowOffsetY)
             .contentShape(Rectangle())
     }
     
@@ -659,8 +805,8 @@ struct AppIconView: View {
             .font(.system(size: appModel.fontSize, weight: appModel.fontWeight == "bold" ? .bold : .regular, design: .default))
             .multilineTextAlignment(.center)
             .lineLimit(2)
-            .frame(maxWidth: 80)
-            .foregroundStyle(isSelected || isHovered ? .primary : .primary)
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(.primary)
     }
     
     private var hoverInfoView: some View {
@@ -687,7 +833,7 @@ struct AppIconView: View {
         }
     }
     
-    private func getCategoryDisplay(_ app: AppModel.Application) -> String? {
+    private func getCategoryDisplay(_ app: Application) -> String? {
         switch appModel.getCategory(for: app) {
         case .system:
             return "System"
@@ -695,6 +841,64 @@ struct AppIconView: View {
             return "Utilities"
         case .user, .mostUsed, .recentlyLaunched, .newlyInstalled:
             return nil
+        }
+    }
+}
+
+// MARK: - Press Tracking via NSViewRepresentable
+
+/// AppKit NSView that intercepts mouseDown/mouseUp to track press state
+/// while forwarding the event to SwiftUI's gesture system via super.
+private class PressTrackingView: NSView {
+    var onPress: ((Bool) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        onPress?(true)
+        super.mouseDown(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        onPress?(false)
+        super.mouseUp(with: event)
+    }
+}
+
+/// SwiftUI bridge for PressTrackingView.
+/// Place as an overlay on a view to track its pressed state
+/// without breaking .draggable or .onTapGesture.
+private struct PressTracker: NSViewRepresentable {
+    @Binding var pressedAppPath: String?
+    let appPath: String
+
+    func makeNSView(context: Context) -> PressTrackingView {
+        let view = PressTrackingView()
+        view.onPress = { pressed in
+            context.coordinator.setPressed(pressed)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: PressTrackingView, context: Context) {
+        nsView.onPress = { pressed in
+            context.coordinator.setPressed(pressed)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(pressedAppPath: $pressedAppPath, appPath: appPath)
+    }
+
+    class Coordinator: NSObject {
+        @Binding var pressedAppPath: String?
+        let appPath: String
+
+        init(pressedAppPath: Binding<String?>, appPath: String) {
+            _pressedAppPath = pressedAppPath
+            self.appPath = appPath
+        }
+
+        func setPressed(_ pressed: Bool) {
+            pressedAppPath = pressed ? appPath : nil
         }
     }
 }

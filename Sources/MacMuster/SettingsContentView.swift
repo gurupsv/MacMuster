@@ -68,7 +68,7 @@ struct SettingsContentView: View {
     
     private func getVisibleSections() -> [SettingsSection] {
         // Only show sections that are fully implemented
-        return [.general, .appearance, .hiddenApps, .appDirectories, .backupRestore, .updates, .feedback]
+        return [.general, .appearance, .hiddenApps, .appDirectories, .folders]
     }
     
     private func settingsSectionButton(_ section: SettingsSection) -> some View {
@@ -131,10 +131,12 @@ struct SettingsContentView: View {
                     AppearanceSettingsPanel(appModel: appModel)
                 case .hiddenApps:
                     HiddenAppsSettingsPanel(appModel: appModel)
-                case .appDirectories:
-                    AppDirectoriesSettingsPanel(appModel: appModel)
-                case .backupRestore:
-                    BackupRestoreSettingsPanel()
+case .appDirectories:
+                     AppDirectoriesSettingsPanel(appModel: appModel)
+                 case .folders:
+                     FoldersSettingsPanel(appModel: appModel)
+                 case .backupRestore:
+                     BackupRestoreSettingsPanel()
                 case .updates:
                     UpdatesSettingsPanel()
                 case .feedback:
@@ -165,40 +167,43 @@ struct SettingsContentView: View {
 // MARK: - Settings Section Enum
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case general
-    case appearance
-    case hiddenApps
-    case appDirectories
-    case backupRestore
-    case updates
-    case feedback
-    
-    var id: String { rawValue }
-    
-    var title: String {
-        switch self {
-        case .general: return "General"
-        case .appearance: return "Appearance"
-        case .hiddenApps: return "Hidden Apps"
-        case .appDirectories: return "App Directories"
-        case .backupRestore: return "Backup & Restore"
-        case .updates: return "Updates & Info"
-        case .feedback: return "Feedback"
-        }
-    }
-    
-    var icon: String {
-        switch self {
-        case .general: return "gearshape"
-        case .appearance: return "paintpalette"
-        case .hiddenApps: return "eye.slash"
-        case .appDirectories: return "folder.badge.plus"
-        case .backupRestore: return "arrow.triangle.2.circlepath"
-        case .updates: return "info.circle"
-        case .feedback: return "envelope"
-        }
-    }
-}
+     case general
+     case appearance
+     case hiddenApps
+     case appDirectories
+     case folders
+     case backupRestore
+     case updates
+     case feedback
+     
+     var id: String { rawValue }
+     
+     var title: String {
+         switch self {
+         case .general: return "General"
+         case .appearance: return "Appearance"
+         case .hiddenApps: return "Hidden Apps"
+         case .appDirectories: return "App Directories"
+         case .folders: return "Folders"
+         case .backupRestore: return "Backup & Restore"
+         case .updates: return "Updates & Info"
+         case .feedback: return "Feedback"
+         }
+     }
+     
+     var icon: String {
+         switch self {
+         case .general: return "gearshape"
+         case .appearance: return "paintpalette"
+         case .hiddenApps: return "eye.slash"
+         case .appDirectories: return "folder.badge.plus"
+         case .folders: return "folder"
+         case .backupRestore: return "arrow.triangle.2.circlepath"
+         case .updates: return "info.circle"
+         case .feedback: return "envelope"
+         }
+     }
+ }
 
 // MARK: - General Settings Panel
 
@@ -265,9 +270,53 @@ struct GeneralSettingsPanel: View {
                 }
                 .background(Color(nsColor: .textBackgroundColor))
                 .cornerRadius(kSectionContentCornerRadius)
-            }
-            
-            // App Management section
+              }
+              
+              // Press Feedback section
+              settingsSection(title: "Press Feedback") {
+                  VStack(alignment: .leading, spacing: kLabelSpacing) {
+                      HStack(alignment: .top, spacing: kLabelSpacingVertical) {
+                          VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                              Text("Press Feedback")
+                                  .font(.system(size: 14, weight: .medium))
+                              Text("When enabled, app icons animate when pressed")
+                                  .font(.system(size: 12))
+                                  .foregroundStyle(.secondary)
+                          }
+                          Spacer()
+                          Toggle("", isOn: $appModel.pressFeedbackEnabled)
+                              .toggleStyle(.switch)
+                              .labelsHidden()
+                      }
+                  }
+                  .padding(kSectionContentPadding)
+                  .background(Color(nsColor: .textBackgroundColor))
+                  .cornerRadius(kSectionContentCornerRadius)
+              }
+              
+              // Recent Apps section
+             settingsSection(title: "Recent Apps") {
+                 VStack(alignment: .leading, spacing: kLabelSpacing) {
+                     HStack(alignment: .top, spacing: kLabelSpacingVertical) {
+                         VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                             Text("Show Recent Apps")
+                                 .font(.system(size: 14, weight: .medium))
+                             Text("When enabled, recent applications are displayed in the launcher")
+                                 .font(.system(size: 12))
+                                 .foregroundStyle(.secondary)
+                         }
+                         Spacer()
+                         Toggle("", isOn: $appModel.showRecentApps)
+                             .toggleStyle(.switch)
+                             .labelsHidden()
+                     }
+                 }
+                 .padding(kSectionContentPadding)
+                 .background(Color(nsColor: .textBackgroundColor))
+                 .cornerRadius(kSectionContentCornerRadius)
+             }
+             
+             // App Management section
             settingsSection(title: "App Management") {
                 VStack(alignment: .leading, spacing: kLabelSpacing) {
                     HStack {
@@ -499,6 +548,201 @@ struct GlowSettingsPanel: View {
     }
 }
 
+// MARK: - Folders Settings Panel
+
+struct FoldersSettingsPanel: View {
+    @Bindable var appModel: AppModel
+    @State private var searchText: String = ""
+    @State private var showCreateFolder: Bool = false
+    @State private var newFolderName: String = ""
+    
+    private var filteredFolders: [AppFolder] {
+        if searchText.isEmpty {
+            return appModel.folders
+        }
+        let lower = searchText.lowercased()
+        return appModel.folders.filter {
+            $0.name.lowercased().contains(lower)
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: kSectionSpacing) {
+            // Header
+            HStack {
+                Text("Folder Management")
+                    .font(.system(size: 15, weight: .semibold))
+                Spacer()
+                Text("\(appModel.folders.count) folders")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            
+            Text("Manage your folders - rename, delete, or create new ones.")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+            
+            // Search bar
+            HStack(spacing: kSearchPadding) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .font(.body)
+                TextField("Search folders...", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, kSearchPadding)
+            .padding(.vertical, kSearchPadding)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: kSearchCornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: kSearchCornerRadius)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
+            
+            if appModel.folders.isEmpty {
+                Text("No folders created yet.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, kHiddenAppsListPaddingVertical)
+            } else {
+                // Folders list
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(filteredFolders) { folder in
+                            FolderRow(folder: folder, appModel: appModel)
+                        }
+                    }
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(nsColor: .textBackgroundColor))
+                    )
+                }
+            }
+            
+            // Create folder button
+            HStack {
+                Spacer()
+                Button {
+                    newFolderName = ""
+                    showCreateFolder = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder.badge.plus")
+                            .font(.system(size: 12))
+                        Text("Create New Folder")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+// MARK: - Folder Row
+struct FolderRow: View {
+    let folder: AppFolder
+    @Bindable var appModel: AppModel
+    @State private var isEditing: Bool = false
+    @State private var editedName: String = ""
+    @State private var showDeleteAlert: Bool = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                // Folder icon
+                Image(systemName: "folder")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.yellow)
+                    .frame(width: 28, height: 24)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    // Folder name
+                    HStack {
+                        if isEditing {
+                            TextField("Folder name", text: $editedName)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit {
+                                    isEditing = false
+                                    if !editedName.isEmpty {
+                                        appModel.renameFolder(folderId: folder.id, newName: editedName)
+                                    }
+                                }
+                                .onAppear {
+                                    editedName = folder.name
+                                }
+                        } else {
+                            Text(folder.name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .lineLimit(1)
+                        }
+                    }
+                    
+                    // App count
+                    HStack {
+                        Image(systemName: "square.grid.2x2")
+                            .font(.system(size: 10))
+                        Text("\(folder.appPaths.count) app\(folder.appPaths.count == 1 ? "" : "s")")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                Spacer()
+                
+                // Edit button
+                Button {
+                    isEditing = true
+                    editedName = folder.name
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                
+                // Delete button
+                Button {
+                    showDeleteAlert = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .alert("Delete Folder", isPresented: $showDeleteAlert) {
+                    Button("Cancel", role: .cancel) { }
+                    Button("Delete", role: .destructive) {
+                        appModel.deleteFolder(folderId: folder.id)
+                    }
+                } message: {
+                    Text("Are you sure you want to delete the folder \"\(folder.name)\"? This cannot be undone.")
+                }
+            }
+            
+            Divider()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 // MARK: - Placeholder Panels
 
 struct HotCornersSettingsPanel: View {
@@ -654,7 +898,7 @@ struct AppearanceSettingsPanel: View {
                                 .foregroundStyle(.blue)
                         }
                         Picker(selection: $appModel.iconSize) {
-                            ForEach(AppModel.IconSize.allCases, id: \.self) { size in
+                            ForEach(IconSize.allCases, id: \.self) { size in
                                 Text(size.rawValue.capitalized)
                                     .tag(size)
                             }
@@ -719,7 +963,7 @@ struct HiddenAppsSettingsPanel: View {
     @Bindable var appModel: AppModel
     @State private var searchText: String = ""
     
-    private var allApps: [AppModel.Application] {
+    private var allApps: [Application] {
         if searchText.isEmpty {
             return appModel.displayOrder
         }
@@ -730,11 +974,11 @@ struct HiddenAppsSettingsPanel: View {
         }
     }
     
-    private var hiddenApps: [AppModel.Application] {
+    private var hiddenApps: [Application] {
         allApps.filter { $0.isHidden }
     }
     
-    private var visibleApps: [AppModel.Application] {
+    private var visibleApps: [Application] {
         allApps.filter { !$0.isHidden }
     }
     
@@ -813,7 +1057,7 @@ struct HiddenAppsSettingsPanel: View {
 
 struct HiddenAppRow: View {
     @Bindable var appModel: AppModel
-    let app: AppModel.Application
+    let app: Application
     let onToggle: () -> Void
     
     var body: some View {

@@ -9,7 +9,7 @@ class ApplicationSorter {
         case installationDate = "Installation Date"
     }
     
-    static func sort(_ applications: [AppModel.Application], by option: SortOption) -> [AppModel.Application] {
+    static func sort(_ applications: [Application], by option: SortOption) -> [Application] {
         switch option {
         case .name:
             // Use pre-computed lowercase names for efficient sorting
