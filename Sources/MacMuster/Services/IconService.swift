@@ -60,11 +60,10 @@ final class IconService {
     }
     
     func updateIconsInPlace(for displayOrder: [Application], with loadedIcons: [(String, NSImage)]) -> [Application] {
+        let iconsByPath = Dictionary(uniqueKeysWithValues: loadedIcons)
         var order = displayOrder
-        for (path, icon) in loadedIcons {
-            if let idx = order.firstIndex(where: { $0.path == path }) {
-                order[idx].icon = icon
-            }
+        for i in order.indices where iconsByPath[order[i].path] != nil {
+            order[i].icon = iconsByPath[order[i].path]
         }
         return order
     }

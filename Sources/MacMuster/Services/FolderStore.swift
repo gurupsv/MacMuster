@@ -114,8 +114,7 @@ final class FolderStore {
             isFolder: true,
             containedApps: folder.appPaths,
             appSize: nil,
-            bundleDescription: "\(containedApps.count) app\(containedApps.count == 1 ? "" : "s")",
-            isHidden: false
+            bundleDescription: "\(containedApps.count) app\(containedApps.count == 1 ? "" : "s")"
         )
     }
 }

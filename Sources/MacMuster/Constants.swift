@@ -5,6 +5,11 @@ import SwiftUI
 
 let kIconCacheBatchSize = 12
 let kMaxRecentApps = 8
+let kSearchDebounceNanoseconds: UInt64 = 150_000_000 // 150ms
+// Roughly covers the largest first screenful (kMaxColumnCount=10 × ~6 visible rows) so the
+// initial icon batch finishes fast; the rest backfills afterward without blocking the grid.
+let kPriorityIconLoadCount = 60
+let kNewlyInstalledWindowSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
 
 // MARK: - OverlayWindowManager Constants
 
@@ -26,6 +31,10 @@ let kSettingsWindowMinWidth: CGFloat = 700
 let kSettingsWindowMinHeight: CGFloat = 480
 let kSettingsWindowMaxWidth: CGFloat = 1400
 let kSettingsWindowMaxHeight: CGFloat = 1000
+
+// MARK: - Opacity Constants
+
+let kOverlayOpacityDefault: Double = 0.95
 
 // MARK: - ContentView Constants
 

@@ -174,6 +174,7 @@ xattr -cr "$APP_BUNDLE"
 ENTITLEMENTS="entitlements.plist"
 if [ -n "$DEVELOPER_ID" ]; then
     # Production signing with Developer ID (set DEVELOPER_ID env var to sign for distribution)
+    # --options runtime enables the Hardened Runtime, required for notarization.
     codesign --force --sign "$DEVELOPER_ID" --options runtime --timestamp \
         --entitlements "$ENTITLEMENTS" "$APP_BUNDLE"
 else
@@ -183,6 +184,22 @@ else
     else
         codesign --force --sign - "$APP_BUNDLE"
     fi
+fi
+
+# S3: Automated notarization + stapling.
+# Only runs when both DEVELOPER_ID and NOTARY_PROFILE are set, so default local/ad-hoc
+# builds are completely unaffected. NOTARY_PROFILE is a keychain profile created once via:
+#   xcrun notarytool store-credentials "<profile-name>" --apple-id <id> --team-id <team> --password <app-specific-password>
+if [ -n "$DEVELOPER_ID" ] && [ -n "$NOTARY_PROFILE" ]; then
+    echo "Notarizing (profile: $NOTARY_PROFILE)..."
+    NOTARY_ZIP="${APP_NAME}_notarize.zip"
+    ditto -c -k --keepParent "$APP_BUNDLE" "$NOTARY_ZIP"
+    xcrun notarytool submit "$NOTARY_ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+    rm -f "$NOTARY_ZIP"
+    echo "Stapling notarization ticket..."
+    xcrun stapler staple "$APP_BUNDLE"
+elif [ -n "$DEVELOPER_ID" ]; then
+    echo "Skipping notarization: set NOTARY_PROFILE to a notarytool keychain profile to notarize+staple automatically."
 fi
 
 # Verify the binary runs (non-blocking - launch app in background and terminate after timeout)
@@ -223,19 +240,33 @@ echo "✓ Debug symbols stripped"
 echo "✓ App bundle structure created"
 echo "✓ Info.plist configured"
 echo "✓ Resources copied"
-echo "✓ Ad-hoc signed (for local testing)"
+if [ -n "$DEVELOPER_ID" ]; then
+    echo "✓ Signed with Developer ID + Hardened Runtime ($DEVELOPER_ID)"
+else
+    echo "✓ Ad-hoc signed (for local testing only — not suitable for distribution)"
+fi
+if [ -n "$DEVELOPER_ID" ] && [ -n "$NOTARY_PROFILE" ]; then
+    echo "✓ Notarized and stapled (profile: $NOTARY_PROFILE)"
+fi
 if [ "${BUILD_UNIVERSAL:-0}" = "1" ]; then
     echo ""
     echo "=== For Universal Binary Distribution ==="
     echo "Binary supports both Intel (x86_64) and Apple Silicon (arm64)"
-else
-    echo ""
-    echo "=== For Distribution (App Store / Direct) ==="
 fi
-echo "1. Get Apple Developer ID certificate (if not already signed)"
-echo "2. Sign: codesign --sign \"Developer ID Application: Your Name\" --options runtime MacMuster.app"
-echo "3. Notarize: xcrun notarytool submit MacMuster.app --apple-id <id> --team-id <team> --wait"
-echo "4. Staple: xcrun stapler staple MacMuster.app"
+echo ""
+if [ -n "$DEVELOPER_ID" ] && [ -n "$NOTARY_PROFILE" ]; then
+    echo "=== Ready for Distribution ==="
+    echo "App bundle is signed, notarized, and stapled — ready to distribute directly."
+else
+    echo "=== Remaining Steps for Distribution ==="
+    if [ -z "$DEVELOPER_ID" ]; then
+        echo "1. Get an Apple Developer ID certificate, then re-run with: DEVELOPER_ID=\"Developer ID Application: Your Name\" ./build_production.sh"
+    fi
+    if [ -z "$NOTARY_PROFILE" ]; then
+        echo "2. Store notarization credentials once: xcrun notarytool store-credentials \"<profile-name>\" --apple-id <id> --team-id <team> --password <app-specific-password>"
+        echo "3. Re-run with both set to notarize+staple automatically: DEVELOPER_ID=\"...\" NOTARY_PROFILE=\"<profile-name>\" ./build_production.sh"
+    fi
+fi
 if [ "${BUILD_UNIVERSAL:-0}" = "1" ]; then
     echo ""
     echo "=== Universal Binary Installation ==="

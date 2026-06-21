@@ -154,7 +154,8 @@ class OverlayWindowManager {
         window?.level = .floating
         window?.isMovableByWindowBackground = false
         window?.isOpaque = false
-        window?.backgroundColor = .clear
+        let backgroundColor = NSColor.black.withAlphaComponent(appModel.overlayOpacity)
+        window?.backgroundColor = backgroundColor
         window?.hasShadow = false
         
         // Set minimum size for content
@@ -244,9 +245,10 @@ window.makeKeyAndOrderFront(nil)
                 backgroundWindow.level = .floating
                 backgroundWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
                 backgroundWindow.isOpaque = false
-                backgroundWindow.backgroundColor = .clear
+                let backgroundColor = NSColor.black.withAlphaComponent(appModel!.overlayOpacity)
+                backgroundWindow.backgroundColor = backgroundColor
                 backgroundWindow.hasShadow = false
-                backgroundWindow.contentView = NSHostingView(rootView: SecondaryOverlayBackground())
+                backgroundWindow.contentView = NSHostingView(rootView: SecondaryOverlayBackground(appModel: appModel!))
                 backgroundWindow.orderFrontRegardless()
                 return backgroundWindow
             }
@@ -271,18 +273,32 @@ window.makeKeyAndOrderFront(nil)
         }
     }
     
-    private func handleKeyDown(_ event: NSEvent) -> Bool {
+    // internal (not private) so OverlayWindowManagerTests can simulate key events via @testable import.
+    func handleKeyDown(_ event: NSEvent) -> Bool {
         switch event.keyCode {
-case 53: // Escape: if search is focused, unfocus it; otherwise hide launcher
+case 53: // Escape: if search is focused, unfocus it; else close folder if inside one; else hide launcher
 if window?.firstResponder is NSTextView || window?.firstResponder is NSTextField {
 // Search field is focused - unfocus it
 window?.makeFirstResponder(nil)
 return true
+} else if let appModel = appModel, appModel.currentFolderId != nil {
+// Inside a folder - go back to the root grid instead of dismissing
+appModel.closeFolder()
+return true
 } else {
-// Search is not focused - hide launcher
+// At root and search is not focused - hide launcher
 hide()
 return true
 }
+        case 51: // Backspace/Delete: go up one level when inside a folder (and not editing search text)
+            if window?.firstResponder is NSTextView || window?.firstResponder is NSTextField {
+                return false
+            }
+            if let appModel = appModel, appModel.currentFolderId != nil {
+                appModel.closeFolder()
+                return true
+            }
+            return false
         case 36, 76: // Return, Enter
             if let appModel = appModel, !appModel.searchTerm.isEmpty {
                 let displayedApps = appModel.getDisplayedApps()
@@ -370,12 +386,15 @@ return true
 struct LaunchWrapperView: View {
     let appModel: AppModel
     @State private var scale: CGFloat = 1.0
-
+    
+    private let kVisualEffectOpacity: Double = 0.95
+    
     var body: some View {
         ZStack {
             // Background and glow remain at full screen size (not scaled)
             VisualEffectBackground()
                 .ignoresSafeArea()
+                .opacity(appModel.overlayOpacity)
             GlowEffectView(appModel: appModel)
 
             // Only content scales — zoom-out effect applied to UI grid
@@ -398,9 +417,12 @@ struct LaunchWrapperView: View {
 }
 
 private struct SecondaryOverlayBackground: View {
+    let appModel: AppModel
+    
     var body: some View {
         VisualEffectBackground()
             .ignoresSafeArea()
+            .opacity(appModel.overlayOpacity)
             .contentShape(Rectangle())
             .onTapGesture {
                 StatusBarManager.shared.hideWindow()

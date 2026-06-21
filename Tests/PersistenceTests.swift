@@ -16,7 +16,7 @@ final class PersistenceTests: XCTestCase {
     // MARK: - Hidden Apps Persistence Tests
 
     func testToggleHiddenAppSavesToUserDefaults() {
-        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         appModel.setApplications([app])
         appModel.toggleHiddenApp(app.path)
         let data = UserDefaults.standard.data(forKey: "hiddenAppPaths")
@@ -47,20 +47,20 @@ final class PersistenceTests: XCTestCase {
     }
 
     func testIsAppHiddenReturnsTrueForHiddenPath() {
-        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         appModel.setApplications([app])
         appModel.toggleHiddenApp(app.path)
         XCTAssertTrue(appModel.isAppHidden(app.path))
     }
 
     func testIsAppHiddenReturnsFalseForNonHiddenPath() {
-        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         appModel.setApplications([app])
         XCTAssertFalse(appModel.isAppHidden(app.path))
     }
 
     func testToggleHiddenAppWithApplicationObject() {
-        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         appModel.setApplications([app])
         appModel.toggleHiddenApp(app)
         XCTAssertTrue(appModel.isAppHidden(app.path))
@@ -117,7 +117,7 @@ final class PersistenceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "fontFamily")
 
         let newAppModel = AppModel()
-        XCTAssertNil(appModel.fontFamily)
+        XCTAssertEqual(newAppModel.fontFamily, "SF Pro")
     }
 
     // MARK: - Column Count Persistence Tests
@@ -267,8 +267,8 @@ final class PersistenceTests: XCTestCase {
 
     func testSetCustomOrderSavesToUserDefaults() {
         let apps = [
-            AppModel.Application(name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date()),
-            AppModel.Application(name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date()),
+            Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
         ]
         appModel.setApplications(apps)
         appModel.customOrder[apps[0].path] = 0
@@ -332,7 +332,7 @@ final class PersistenceTests: XCTestCase {
         appModel.iconSize = .large
         appModel.refreshInterval = 600
         appModel.setFontFamily("Helvetica")
-        let app = AppModel.Application(name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date())
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         appModel.setApplications([app])
         appModel.toggleHiddenApp(app.path)
         appModel.addCustomDirectory("/Users/test/CustomApps")

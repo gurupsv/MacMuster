@@ -26,18 +26,20 @@ final class PreferencesStore {
         case fontWeight = "fontWeight"
         case customDirectories = "customDirectories"
         case folders = "appFolders"
-     case pressFeedbackEnabled = "pressFeedbackEnabled"
-     case recentAppsEnabled = "recentAppsEnabled"
+        case pressFeedbackEnabled = "pressFeedbackEnabled"
+        case recentAppsEnabled = "recentAppsEnabled"
+        case overlayOpacity = "overlayOpacity"
     }
     
     private init() {
-        // Set default for recentAppsEnabled if not present
         if defaults.object(forKey: Keys.recentAppsEnabled.rawValue) == nil {
             defaults.set(true, forKey: Keys.recentAppsEnabled.rawValue)
         }
-        // Set default for pressFeedbackEnabled if not present
         if defaults.object(forKey: Keys.pressFeedbackEnabled.rawValue) == nil {
             defaults.set(true, forKey: Keys.pressFeedbackEnabled.rawValue)
+        }
+        if defaults.object(forKey: Keys.overlayOpacity.rawValue) == nil {
+            defaults.set(kOverlayOpacityDefault, forKey: Keys.overlayOpacity.rawValue)
         }
     }
     
@@ -222,5 +224,15 @@ final class PreferencesStore {
 
     func savePressFeedbackEnabled(_ enabled: Bool) {
         defaults.set(enabled, forKey: Keys.pressFeedbackEnabled.rawValue)
+    }
+    
+    // MARK: - Opacity Settings
+    
+    func saveOverlayOpacity(_ opacity: Double) {
+        defaults.set(opacity, forKey: Keys.overlayOpacity.rawValue)
+    }
+    
+    func loadOverlayOpacity() -> Double? {
+        defaults.value(forKey: Keys.overlayOpacity.rawValue) as? Double
     }
 }

@@ -64,7 +64,7 @@ class SettingsWindowManager {
         settingsWindow?.title = "Settings"
         settingsWindow?.isRestorable = false
         settingsWindow?.hasShadow = true
-        settingsWindow?.level = .modalPanel
+        settingsWindow?.level = .floating
         settingsWindow?.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         settingsWindow?.isReleasedWhenClosed = false
         settingsWindow?.contentView = hostingView

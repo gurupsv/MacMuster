@@ -34,19 +34,18 @@ struct ContentView: View {
     
     var body: some View {
         ZStack {
-            // Blurred translucent background (like Launchpad)
-            VisualEffectBackground()
+            // The blur background and glow are rendered once by LaunchWrapperView (which
+            // hosts this view), so they stay fixed during the launch zoom animation instead
+            // of drawing twice. This clear layer only exists to catch taps outside the app
+            // grid and dismiss the launcher.
+            Color.clear
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture {
                     // Tap on background outside app grid - hide launcher
                     StatusBarManager.shared.hideWindow()
                 }
-            
-            // Glow effect rendered on top of VisualEffectBackground (visible) 
-            // but behind content (non-hittable)
-            GlowEffectView(appModel: appModel)
-            
+
             if appModel.isLoading {
                 // Loading indicator
                 VStack(spacing: 20) {
@@ -133,6 +132,7 @@ struct ContentView: View {
                                     .background(.ultraThinMaterial, in: Circle())
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Create new folder")
 
                             Button(action: {
                                 SettingsWindowManager.shared.show()
@@ -144,6 +144,7 @@ struct ContentView: View {
                                     .background(.ultraThinMaterial, in: Circle())
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Open settings")
                         }
                         .padding(.horizontal)
                         .padding(.bottom, 4)
@@ -152,7 +153,10 @@ struct ContentView: View {
                         HStack {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
-                                    ForEach(Array(AppCategory.allCases.enumerated()), id: \.offset) { _, category in
+                                    // .utilities is intentionally excluded — getCategory() folds it into .user,
+                                    // so its count is always 0 (see AppModelTests).
+                                    let visibleCategories: [AppCategory] = [.all, .system, .user, .mostUsed, .recentlyLaunched, .newlyInstalled]
+                                    ForEach(Array(visibleCategories.enumerated()), id: \.offset) { _, category in
                                         categoryTabButton(for: category)
                                     }
                                 }
@@ -185,6 +189,7 @@ struct ContentView: View {
                             .menuStyle(.borderlessButton)
                             .fixedSize()
                             .help("Sort: \(appModel.sortOption.rawValue)")
+                            .accessibilityLabel("Sort applications")
 
                             Button {
                                 newFolderName = "Folder"
@@ -198,6 +203,7 @@ struct ContentView: View {
                                     .background(.ultraThinMaterial, in: Circle())
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Create new folder")
 
                             Button(action: {
                                 SettingsWindowManager.shared.show()
@@ -209,6 +215,7 @@ struct ContentView: View {
                                     .background(.ultraThinMaterial, in: Circle())
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Open settings")
                         }
                         .padding(.horizontal)
                     }
@@ -257,8 +264,13 @@ LazyVGrid(
 columns: gridColumns,
 spacing: kGridSpacing
 ) {
-                                    ForEach(Array(displayedApps.enumerated()), id: \.element.path) { index, app in
-                                        gridItemView(app: app, index: index, keyboardActive: hasUsedKeyboard)
+                                    // Resolve the selected index to a path once, rather than materializing
+                                    // Array(displayedApps.enumerated()) on every body evaluation.
+                                    let selectedPath: String? = (hasUsedKeyboard && displayedApps.indices.contains(appModel.selectedAppIndex))
+                                        ? displayedApps[appModel.selectedAppIndex].path
+                                        : nil
+                                    ForEach(displayedApps) { app in
+                                        gridItemView(app: app, isSelected: app.path == selectedPath)
                                     }
                                 }
                                 .contentShape(Rectangle())
@@ -293,8 +305,12 @@ spacing: kGridSpacing
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .onExitCommand {
-            // Escape key dismisses the launcher
-            StatusBarManager.shared.hideWindow()
+            // Escape key: close folder first if inside one, otherwise dismiss the launcher
+            if appModel.currentFolderId != nil {
+                appModel.closeFolder()
+            } else {
+                StatusBarManager.shared.hideWindow()
+            }
         }
         // Only focus search field when user explicitly types or clicks it
         // By default, keyboard events go to the window for arrow key navigation
@@ -445,6 +461,7 @@ spacing: kGridSpacing
         }
         .buttonStyle(.plain)
         .help("Search (/)")
+        .accessibilityLabel("Search applications")
     }
 
     private func getCategoryCount(for category: AppCategory) -> Int {
@@ -453,7 +470,7 @@ spacing: kGridSpacing
     
     // MARK: - Grid Item View (Fixes compiler timeout)
     @ViewBuilder
-    private func gridItemView(app: Application, index: Int, keyboardActive: Bool = false) -> some View {
+    private func gridItemView(app: Application, isSelected: Bool) -> some View {
         let isDropTarget = isDraggingAppPath == app.path
         let isPressed = pressedAppPath == app.path
         AppIconView(
@@ -461,11 +478,13 @@ spacing: kGridSpacing
             app: app,
             isHovered: hoveredAppPath == app.path || isDropTarget,
             hoveredAppInfo: hoveredAppPath == app.path ? app : nil,
-            isSelected: keyboardActive && appModel.selectedAppIndex == index,
+            isSelected: isSelected,
             isPressed: (isDropTarget || isPressed) && appModel.pressFeedbackEnabled,
             feedbackEnabled: appModel.pressFeedbackEnabled
         )
         .id(app.path)
+        .accessibilityLabel(accessibilityLabel(for: app))
+        .accessibilityAddTraits(.isButton)
         .onHover { isHovered in
             hoveredAppPath = isHovered ? app.path : nil
         }
@@ -490,6 +509,14 @@ spacing: kGridSpacing
                 isDraggingAppPath = nil
             }
         }
+    }
+
+    private func accessibilityLabel(for app: Application) -> String {
+        if app.isFolder {
+            let count = app.containedApps?.count ?? 0
+            return "\(app.name) folder, \(count) app\(count == 1 ? "" : "s")"
+        }
+        return "\(app.name), application"
     }
 
     private func handleAppTap(_ app: Application) {
@@ -715,6 +742,8 @@ struct SectionView: View {
             ) {
                 ForEach(apps) { app in
                     AppIconView(appModel: appModel, app: app, isHovered: hoveredAppPath == app.path, hoveredAppInfo: nil)
+                        .accessibilityLabel("\(app.name), application")
+                        .accessibilityAddTraits(.isButton)
                         .onTapGesture {
                             onLaunch(app)
                         }
@@ -783,7 +812,9 @@ struct AppIconView: View {
     
     private var iconView: some View {
         ZStack {
-            if let icon = app.icon {
+            // Read from appModel.loadedIconsByPath (not just app.icon) so this view reacts as
+            // soon as the icon loads, independent of whether the containing ContentView re-renders.
+            if let icon = appModel.loadedIconsByPath[app.path] ?? app.icon {
                 Image(nsImage: icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -802,11 +833,25 @@ struct AppIconView: View {
     
     private var appNameView: some View {
         Text(app.name)
-            .font(.system(size: appModel.fontSize, weight: appModel.fontWeight == "bold" ? .bold : .regular, design: .default))
+            .font(getFontForAppName())
+            .fontWeight(getFontWeight())
             .multilineTextAlignment(.center)
             .lineLimit(2)
             .frame(maxWidth: .infinity)
             .foregroundStyle(.primary)
+    }
+
+    private func getFontForAppName() -> Font {
+        if appModel.fontFamily == "SF Pro" || appModel.fontFamily.starts(with: "SF Pro") {
+            let weight = appModel.fontWeight == "bold" ? Font.Weight.bold : appModel.fontWeight == "light" ? Font.Weight.light : Font.Weight.regular
+            return .system(size: appModel.fontSize, weight: weight, design: .default)
+        } else {
+            return .custom(appModel.fontFamily, size: appModel.fontSize)
+        }
+    }
+
+    private func getFontWeight() -> Font.Weight {
+        appModel.fontWeight == "bold" ? .bold : appModel.fontWeight == "light" ? .light : .regular
     }
     
     private var hoverInfoView: some View {
@@ -839,7 +884,7 @@ struct AppIconView: View {
             return "System"
         case .utilities:
             return "Utilities"
-        case .user, .mostUsed, .recentlyLaunched, .newlyInstalled:
+        case .user, .mostUsed, .recentlyLaunched, .newlyInstalled, .all:
             return nil
         }
     }

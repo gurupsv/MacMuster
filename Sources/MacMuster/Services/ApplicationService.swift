@@ -8,6 +8,11 @@ class ApplicationService {
     
     @discardableResult
     func launchApplication(at path: String, appModel: AppModel? = nil) -> Bool {
+        // Validate path exists and is a directory (safety check for stale folder data)
+        guard FileManager.default.fileExists(atPath: path) else { return false }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { return false }
+
         let url = URL(fileURLWithPath: path)
         let resolvedURL = url.resolvingSymlinksInPath()
 

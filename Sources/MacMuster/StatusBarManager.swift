@@ -1,12 +1,14 @@
 import Foundation
 import AppKit
 
+// Inherits NSObject so it can be a valid NSMenuItem/NSStatusBarButton target-action receiver
+// and so StatusBarManagerTests can call `.responds(to:)` (an NSObjectProtocol member).
 @MainActor
-class StatusBarManager {
+class StatusBarManager: NSObject {
     static let shared = StatusBarManager()
     private var statusItem: NSStatusItem?
     private weak var appModel: AppModel?
-    private init() {}
+    private override init() {}
     
     func setup() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)

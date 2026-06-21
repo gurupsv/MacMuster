@@ -3,8 +3,8 @@ import XCTest
 
 final class ApplicationSorterTests: XCTestCase {
     
-    private func makeApp(name: String, installationDate: Date) -> AppModel.Application {
-        AppModel.Application(name: name, path: "/Applications/\(name).app", icon: nil, installationDate: installationDate)
+    private func makeApp(name: String, installationDate: Date) -> Application {
+        Application(id: "/Applications/\(name).app", name: name, path: "/Applications/\(name).app", icon: nil, installationDate: installationDate, isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
     }
     
     func testSortByNameAscending() {
@@ -48,7 +48,7 @@ final class ApplicationSorterTests: XCTestCase {
     }
     
     func testSortByNameWithEmptyArray() {
-        let apps: [AppModel.Application] = []
+        let apps: [Application] = []
         let sorted = ApplicationSorter.sort(apps, by: .name)
         XCTAssertTrue(sorted.isEmpty)
     }

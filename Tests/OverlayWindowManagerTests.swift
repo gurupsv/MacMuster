@@ -36,7 +36,7 @@ final class OverlayWindowManagerTests: XCTestCase {
     func testUpArrowMovesUpByColumnCount() {
         // Setup: 8 column grid with 16 apps
         let apps = (0..<16).map { i in
-            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -63,7 +63,7 @@ final class OverlayWindowManagerTests: XCTestCase {
 
     func testDownArrowMovesDownByColumnCount() {
         let apps = (0..<16).map { i in
-            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -90,7 +90,7 @@ final class OverlayWindowManagerTests: XCTestCase {
 
     func testLeftArrowMovesLeft() {
         let apps = (0..<8).map { i in
-            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -117,7 +117,7 @@ final class OverlayWindowManagerTests: XCTestCase {
 
     func testRightArrowMovesRight() {
         let apps = (0..<8).map { i in
-            AppModel.Application(name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date())
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -157,5 +157,66 @@ final class OverlayWindowManagerTests: XCTestCase {
         // Escape when search is not focused should hide launcher (handled)
         let handled = manager.handleKeyDown(event)
         XCTAssertTrue(handled)
+    }
+
+    // MARK: - Folder Escape/Backspace Tests (B-1/B-2)
+
+    private func escapeEvent() -> NSEvent {
+        NSEvent(keyType: .keyDown,
+            location: NSPoint.zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "\u{001B}",
+            charactersIgnoringModifiers: "\u{001B}",
+            isARepeat: false,
+            keyCode: 53) ?? NSEvent()
+    }
+
+    private func backspaceEvent() -> NSEvent {
+        NSEvent(keyType: .keyDown,
+            location: NSPoint.zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "\u{0008}",
+            charactersIgnoringModifiers: "\u{0008}",
+            isARepeat: false,
+            keyCode: 51) ?? NSEvent()
+    }
+
+    func testEscapeInsideFolderClosesFolderInsteadOfHidingLauncher() {
+        let folder = appModel.createFolder(name: "Dev", appPaths: [])
+        appModel.openFolder(folder.id)
+        XCTAssertNotNil(appModel.currentFolderId)
+
+        let handled = manager.handleKeyDown(escapeEvent())
+
+        XCTAssertTrue(handled)
+        // Escape should navigate back to the root grid, not dismiss the whole launcher.
+        XCTAssertNil(appModel.currentFolderId)
+    }
+
+    func testBackspaceInsideFolderClosesFolder() {
+        let folder = appModel.createFolder(name: "Dev", appPaths: [])
+        appModel.openFolder(folder.id)
+        XCTAssertNotNil(appModel.currentFolderId)
+
+        let handled = manager.handleKeyDown(backspaceEvent())
+
+        XCTAssertTrue(handled)
+        XCTAssertNil(appModel.currentFolderId)
+    }
+
+    func testBackspaceAtRootIsNotHandled() {
+        XCTAssertNil(appModel.currentFolderId)
+
+        let handled = manager.handleKeyDown(backspaceEvent())
+
+        // At root level, Backspace isn't a launcher shortcut — let it fall through.
+        XCTAssertFalse(handled)
+        XCTAssertNil(appModel.currentFolderId)
     }
 }

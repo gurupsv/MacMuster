@@ -14,8 +14,7 @@ struct Application: Identifiable, Hashable {
     let containedApps: [String]?
     let appSize: String?
     let bundleDescription: String?
-    let isHidden: Bool
-    
+
     var lowercaseName: String { name.lowercased() }
     
     func hash(into hasher: inout Hasher) {
@@ -24,6 +23,28 @@ struct Application: Identifiable, Hashable {
     
     static func == (lhs: Application, rhs: Application) -> Bool {
         return lhs.id == rhs.id
+    }
+
+    /// Matches `query` against this app's name (substring), its path (substring — catches vendor
+    /// folder names), or as an in-order subsequence of the name (catches acronyms like "vsc").
+    func matchesSearch(_ query: String) -> Bool {
+        guard !query.isEmpty else { return true }
+        if lowercaseName.contains(query) { return true }
+        if path.lowercased().contains(query) { return true }
+        return query.isSubsequence(of: lowercaseName)
+    }
+}
+
+private extension String {
+    /// Whether every character of `self` appears in `other` in order (not necessarily contiguous).
+    /// E.g. "vsc".isSubsequence(of: "visual studio code") is true.
+    func isSubsequence(of other: String) -> Bool {
+        var searchIndex = other.startIndex
+        for char in self {
+            guard let foundIndex = other[searchIndex...].firstIndex(of: char) else { return false }
+            searchIndex = other.index(after: foundIndex)
+        }
+        return true
     }
 }
 
@@ -45,6 +66,7 @@ struct AppScanResult {
 // MARK: - AppCategory
 
 enum AppCategory: String, CaseIterable {
+    case all = "All"
     case mostUsed = "Most Used"
     case recentlyLaunched = "Recently Launched"
     case newlyInstalled = "Newly Installed"
@@ -99,3 +121,9 @@ struct AppFolder: Codable, Identifiable, Hashable {
         return lhs.id == rhs.id
     }
 }
+
+// MARK: - OverlayOpacity
+
+let kOverlayOpacityMin: Double = 0.1
+let kOverlayOpacityMax: Double = 1.0
+let kOverlayOpacityStep: Double = 0.05

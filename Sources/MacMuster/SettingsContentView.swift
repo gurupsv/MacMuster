@@ -67,7 +67,6 @@ struct SettingsContentView: View {
     }
     
     private func getVisibleSections() -> [SettingsSection] {
-        // Only show sections that are fully implemented
         return [.general, .appearance, .hiddenApps, .appDirectories, .folders]
     }
     
@@ -759,24 +758,17 @@ struct HotCornersSettingsPanel: View {
 
 struct AppearanceSettingsPanel: View {
     @Bindable var appModel: AppModel
-    @State private var selectedFontFamily: String = "SF Pro Display"
-    
-    /// Get actual system font families (cached, computed once per process)
-    private static let cachedFontFamilies: [String] = {
-        NSFontManager.shared.availableFontFamilies.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }()
-    private var systemFontFamilies: [String] { Self.cachedFontFamilies }
+
+    private static let curatedFontFamilies: [String] = [
+        "SF Pro", "SF Pro Rounded", "Helvetica Neue", "Gill Sans",
+        "Avenir", "Futura", "Optima", "Palatino",
+        "Georgia", "American Typewriter", "Verdana"
+    ]
     
     private let fontWeights = [
-        ("Thin", "thin"),
-        ("Ultra-Light", "ultralight"),
         ("Light", "light"),
         ("Regular", "normal"),
-        ("Medium", "medium"),
-        ("Semibold", "semibold"),
-        ("Bold", "bold"),
-        ("Heavy", "heavy"),
-        ("Black", "black")
+        ("Bold", "bold")
     ]
     
     var body: some View {
@@ -793,49 +785,40 @@ struct AppearanceSettingsPanel: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Font Family")
                             .font(.system(size: 14, weight: .medium))
-                Picker(selection: $selectedFontFamily) {
-                    ForEach(systemFontFamilies, id: \.self) { font in
-                        Text(font)
-                            .font(.system(size: 14, design: .default))
-                            .tag(font)
+                        Picker(selection: Binding(
+                            get: { appModel.fontFamily },
+                            set: { appModel.fontFamily = $0 }
+                        )) {
+                            ForEach(Self.curatedFontFamilies, id: \.self) { font in
+                                Text(font)
+                                    .font(.system(size: 14, design: .default))
+                                    .tag(font)
+                            }
+                        } label: {
+                            EmptyView()
+                        }
+                        .pickerStyle(.menu)
                     }
-                } label: {
-                    EmptyView()
-                }
-                .pickerStyle(.menu)
-                .onChange(of: selectedFontFamily) { _, newValue in
-                    appModel.setFontFamily(newValue)
-                }
-                .onAppear {
-                    // Use the stored font family if it exists, otherwise default to first
-                    if systemFontFamilies.contains(appModel.fontFamily) {
-                        selectedFontFamily = appModel.fontFamily
-                    } else if !systemFontFamilies.isEmpty {
-                        selectedFontFamily = systemFontFamilies[0]
-                        appModel.setFontFamily(selectedFontFamily)
-                    }
-                }
-                    }
-                    
+
                     Divider()
-                    
-                    // Font Size
+
+                    // Font Size Presets
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Font Size")
-                                .font(.system(size: 14, weight: .medium))
-                            Spacer()
-                            Text("\(Int(appModel.fontSize))")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.blue)
+                        Text("Font Size")
+                            .font(.system(size: 14, weight: .medium))
+                        Picker(selection: $appModel.fontSize) {
+                            Text("Small (12px)").tag(12.0)
+                            Text("Medium (14px)").tag(14.0)
+                            Text("Large (16px)").tag(16.0)
+                            Text("Extra Large (18px)").tag(18.0)
+                        } label: {
+                            EmptyView()
                         }
-                        Slider(value: $appModel.fontSize, in: 10...48, step: 1) {
-                            Text("Size")
-                        }
+                        .pickerStyle(.menu)
                     }
-                    
+
                     Divider()
-                    
+
                     // Font Weight
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Font Weight")
@@ -850,9 +833,6 @@ struct AppearanceSettingsPanel: View {
                             EmptyView()
                         }
                         .pickerStyle(.menu)
-                        .onChange(of: appModel.fontWeight) { _, newValue in
-                            appModel.setFontWeight(newValue)
-                        }
                     }
                 }
                 .padding(kSectionContentPadding)
@@ -906,11 +886,32 @@ struct AppearanceSettingsPanel: View {
                             EmptyView()
                         }
                         .pickerStyle(.segmented)
-                        .onChange(of: appModel.iconSize) { _, _ in
-                            appModel.setIconSize(appModel.iconSize)
-                        }
-                    }
-                }
+                         .onChange(of: appModel.iconSize) { _, _ in
+                             appModel.setIconSize(appModel.iconSize)
+                         }
+                     }
+                     
+                     Divider()
+                     
+                     // Overlay Opacity section
+                     VStack(alignment: .leading, spacing: 4) {
+                         HStack {
+                             Text("Overlay Opacity")
+                                 .font(.system(size: 14, weight: .medium))
+                             Spacer()
+                             Text("\(Int(appModel.overlayOpacity * 100))%")
+                                 .font(.system(size: 12, weight: .semibold))
+                                 .foregroundStyle(.blue)
+                         }
+                         Text("Window transparency level")
+                             .font(.system(size: 12))
+                             .foregroundStyle(.secondary)
+                         
+                         Slider(value: $appModel.overlayOpacity, in: kOverlayOpacityMin...kOverlayOpacityMax, step: kOverlayOpacityStep) { _ in
+                             // Opacity is clamped in AppModel
+                         }
+                     }
+                 }
                 .padding(kSectionContentPadding)
                 .background(Color(nsColor: .textBackgroundColor))
                 .cornerRadius(kSectionContentCornerRadius)
@@ -931,15 +932,9 @@ struct AppearanceSettingsPanel: View {
     
     private func weightFromString(_ weight: String) -> Font.Weight {
         switch weight {
-        case "thin": return .thin
-        case "ultralight": return .ultraLight
         case "light": return .light
         case "normal": return .regular
-        case "medium": return .medium
-        case "semibold": return .semibold
         case "bold": return .bold
-        case "heavy": return .heavy
-        case "black": return .black
         default: return .regular
         }
     }
@@ -962,30 +957,22 @@ struct SpacesSettingsPanel: View {
 struct HiddenAppsSettingsPanel: View {
     @Bindable var appModel: AppModel
     @State private var searchText: String = ""
-    
-    private var allApps: [Application] {
+    @State private var allApps: [Application] = []
+    @State private var totalHiddenCount: Int = 0
+
+    private func recomputeFilteredApps() {
         if searchText.isEmpty {
-            return appModel.displayOrder
+            allApps = appModel.displayOrder
+        } else {
+            let lower = searchText.lowercased()
+            allApps = appModel.displayOrder.filter {
+                $0.name.lowercased().contains(lower)
+                || $0.path.lowercased().contains(lower)
+            }
         }
-        let lower = searchText.lowercased()
-        return appModel.displayOrder.filter {
-            $0.name.lowercased().contains(lower)
-            || $0.path.lowercased().contains(lower)
-        }
+        totalHiddenCount = appModel.displayOrder.filter { appModel.isAppHidden($0.path) }.count
     }
-    
-    private var hiddenApps: [Application] {
-        allApps.filter { $0.isHidden }
-    }
-    
-    private var visibleApps: [Application] {
-        allApps.filter { !$0.isHidden }
-    }
-    
-    private var totalHiddenCount: Int {
-        appModel.displayOrder.filter { $0.isHidden }.count
-    }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Header
@@ -1050,6 +1037,10 @@ struct HiddenAppsSettingsPanel: View {
                 }
             }
         }
+        .onAppear { recomputeFilteredApps() }
+        .onChange(of: searchText) { recomputeFilteredApps() }
+        .onChange(of: appModel.displayOrder) { recomputeFilteredApps() }
+        .onChange(of: appModel.hiddenAppPaths) { recomputeFilteredApps() }
     }
 }
 
@@ -1064,9 +1055,9 @@ struct HiddenAppRow: View {
         HStack(spacing: 10) {
             // Checkbox
             Button(action: onToggle) {
-                Image(systemName: app.isHidden ? "checkmark.square.fill" : "square")
+                Image(systemName: appModel.isAppHidden(app.path) ? "checkmark.square.fill" : "square")
                     .font(.system(size: 16))
-                    .foregroundStyle(app.isHidden ? .blue : .secondary)
+                    .foregroundStyle(appModel.isAppHidden(app.path) ? .blue : .secondary)
                     .frame(width: 20, height: 20)
             }
             .buttonStyle(.plain)
@@ -1100,7 +1091,7 @@ struct HiddenAppRow: View {
                 .background(Color(nsColor: .textBackgroundColor).opacity(0.5), in: Capsule())
             
             // Hidden indicator
-            if app.isHidden {
+            if appModel.isAppHidden(app.path) {
                 Image(systemName: "eye.slash")
                     .font(.system(size: 10))
                     .foregroundStyle(.red.opacity(0.7))
@@ -1125,7 +1116,7 @@ struct HiddenAppRow: View {
         switch appModel.getCategory(for: app) {
         case .system: return "System"
         case .utilities: return "Utilities"
-        case .user, .mostUsed, .recentlyLaunched, .newlyInstalled: return "User"
+        case .user, .mostUsed, .recentlyLaunched, .newlyInstalled, .all: return "User"
         }
     }
 }

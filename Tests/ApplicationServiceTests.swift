@@ -15,12 +15,7 @@ final class ApplicationServiceTests: XCTestCase {
         let service = ApplicationService.shared
         let appModel = AppModel()
 
-        let app = AppModel.Application(
-            name: "TestApp",
-            path: "/Applications/TestApp.app",
-            icon: nil,
-            installationDate: Date()
-        )
+        let app = Application(id: "/Applications/TestApp.app", name: "TestApp", path: "/Applications/TestApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         XCTAssertFalse(appModel.isRecentApp(app.path))
@@ -35,12 +30,7 @@ final class ApplicationServiceTests: XCTestCase {
         let service = ApplicationService.shared
         let appModel = AppModel()
 
-        let app = AppModel.Application(
-            name: "Finder",
-            path: "/Applications/FinderTest.app",
-            icon: nil,
-            installationDate: Date()
-        )
+        let app = Application(id: "/Applications/FinderTest.app", name: "Finder", path: "/Applications/FinderTest.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         XCTAssertFalse(appModel.isRecentApp(app.path))
@@ -56,12 +46,7 @@ final class ApplicationServiceTests: XCTestCase {
         let service = ApplicationService.shared
         let appModel = AppModel()
 
-        let app = AppModel.Application(
-            name: "NonExistent",
-            path: "/Applications/NonExistentTest.app",
-            icon: nil,
-            installationDate: Date()
-        )
+        let app = Application(id: "/Applications/NonExistentTest.app", name: "NonExistent", path: "/Applications/NonExistentTest.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         XCTAssertFalse(appModel.isRecentApp(app.path))
@@ -87,12 +72,7 @@ final class ApplicationServiceTests: XCTestCase {
         let service = ApplicationService.shared
         let appModel = AppModel()
 
-        let app = AppModel.Application(
-            name: "Finder",
-            path: "/Applications/FinderTest.app",
-            icon: nil,
-            installationDate: Date()
-        )
+        let app = Application(id: "/Applications/FinderTest.app", name: "Finder", path: "/Applications/FinderTest.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         let didLaunch = service.launchApplication(at: app.path, appModel: nil)

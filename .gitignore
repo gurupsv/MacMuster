@@ -129,6 +129,11 @@ fastlane/
 .env.local
 .env.*.local
 
+# Development tool files
+.venvstudio_env
+opencode.json
+.opencode/
+
 # Node modules (if using any Node.js tools)
 node_modules/
 

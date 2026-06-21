@@ -19,6 +19,12 @@ class AppModel {
     var appMetadataCache: [String: AppMetadata] = [:]
     var displayOrder: [Application] = []
     private var appPathIndex: [String: Application] = [:] // Optimization P2: Path -> App lookup index
+    // Icons loaded by path, read directly by AppIconView. Application.== only compares `id`
+    // (the path), so reassigning displayOrder with just icons filled in looks "unchanged" to
+    // @Observable and won't reliably wake up views that captured an `Application` value before
+    // its icon loaded. Views read icons from here instead, so they react independently of
+    // whether displayOrder's own change notification fires.
+    var loadedIconsByPath: [String: NSImage] = [:]
     private var dataVersion: Int = 0 // Track changes to displayOrder for cache invalidation
 
     // Optimization P1: Scan caching to avoid redundant disk I/O every 5 minutes
@@ -67,8 +73,22 @@ class AppModel {
     var scrollTargetIndex: Int?
     var scrollTargetAnchor: ScrollAnchor?
     var searchTerm: String = "" {
-        didSet { dataVersion += 1 }
+        didSet {
+            guard searchTerm != oldValue else { return }
+            searchDebounceTask?.cancel()
+            if searchTerm.isEmpty {
+                // Clearing the search should feel instant rather than waiting out the debounce.
+                dataVersion += 1
+            } else {
+                searchDebounceTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: kSearchDebounceNanoseconds)
+                    guard !Task.isCancelled, let self else { return }
+                    self.dataVersion += 1
+                }
+            }
+        }
     }
+    private var searchDebounceTask: Task<Void, Never>?
     var fontFamily: String = "SF Pro" {
         didSet {
             PreferencesStore.shared.saveFontFamily(fontFamily)
@@ -94,7 +114,7 @@ class AppModel {
             PreferencesStore.shared.saveIconSize(iconSize.rawValue)
         }
     }
-    var selectedCategory: AppCategory = .user {
+    var selectedCategory: AppCategory = .all {
         didSet {
             dataVersion += 1
             selectedAppIndex = -1
@@ -102,9 +122,7 @@ class AppModel {
     }
     var categoryCounts: [AppCategory: Int] = [:]
     var _mostUsedApps: [Application] = []
-    var mostUsedDirty: Bool = true
     var _recentlyLaunchedApps: [Application] = []
-    var recentlyLaunchedDirty: Bool = true
     var customOrder: [String: Int] = [:] {
         didSet {
             dataVersion += 1
@@ -170,6 +188,15 @@ class AppModel {
         }
     }
 
+    // MARK: - Overlay Opacity Settings
+    var overlayOpacity: Double = kOverlayOpacityDefault {
+        didSet {
+            if overlayOpacity < kOverlayOpacityMin { overlayOpacity = kOverlayOpacityMin }
+            if overlayOpacity > kOverlayOpacityMax { overlayOpacity = kOverlayOpacityMax }
+            PreferencesStore.shared.saveOverlayOpacity(overlayOpacity)
+        }
+    }
+
     // MARK: - Timer & Observers
     private var refreshTimer: Timer?
 
@@ -183,6 +210,9 @@ class AppModel {
         pressFeedbackEnabled = PreferencesStore.shared.loadPressFeedbackEnabled()
         loadCustomDirectories()
         loadFontFamily()
+        if let opacityRaw = PreferencesStore.shared.loadOverlayOpacity() {
+            overlayOpacity = max(kOverlayOpacityMin, min(kOverlayOpacityMax, opacityRaw))
+        }
     }
 
     /// Start loading applications asynchronously. Called from the view's `.task` modifier
@@ -190,21 +220,22 @@ class AppModel {
     @MainActor
     func startLoading() async {
         guard isLoading else { return }
-        defer { isLoading = false }
-        
-        let hiddenPaths = hiddenAppPaths
+
         let allDirs = allScanDirectories
-        
-        let result = ApplicationScanner.shared.scanDirectories(directories: allDirs, hiddenPaths: hiddenPaths)
-        
+
+        let result = ApplicationScanner.shared.scanDirectories(directories: allDirs)
+
         self.appMetadataCache = result.metadata
         self.displayOrder = self.sortedApplications(result.apps)
-        
+
         rebuildAppPathIndex()
-        
+
         dataVersion += 1
         self.updateFilteredApps()
         self.setupRefreshTimer()
+        // Show the grid now (with placeholder icons) instead of blocking on every icon decode —
+        // loadMissingIcons() below fills them in afterward, prioritizing the first screenful.
+        isLoading = false
         await self.loadMissingIcons()
         // Refresh recent apps so _recentApps gets icon-populated Application structs
         self.updateRecentApps()
@@ -309,7 +340,8 @@ class AppModel {
             fontFamily = font
         }
         if let size = PreferencesStore.shared.loadFontSize() {
-            fontSize = size
+            let validSizes: [Double] = [12.0, 14.0, 16.0, 18.0]
+            fontSize = validSizes.contains(size) ? size : 14.0
         }
         if let weight = PreferencesStore.shared.loadFontWeight() {
             fontWeight = weight
@@ -408,14 +440,32 @@ class AppModel {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
+    /// Loads icons in two passes: the first screenful's worth of apps first (so the grid looks
+    /// fully populated almost immediately), then the remainder in the background.
     private func loadMissingIcons() async {
-        let loadedIcons = await IconService.shared.loadMissingIcons(for: displayOrder)
-        guard !loadedIcons.isEmpty else { return }
-        
+        let priorityApps = Array(displayOrder.prefix(kPriorityIconLoadCount))
+        let priorityIcons = await IconService.shared.loadMissingIcons(for: priorityApps)
+        if !priorityIcons.isEmpty {
+            applyLoadedIcons(priorityIcons)
+        }
+
+        let remainingApps = Array(displayOrder.dropFirst(kPriorityIconLoadCount))
+        guard !remainingApps.isEmpty else { return }
+        let remainingIcons = await IconService.shared.loadMissingIcons(for: remainingApps)
+        if !remainingIcons.isEmpty {
+            applyLoadedIcons(remainingIcons)
+        }
+    }
+
+    private func applyLoadedIcons(_ loadedIcons: [(String, NSImage)]) {
         // Mutate displayOrder in-place (icon is var) — no full array rebuild
         displayOrder = IconService.shared.updateIconsInPlace(for: displayOrder, with: loadedIcons)
-        
+        for (path, icon) in loadedIcons {
+            loadedIconsByPath[path] = icon
+        }
+
         rebuildAppPathIndex()
+        dataVersion += 1
         cachedVisibleApps = nil
         cachedDisplayedApps = nil
         // Refresh folder icons now that app icons are available
@@ -429,17 +479,22 @@ class AppModel {
         }
     }
 
-    private func updateFilteredApps() {
+    // internal (not private) so AppModelTests can trigger a recompute directly via @testable import.
+    func updateFilteredApps() {
         var counts: [AppCategory: Int] = [:]
         let visible = visibleApplications
         for app in visible {
             let cat = getCategory(for: app)
             counts[cat, default: 0] += 1
         }
-        // Use actual counts for smart categories; they will be 0 until implemented (A-3)
-        counts[.mostUsed] = _mostUsedApps.count
-        counts[.recentlyLaunched] = _recentlyLaunchedApps.count
-        counts[.newlyInstalled] = 0 // To be implemented
+        // .utilities is intentionally folded into .user by getCategory (see AppModelTests) — always 0.
+        counts[.utilities] = 0
+        counts[.all] = visible.count
+        // Smart categories are independent memberships, counted against the visible set.
+        let visiblePaths = Set(visible.map(\.path))
+        counts[.mostUsed] = _mostUsedApps.filter { visiblePaths.contains($0.path) }.count
+        counts[.recentlyLaunched] = _recentlyLaunchedApps.filter { visiblePaths.contains($0.path) }.count
+        counts[.newlyInstalled] = visible.filter { isNewlyInstalled($0) }.count
         categoryCounts = counts
     }
 
@@ -451,7 +506,6 @@ class AppModel {
     // MARK: - Refresh & Updates
     // Changed from private to internal so AppDelegate/Views can trigger manual refreshes if needed
     func refreshDisplayOrder() async {
-        let hiddenPaths = hiddenAppPaths
         let allDirs = allScanDirectories
         
         // P6: Stat every directory exactly once; reuse the result for both the staleness check
@@ -472,8 +526,8 @@ class AppModel {
             }
         }
         
-        let result = ApplicationScanner.shared.scanDirectories(directories: allDirs, hiddenPaths: hiddenPaths)
-        
+        let result = ApplicationScanner.shared.scanDirectories(directories: allDirs)
+
         scanCache = ScanCache(apps: result.apps, metadata: result.metadata, dirMtimes: currentMtimes, timestamp: Date())
         
         self.appMetadataCache = result.metadata
@@ -499,6 +553,10 @@ class AppModel {
     func recordAppLaunch(at path: String) {
         RecentAppsTracker.shared.recordAppLaunch(at: path)
         updateRecentApps()
+        // _mostUsedApps/_recentlyLaunchedApps just changed — invalidate the displayed-apps cache
+        // and refresh tab counts so Most Used / Recently Launched reflect the new ranking immediately.
+        dataVersion += 1
+        updateFilteredApps()
     }
     
     private func loadRecentLaunchTimes() {
@@ -517,6 +575,14 @@ class AppModel {
     private func updateRecentApps() {
         let recentPaths = RecentAppsTracker.shared.getRecentPaths()
         _recentApps = recentPaths.compactMap { appPathIndex[$0] }
+        // "Recently Launched" category mirrors the same recency-ranked data shown in the Recent section.
+        _recentlyLaunchedApps = _recentApps
+        updateMostUsedApps()
+    }
+
+    private func updateMostUsedApps() {
+        let mostUsedPaths = RecentAppsTracker.shared.getMostUsedPaths(limit: kMaxRecentApps)
+        _mostUsedApps = mostUsedPaths.compactMap { appPathIndex[$0] }
     }
 
     // MARK: - Navigation & Selection
@@ -663,6 +729,38 @@ class AppModel {
         return .user
     }
 
+    // MARK: - Smart Category Membership
+    // These are independent of getCategory(for:) since an app can belong to a smart
+    // category (e.g. Most Used) in addition to its base System/User category.
+
+    func isMostUsed(_ app: Application) -> Bool {
+        _mostUsedApps.contains { $0.path == app.path }
+    }
+
+    func isRecentlyLaunched(_ app: Application) -> Bool {
+        _recentlyLaunchedApps.contains { $0.path == app.path }
+    }
+
+    func isNewlyInstalled(_ app: Application) -> Bool {
+        Date().timeIntervalSince(app.installationDate) < kNewlyInstalledWindowSeconds
+    }
+
+    /// Whether `app` matches the currently selected category tab (base or smart).
+    func matchesSelectedCategory(_ app: Application) -> Bool {
+        switch selectedCategory {
+        case .all:
+            return true
+        case .system, .utilities, .user:
+            return getCategory(for: app) == selectedCategory
+        case .mostUsed:
+            return isMostUsed(app)
+        case .recentlyLaunched:
+            return isRecentlyLaunched(app)
+        case .newlyInstalled:
+            return isNewlyInstalled(app)
+        }
+    }
+
     func removeCustomDirectory(_ path: String) {
         customDirectories.removeAll { $0 == path }
         Task { await refreshDisplayOrder() }
@@ -793,25 +891,15 @@ class AppModel {
             // - apps that belong to a folder are hidden behind the folder icon
             var looseApps = visibleApplications.filter { !appsInAnyFolder.contains($0.path) }
             
-            // Apply category filter (system/utilities/user tabs only; smart tabs show all until implemented)
-            switch selectedCategory {
-            case .system, .utilities, .user:
-                looseApps = looseApps.filter { getCategory(for: $0) == selectedCategory }
-            case .mostUsed, .recentlyLaunched, .newlyInstalled:
-                break
-            }
-            
+            // Apply category filter (base categories check getCategory; smart categories check membership)
+            looseApps = looseApps.filter { matchesSelectedCategory($0) }
+
             // Build folder icons, but only for folders that have at least one visible app
             // matching the current category filter
             let folderIcons: [Application] = folders.compactMap { folder in
                 let hasVisible = folder.appPaths.contains { path in
                     guard !hiddenAppPaths.contains(path), let app = appPathIndex[path] else { return false }
-                    switch selectedCategory {
-                    case .system, .utilities, .user:
-                        return getCategory(for: app) == selectedCategory
-                    default:
-                        return true
-                    }
+                    return matchesSelectedCategory(app)
                 }
                 return hasVisible ? getFolderApplication(folder) : nil
             }
@@ -828,24 +916,26 @@ class AppModel {
                 // Root-level search: match against ALL visible apps (loose + inside folders).
                 // This lets the user find an app regardless of which folder it was moved to.
                 // Folder icons are not included — results are the actual apps.
-                result = sortedApplications(visibleApplications.filter { $0.lowercaseName.contains(lower) })
+                result = sortedApplications(visibleApplications.filter { $0.matchesSearch(lower) })
             } else {
                 // Inside a folder: filter the folder's apps by name
-                var filtered = baseApps.filter { $0.lowercaseName.contains(lower) }
+                var filtered = baseApps.filter { $0.matchesSearch(lower) }
                 filtered = sortedApplications(filtered)
                 result = filtered
             }
         } else {
             // No search — display baseApps with optional folder-first ordering
             var ordered = baseApps
+            var folderFirstApplied = false
             if showFoldersFirst && !ordered.isEmpty {
                 let folderApps    = ordered.filter { $0.isFolder }
                 let nonFolderApps = ordered.filter { !$0.isFolder }
                 if !folderApps.isEmpty && !nonFolderApps.isEmpty {
                     ordered = folderApps + nonFolderApps
+                    folderFirstApplied = true
                 }
             }
-            
+
             if !customOrder.isEmpty {
                 result = ordered.sorted {
                     let a = customOrder[$0.path], b = customOrder[$1.path]
@@ -856,20 +946,12 @@ class AppModel {
                     case (let av?, let bv?): return av < bv
                     }
                 }
+            } else if folderFirstApplied {
+                // Already grouped folders-first above; re-filtering here would just reproduce
+                // the same array.
+                result = ordered
             } else {
-                // When showFoldersFirst is enabled, preserve the folder-first arrangement
-                // Otherwise use default alphabetical sorting
-                if showFoldersFirst && !ordered.isEmpty {
-                    let folderApps    = ordered.filter { $0.isFolder }
-                    let nonFolderApps = ordered.filter { !$0.isFolder }
-                    if !folderApps.isEmpty && !nonFolderApps.isEmpty {
-                        result = folderApps + nonFolderApps
-                    } else {
-                        result = sortedApplications(ordered)
-                    }
-                } else {
-                    result = sortedApplications(ordered)
-                }
+                result = sortedApplications(ordered)
             }
         }
         

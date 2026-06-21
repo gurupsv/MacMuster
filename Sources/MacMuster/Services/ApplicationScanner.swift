@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Darwin
 
 /// Handles scanning directories for .app bundles and resolving Bundle metadata.
 nonisolated final class ApplicationScanner: @unchecked Sendable {
@@ -11,8 +12,10 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         let metadata: [String: AppMetadata]
     }
     
-    /// Scans the given directories for .app bundles, excluding hidden paths.
-    nonisolated func scanDirectories(directories: [String], hiddenPaths: Set<String>) -> ScanResult {
+    /// Scans the given directories for .app bundles. Hidden apps are still scanned and
+    /// returned — visibility filtering happens in AppModel so a hidden app can be found
+    /// again later and un-hidden.
+    nonisolated func scanDirectories(directories: [String]) -> ScanResult {
         var apps: [Application] = []
         var metadata: [String: AppMetadata] = [:]
         var seenPaths: Set<String> = []
@@ -25,7 +28,7 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
                 let fullPath = (dir as NSString).appendingPathComponent(item)
                 guard !seenPaths.contains(fullPath) else { continue }
                 seenPaths.insert(fullPath)
-                guard FileManager.default.fileExists(atPath: fullPath), !hiddenPaths.contains(fullPath) else { continue }
+                guard FileManager.default.fileExists(atPath: fullPath) else { continue }
                 
                 let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath)
                 let fileType = (attributes?[.type] as? FileAttributeType) ?? .typeRegular
@@ -56,19 +59,18 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
                         isFolder: false,
                         containedApps: containedApps,
                         appSize: size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
-                        bundleDescription: bundle?.infoDictionary?["CFBundleShortVersionString"] as? String,
-                        isHidden: false
+                        bundleDescription: bundle?.infoDictionary?["CFBundleShortVersionString"] as? String
                     ))
-                    
+
                     metadata[fullPath] = AppMetadata(
                         modificationDate: date,
                         size: size,
                         bundleIdentifier: bundle?.bundleIdentifier
                     )
-                    
+
                     if let nestedApps = containedApps {
                         for nestedFullPath in nestedApps {
-                            guard FileManager.default.fileExists(atPath: nestedFullPath), !hiddenPaths.contains(nestedFullPath) else { continue }
+                            guard FileManager.default.fileExists(atPath: nestedFullPath) else { continue }
                             guard !seenPaths.contains(nestedFullPath) else { continue }
                             seenPaths.insert(nestedFullPath)
                             
@@ -90,8 +92,7 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
                                 isFolder: false,
                                 containedApps: nil,
                                 appSize: nestedSize.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
-                                bundleDescription: nestedBundle?.infoDictionary?["CFBundleShortVersionString"] as? String,
-                                isHidden: false
+                                bundleDescription: nestedBundle?.infoDictionary?["CFBundleShortVersionString"] as? String
                             ))
                             
                             metadata[nestedFullPath] = AppMetadata(
@@ -112,10 +113,9 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
                         isFolder: isFolder,
                         containedApps: containedApps,
                         appSize: size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
-                        bundleDescription: bundle?.infoDictionary?["CFBundleShortVersionString"] as? String,
-                        isHidden: false
+                        bundleDescription: bundle?.infoDictionary?["CFBundleShortVersionString"] as? String
                     ))
-                    
+
                     metadata[fullPath] = AppMetadata(
                         modificationDate: date,
                         size: size,
@@ -169,17 +169,30 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         return appBundles.isEmpty ? nil : appBundles
     }
     
-    /// Checks if a custom directory is valid (absolute, directory, not world-writable).
+    /// Checks if a custom directory is valid (absolute, directory, not world-writable, not a symlink, owned by user).
     static func isValidCustomDirectory(_ path: String) -> Bool {
         guard path.hasPrefix("/") else { return false }
         let fm = FileManager.default
+
+        // Reject symlinks to prevent directory traversal attacks
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { return false }
-        if let attrs = try? fm.attributesOfItem(atPath: path),
-           let posixPerms = attrs[.posixPermissions] as? Int,
-           (posixPerms & 0o002) != 0 {
-            return false
+
+        // Check it's not a symlink by comparing resolved path
+        let resolvedPath = (path as NSString).resolvingSymlinksInPath
+        guard resolvedPath == path else { return false }
+
+        // Reject if world-writable
+        guard let attrs = try? fm.attributesOfItem(atPath: path),
+              let posixPerms = attrs[.posixPermissions] as? Int,
+              (posixPerms & 0o002) == 0 else { return false }
+
+        // Reject if not owned by current user (prevents privilege escalation via shared writable dirs)
+        if let ownerID = attrs[.ownerAccountID] as? NSNumber {
+            let currentUID = getuid()
+            guard ownerID.uintValue == currentUID else { return false }
         }
+
         return true
     }
     
