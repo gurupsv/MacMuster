@@ -9,32 +9,34 @@ final class IconService {
     
     func generateFolderIcon(_ apps: [Application], for folderId: String? = nil, gridSize: Int = 3) -> NSImage? {
         guard !apps.isEmpty else { return nil }
-        
+
         // Check cache first
         if let folderId = folderId, let cached = folderIconCache.object(forKey: folderId as NSString) {
             return cached
         }
-        
+
         let iconSize: CGFloat = 120
         let cellSize = iconSize / CGFloat(gridSize)
-        let image = NSImage(size: NSSize(width: iconSize, height: iconSize))
-        
-        image.lockFocus()
-        defer { image.unlockFocus() }
-        let clipPath = NSBezierPath(roundedRect: NSRect(origin: .zero, size: NSSize(width: iconSize, height: iconSize)), xRadius: 20, yRadius: 20)
-        clipPath.addClip()
-        
-        let workspace = NSWorkspace.shared
-        for index in 0..<min(apps.count, gridSize * gridSize) {
-            let row = index / gridSize
-            let col = index % gridSize
-            let icon = apps[index].icon ?? workspace.icon(forFile: apps[index].path)
-            let rect = NSRect(x: CGFloat(col) * cellSize,
-                              y: CGFloat(gridSize - 1 - row) * cellSize,
-                              width: cellSize, height: cellSize)
-            icon.draw(in: rect, from: NSRect.zero, operation: .copy, fraction: 1.0)
+        let size = NSSize(width: iconSize, height: iconSize)
+
+        // Use NSImage(size:flipped:drawingHandler:) instead of lockFocus/unlockFocus — safer and more modern.
+        let image = NSImage(size: size, flipped: false) { rect -> Bool in
+            let clipPath = NSBezierPath(roundedRect: rect, xRadius: 20, yRadius: 20)
+            clipPath.addClip()
+
+            let workspace = NSWorkspace.shared
+            for index in 0..<min(apps.count, gridSize * gridSize) {
+                let row = index / gridSize
+                let col = index % gridSize
+                let icon = apps[index].icon ?? workspace.icon(forFile: apps[index].path)
+                let cellRect = NSRect(x: CGFloat(col) * cellSize,
+                                      y: CGFloat(gridSize - 1 - row) * cellSize,
+                                      width: cellSize, height: cellSize)
+                icon.draw(in: cellRect, from: NSRect.zero, operation: .copy, fraction: 1.0)
+            }
+            return true
         }
-        
+
         // Store to cache so subsequent calls hit the fast path
         if let folderId = folderId {
             folderIconCache.setObject(image, forKey: folderId as NSString)

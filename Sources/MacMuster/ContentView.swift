@@ -21,6 +21,8 @@ struct ContentView: View {
     @State private var isSearchExpanded: Bool = false
     @State private var isDraggingAppPath: String? = nil
     @State private var pressedAppPath: String? = nil
+    @State private var launchingAppPath: String? = nil
+    @State private var showKeyboardHint = false
     
     private var gridColumns: [GridItem] {
         let count = appModel.columnCount
@@ -64,8 +66,8 @@ struct ContentView: View {
                     Spacer()
                         .frame(height: 20)
                     
-                    // Keyboard hints pill (above categories, shown only on first launch)
-                    if !visibleApps.isEmpty && !appModel.hasShownLauncher {
+                    // Keyboard hints pill (shown on first launch, or when Help button is clicked)
+                    if !visibleApps.isEmpty && (!appModel.hasShownLauncher || showKeyboardHint) {
                         HStack(spacing: 10) {
                             HStack(spacing: 4) {
                                 Image(systemName: "keyboard.fill")
@@ -120,6 +122,27 @@ struct ContentView: View {
 
                             searchIconButton
 
+                            Button(action: {
+                                if appModel.shouldReduceMotion {
+                                    showKeyboardHint.toggle()
+                                } else {
+                                    withAnimation(.easeInOut(duration: 0.2)) { showKeyboardHint.toggle() }
+                                }
+                            }) {
+                                Image(systemName: "questionmark.circle")
+                                    .font(.body)
+                                    .foregroundStyle(showKeyboardHint ? Color.primary : Color.secondary)
+                                    .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
+                                    .background(
+                                        Circle()
+                                            .fill(showKeyboardHint ? Color.primary.opacity(0.15) : Color.clear)
+                                    )
+                                    .background(.ultraThinMaterial, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .help("Keyboard shortcuts")
+                            .accessibilityLabel("Show keyboard shortcuts")
+
                             Button {
                                 newFolderName = "Folder"
                                 selectedAppPathsForFolder = []
@@ -165,6 +188,27 @@ struct ContentView: View {
                             Spacer()
 
                             searchIconButton
+
+                            Button(action: {
+                                if appModel.shouldReduceMotion {
+                                    showKeyboardHint.toggle()
+                                } else {
+                                    withAnimation(.easeInOut(duration: 0.2)) { showKeyboardHint.toggle() }
+                                }
+                            }) {
+                                Image(systemName: "questionmark.circle")
+                                    .font(.body)
+                                    .foregroundStyle(showKeyboardHint ? Color.primary : Color.secondary)
+                                    .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
+                                    .background(
+                                        Circle()
+                                            .fill(showKeyboardHint ? Color.primary.opacity(0.15) : Color.clear)
+                                    )
+                                    .background(.ultraThinMaterial, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .help("Keyboard shortcuts")
+                            .accessibilityLabel("Show keyboard shortcuts")
 
                             Menu {
                                 ForEach(ApplicationSorter.SortOption.allCases, id: \.self) { option in
@@ -229,11 +273,13 @@ struct ContentView: View {
                             ))
                     }
                     
-                      // Recent Apps Section
+                      // Recent Apps Section (filtered to exclude apps already shown in main grid)
                       if appModel.showRecentApps {
                           let recentApps = appModel.getRecentApps()
-                          if !recentApps.isEmpty {
-                              let recentAppsToShow = Array(recentApps.prefix(appModel.columnCount))
+                          let displayedAppPaths = Set(displayedApps.map(\.path))
+                          let uniqueRecentApps = recentApps.filter { !displayedAppPaths.contains($0.path) }
+                          if !uniqueRecentApps.isEmpty {
+                              let recentAppsToShow = Array(uniqueRecentApps.prefix(appModel.columnCount))
                               SectionView(appModel: appModel, title: "Recent", apps: recentAppsToShow, columns: gridColumns) { app in
                                   if ApplicationService.shared.launchApplication(at: app.path, appModel: appModel) {
                                       StatusBarManager.shared.hideWindow()
@@ -444,7 +490,11 @@ spacing: kGridSpacing
     // MARK: - Search Icon Button
     private var searchIconButton: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.2)) { isSearchExpanded.toggle() }
+            if appModel.shouldReduceMotion {
+                isSearchExpanded.toggle()
+            } else {
+                withAnimation(.easeInOut(duration: 0.2)) { isSearchExpanded.toggle() }
+            }
             if isSearchExpanded { isSearchFocused = true }
         } label: {
             Image(systemName: "magnifyingglass")
@@ -473,6 +523,8 @@ spacing: kGridSpacing
     private func gridItemView(app: Application, isSelected: Bool) -> some View {
         let isDropTarget = isDraggingAppPath == app.path
         let isPressed = pressedAppPath == app.path
+        let isLaunching = launchingAppPath == app.path
+
         AppIconView(
             appModel: appModel,
             app: app,
@@ -485,6 +537,9 @@ spacing: kGridSpacing
         .id(app.path)
         .accessibilityLabel(accessibilityLabel(for: app))
         .accessibilityAddTraits(.isButton)
+        .scaleEffect(isLaunching ? 0.95 : 1.0)
+        .opacity(isLaunching ? 0.7 : 1.0)
+        .animation(appModel.shouldReduceMotion ? .none : .easeInOut(duration: 0.2), value: isLaunching)
         .onHover { isHovered in
             hoveredAppPath = isHovered ? app.path : nil
         }
@@ -520,19 +575,20 @@ spacing: kGridSpacing
     }
 
     private func handleAppTap(_ app: Application) {
-        if app.path.hasPrefix("folder:") {
-            let folderPath = app.path.dropFirst(7) // Remove "folder:"
-            let folderId = String(folderPath)
+        if let folderId = app.folderId {
             if appModel.currentFolderId != folderId {
                 appModel.openFolder(folderId)
             }
         } else {
-            // Record the launch for recent apps
+            // Show launch animation before launching
+            launchingAppPath = app.path
             appModel.recordAppLaunch(at: app.path)
-            // Launch the application asynchronously to avoid blocking the UI
             Task {
+                // Wait for animation to show
+                try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
                 let launched = ApplicationService.shared.launchApplication(at: app.path, appModel: nil)
                 await MainActor.run {
+                    launchingAppPath = nil
                     if launched {
                         StatusBarManager.shared.hideWindow()
                     }
@@ -546,31 +602,32 @@ spacing: kGridSpacing
         if droppedPath == targetApp.path {
             return
         }
-        
+
+        // The dragged payload is just a raw path string, not an Application, so we can't read
+        // `.folderId` off it directly — look it up against known folder ids instead (a folder's
+        // `path` is exactly its `AppFolder.id`, see FolderStore.getFolderApplication).
+        let isDroppedPathAFolder = appModel.folders.contains { $0.id == droppedPath }
+
         // If dropping on a folder icon, add the dropped app to that folder
-        if targetApp.path.hasPrefix("folder:") {
-            let folderId = String(targetApp.path.dropFirst(7))
+        if let targetFolderId = targetApp.folderId {
             // Only add if it's not already in the folder and it's a valid app
-            if !droppedPath.hasPrefix("folder:") {
-                appModel.addAppToFolder(droppedPath, folderId: folderId)
+            if !isDroppedPathAFolder {
+                appModel.addAppToFolder(droppedPath, folderId: targetFolderId)
             }
             return
         }
-        
+
         // If dragging a folder icon (shouldn't happen in normal usage, but handle it)
-        if droppedPath.hasPrefix("folder:") {
+        if isDroppedPathAFolder {
             // If dropping folder on app, add app to folder
-            if !targetApp.path.hasPrefix("folder:") {
-                let folderId = String(droppedPath.dropFirst(7))
-                appModel.addAppToFolder(targetApp.path, folderId: folderId)
-            }
+            appModel.addAppToFolder(targetApp.path, folderId: droppedPath)
             // If dropping folder on folder, do nothing (or could merge folders)
             return
         }
-        
+
         // If neither is a folder, dropping app on app should create a new folder
         // This matches the requirement: "dropping an application on another should create new Directory"
-        if !targetApp.path.hasPrefix("folder:") && !droppedPath.hasPrefix("folder:") {
+        if !targetApp.isFolder {
             // Set up to create new folder with both apps
             selectedAppPathsForFolder = [droppedPath, targetApp.path]
             newFolderName = "Folder"
@@ -612,9 +669,7 @@ spacing: kGridSpacing
     // MARK: - Context Menu Extraction (Fixes compiler timeout)
     @ViewBuilder
     private func folderContextMenu(_ app: Application) -> some View {
-        if app.path.hasPrefix("folder:") {
-            let folderPath = app.path.dropFirst(7)
-            let folderId = String(folderPath)
+        if let folderId = app.folderId {
             if let folder = appModel.folders.first(where: { $0.id == folderId }) {
                 Menu {
                     ForEach(folder.appPaths, id: \.self) { appPath in
@@ -839,6 +894,7 @@ struct AppIconView: View {
             .lineLimit(2)
             .frame(maxWidth: .infinity)
             .foregroundStyle(.primary)
+            .help(app.name)
     }
 
     private func getFontForAppName() -> Font {

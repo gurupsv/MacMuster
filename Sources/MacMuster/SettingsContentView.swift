@@ -6,6 +6,7 @@ import SwiftUI
 struct SettingsContentView: View {
     @Bindable var appModel: AppModel
     @State private var selectedSection: SettingsSection = .general
+    @State private var showRefreshComplete = false
     
     var body: some View {
         HStack(spacing: 0) {
@@ -19,11 +20,33 @@ struct SettingsContentView: View {
                 .frame(width: 1)
             
             // Content area
-            VStack(spacing: 0) {
-                settingsHeader
-                settingsContent
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                settingsFooter
+            ZStack {
+                VStack(spacing: 0) {
+                    settingsHeader
+                    settingsContent
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    settingsFooter
+                }
+
+                // Toast notification for refresh completion
+                if showRefreshComplete {
+                    VStack {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text("Apps refreshed")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color(nsColor: .controlBackgroundColor))
+                        .cornerRadius(6)
+                        .shadow(radius: 2)
+
+                        Spacer()
+                    }
+                    .padding(16)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -125,7 +148,7 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: kSectionSpacing) {
                 switch selectedSection {
                 case .general:
-                    GeneralSettingsPanel(appModel: appModel)
+                    GeneralSettingsPanel(appModel: appModel, showRefreshComplete: $showRefreshComplete)
                 case .appearance:
                     AppearanceSettingsPanel(appModel: appModel)
                 case .hiddenApps:
@@ -208,8 +231,10 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
 struct GeneralSettingsPanel: View {
     @Bindable var appModel: AppModel
+    @Binding var showRefreshComplete: Bool
     @State private var startAtLogin = false
     @State private var startAtLoginError: String?
+    @State private var isRefreshing = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: kSectionSpacing) {
@@ -329,16 +354,33 @@ struct GeneralSettingsPanel: View {
                         Spacer()
                         Button {
                             Task {
+                                await MainActor.run {
+                                    isRefreshing = true
+                                }
                                 await appModel.refreshDisplayOrder()
+                                await MainActor.run {
+                                    isRefreshing = false
+                                    showRefreshComplete = true
+                                }
+                                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                                await MainActor.run {
+                                    showRefreshComplete = false
+                                }
                             }
                         } label: {
                             HStack(spacing: kButtonSpacing) {
-                                Image(systemName: "arrow.clockwise")
-                                Text("Refresh Now")
+                                if isRefreshing {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "arrow.clockwise")
+                                }
+                                Text(isRefreshing ? "Refreshing..." : "Refresh Now")
                             }
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .disabled(isRefreshing)
                     }
                     
                     Divider()
@@ -1167,10 +1209,11 @@ struct FeedbackSettingsPanel: View {
 
 struct AppDirectoriesSettingsPanel: View {
     @Bindable var appModel: AppModel
-    
+
     @State private var newDirectoryPath: String = ""
     @State private var showPicker = false
     @State private var searchFilter: String = ""
+    @State private var showClearAllConfirmation = false
     
     private let kSearchPadding: CGFloat = 12
     private let kSearchCornerRadius: CGFloat = 10
@@ -1339,10 +1382,7 @@ struct AppDirectoriesSettingsPanel: View {
                     
                     if !appModel.customDirectories.isEmpty {
                         Button(action: {
-                            // Clear all custom directories
-                            for dir in appModel.customDirectories {
-                                appModel.removeCustomDirectory(dir)
-                            }
+                            showClearAllConfirmation = true
                         }) {
                             Text("Clear All")
                                 .font(.system(size: 12, weight: .medium))
@@ -1355,6 +1395,21 @@ struct AppDirectoriesSettingsPanel: View {
                                 )
                         }
                         .buttonStyle(.plain)
+                        .confirmationDialog(
+                            "Clear All Custom Directories",
+                            isPresented: $showClearAllConfirmation,
+                            actions: {
+                                Button("Clear All", role: .destructive) {
+                                    for dir in appModel.customDirectories {
+                                        appModel.removeCustomDirectory(dir)
+                                    }
+                                }
+                                Button("Cancel", role: .cancel) {}
+                            },
+                            message: {
+                                Text("This will remove all \(appModel.customDirectories.count) custom director\(appModel.customDirectories.count == 1 ? "y" : "ies") and trigger a full app rescan.")
+                            }
+                        )
                     }
                 }
             }

@@ -197,6 +197,15 @@ class AppModel {
         }
     }
 
+    // MARK: - Accessibility Settings
+    var shouldReduceMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    var shouldReduceTransparency: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+    }
+
     // MARK: - Timer & Observers
     private var refreshTimer: Timer?
 
@@ -691,7 +700,7 @@ class AppModel {
         let displayedApps = getDisplayedApps()
         guard selectedAppIndex >= 0, selectedAppIndex < displayedApps.count else { return false }
         let app = displayedApps[selectedAppIndex]
-        if app.isFolder, let folderId = app.path.hasPrefix("folder:") ? String(app.path.dropFirst(7)) : nil {
+        if app.isFolder, let folderId = app.folderId {
             openFolder(folderId)
             return true
         }
@@ -876,87 +885,96 @@ class AppModel {
         if let cached = cachedDisplayedApps, cached.version == dataVersion {
             return cached.apps
         }
-        
-        // Collect the set of all app paths that belong to user-created folders only (used in multiple places below).
-        let appsInAnyFolder: Set<String> = folders.reduce(into: Set()) { $0.formUnion($1.appPaths) }
-        
-        // Determine the set of apps to display based on current folder context
-        var baseApps: [Application]
-        if let folderId = currentFolderId {
-            // Inside a folder: show only apps that belong to this folder (and its child folders)
-            baseApps = getAllAppsIncludingChildFolders(for: folderId)
-        } else {
-            // At root level (no active folder):
-            // - loose apps (not in any folder) are shown individually
-            // - apps that belong to a folder are hidden behind the folder icon
-            var looseApps = visibleApplications.filter { !appsInAnyFolder.contains($0.path) }
-            
-            // Apply category filter (base categories check getCategory; smart categories check membership)
-            looseApps = looseApps.filter { matchesSelectedCategory($0) }
 
-            // Build folder icons, but only for folders that have at least one visible app
-            // matching the current category filter
-            let folderIcons: [Application] = folders.compactMap { folder in
-                let hasVisible = folder.appPaths.contains { path in
-                    guard !hiddenAppPaths.contains(path), let app = appPathIndex[path] else { return false }
-                    return matchesSelectedCategory(app)
-                }
-                return hasVisible ? getFolderApplication(folder) : nil
-            }
-            
-            baseApps = looseApps + folderIcons
-        }
-        
-        // Apply search filter
-        var result: [Application]
-        if !searchTerm.isEmpty {
-            let lower = searchTerm.lowercased()
-            
-            if currentFolderId == nil {
-                // Root-level search: match against ALL visible apps (loose + inside folders).
-                // This lets the user find an app regardless of which folder it was moved to.
-                // Folder icons are not included — results are the actual apps.
-                result = sortedApplications(visibleApplications.filter { $0.matchesSearch(lower) })
-            } else {
-                // Inside a folder: filter the folder's apps by name
-                var filtered = baseApps.filter { $0.matchesSearch(lower) }
-                filtered = sortedApplications(filtered)
-                result = filtered
-            }
-        } else {
-            // No search — display baseApps with optional folder-first ordering
-            var ordered = baseApps
-            var folderFirstApplied = false
-            if showFoldersFirst && !ordered.isEmpty {
-                let folderApps    = ordered.filter { $0.isFolder }
-                let nonFolderApps = ordered.filter { !$0.isFolder }
-                if !folderApps.isEmpty && !nonFolderApps.isEmpty {
-                    ordered = folderApps + nonFolderApps
-                    folderFirstApplied = true
-                }
-            }
+        let baseApps = getBaseAppsForCurrentContext()
+        let filtered = applySearchFilter(to: baseApps)
+        let result = applyOrdering(to: filtered)
 
-            if !customOrder.isEmpty {
-                result = ordered.sorted {
-                    let a = customOrder[$0.path], b = customOrder[$1.path]
-                    switch (a, b) {
-                    case (nil, nil): return false
-                    case (nil, _):   return false
-                    case (_, nil):   return true
-                    case (let av?, let bv?): return av < bv
-                    }
-                }
-            } else if folderFirstApplied {
-                // Already grouped folders-first above; re-filtering here would just reproduce
-                // the same array.
-                result = ordered
-            } else {
-                result = sortedApplications(ordered)
-            }
-        }
-        
         cachedDisplayedApps = (dataVersion, result)
         return result
+    }
+
+    /// Build the initial app list based on folder context (root vs inside folder) and category filter.
+    private func getBaseAppsForCurrentContext() -> [Application] {
+        // Collect all app paths that belong to user-created folders.
+        let appsInAnyFolder: Set<String> = folders.reduce(into: Set()) { $0.formUnion($1.appPaths) }
+
+        if let folderId = currentFolderId {
+            // Inside a folder: show only apps from this folder (and its child folders)
+            return getAllAppsIncludingChildFolders(for: folderId)
+        }
+
+        // At root level: loose apps (not in any folder) + folder icons
+        var looseApps = visibleApplications.filter { !appsInAnyFolder.contains($0.path) }
+        looseApps = looseApps.filter { matchesSelectedCategory($0) }
+
+        let folderIcons: [Application] = folders.compactMap { folder in
+            let hasVisible = folder.appPaths.contains { path in
+                guard !hiddenAppPaths.contains(path), let app = appPathIndex[path] else { return false }
+                return matchesSelectedCategory(app)
+            }
+            return hasVisible ? getFolderApplication(folder) : nil
+        }
+
+        return looseApps + folderIcons
+    }
+
+    /// Apply search filter to a list of apps. Logic differs based on folder context.
+    private func applySearchFilter(to apps: [Application]) -> [Application] {
+        guard !searchTerm.isEmpty else { return apps }
+        let lower = searchTerm.lowercased()
+
+        if currentFolderId == nil {
+            // Root-level search: match against ALL visible apps (loose + inside folders), not just the current view.
+            // This lets users find an app regardless of which folder it's in.
+            return sortedApplications(visibleApplications.filter { $0.matchesSearch(lower) })
+        }
+
+        // Inside a folder: filter only the current folder's apps.
+        let filtered = apps.filter { $0.matchesSearch(lower) }
+        return sortedApplications(filtered)
+    }
+
+    /// Apply ordering (folder-first, custom, or default sort) to a list of apps.
+    private func applyOrdering(to apps: [Application]) -> [Application] {
+        guard !searchTerm.isEmpty else {
+            // When search is active, search filter already sorted; don't re-sort.
+            return applyNonSearchOrdering(to: apps)
+        }
+        return apps
+    }
+
+    /// Apply non-search ordering: folder-first grouping, custom order, or default sort.
+    private func applyNonSearchOrdering(to apps: [Application]) -> [Application] {
+        var ordered = apps
+        var folderFirstApplied = false
+
+        if showFoldersFirst && !ordered.isEmpty {
+            let folderApps = ordered.filter { $0.isFolder }
+            let nonFolderApps = ordered.filter { !$0.isFolder }
+            if !folderApps.isEmpty && !nonFolderApps.isEmpty {
+                ordered = folderApps + nonFolderApps
+                folderFirstApplied = true
+            }
+        }
+
+        if !customOrder.isEmpty {
+            return ordered.sorted {
+                let a = customOrder[$0.path], b = customOrder[$1.path]
+                switch (a, b) {
+                case (nil, nil): return false
+                case (nil, _):   return false
+                case (_, nil):   return true
+                case (let av?, let bv?): return av < bv
+                }
+            }
+        }
+
+        if folderFirstApplied {
+            return ordered
+        }
+
+        return sortedApplications(ordered)
     }
     
     // MARK: - Recursive Child Folder Search

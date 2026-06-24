@@ -213,7 +213,8 @@ final class FolderTests: XCTestCase {
         let folder = AppFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
         let app = appModel.getFolderApplication(folder)
         XCTAssertEqual(app.name, "Development")
-        XCTAssertEqual(app.path, "folder:\(folder.id)")
+        XCTAssertEqual(app.path, folder.id)
+        XCTAssertEqual(app.folderId, folder.id)
         XCTAssertTrue(app.isFolder)
         XCTAssertEqual(app.containedApps, folder.appPaths)
     }

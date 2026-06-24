@@ -122,6 +122,7 @@ class OverlayWindowManager {
     private weak var appModel: AppModel?
     private var savedPresentationOptions: NSApplication.PresentationOptions?
     private var arrowKeyEventMonitor: Any?
+    private var displayChangeObserver: NSObjectProtocol?
 
     var isWindowVisible: Bool {
         window?.isVisible ?? false
@@ -201,6 +202,9 @@ window.makeKeyAndOrderFront(nil)
         // window's keyDown handler can see them.
         installArrowKeyMonitor()
 
+        // Observe display configuration changes (monitor plugged in/out, resolution change, etc.)
+        installDisplayChangeObserver()
+
         DispatchQueue.main.asyncAfter(deadline: .now() + kWindowAnimationDelay) {
             NotificationCenter.default.post(name: .launcherDidShow, object: window)
         }
@@ -212,6 +216,7 @@ window.makeKeyAndOrderFront(nil)
         exitLauncherPresentationMode()
         appModel?.clearSearchState()
         removeArrowKeyMonitor()
+        removeDisplayChangeObserver()
     }
     
     private func preferredScreen(for window: NSWindow) -> NSScreen? {
@@ -303,7 +308,7 @@ return true
             if let appModel = appModel, !appModel.searchTerm.isEmpty {
                 let displayedApps = appModel.getDisplayedApps()
                 if let first = displayedApps.first {
-                    if first.isFolder, let folderId = first.path.hasPrefix("folder:") ? String(first.path.dropFirst(7)) : nil {
+                    if first.isFolder, let folderId = first.folderId {
                         appModel.openFolder(folderId)
                         // Don't hide — user navigated into a folder
                         return true
@@ -377,6 +382,35 @@ return true
         if let monitor = arrowKeyEventMonitor {
             NSEvent.removeMonitor(monitor)
             arrowKeyEventMonitor = nil
+        }
+    }
+
+    private func installDisplayChangeObserver() {
+        removeDisplayChangeObserver()
+        displayChangeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { await self?.handleDisplayChange() }
+        }
+    }
+
+    private func removeDisplayChangeObserver() {
+        if let observer = displayChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            displayChangeObserver = nil
+        }
+    }
+
+    private func handleDisplayChange() {
+        guard let window = window, window.isVisible else { return }
+        guard let targetScreen = preferredScreen(for: window) else { return }
+        let newFrame = targetScreen.frame
+        if window.frame != newFrame {
+            window.setFrame(newFrame, display: true)
+            window.contentView?.frame = CGRect(origin: .zero, size: newFrame.size)
+            showBackgroundWindows(excluding: targetScreen)
         }
     }
 }

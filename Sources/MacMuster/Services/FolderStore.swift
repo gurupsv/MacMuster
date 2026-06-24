@@ -64,26 +64,25 @@ final class FolderStore {
         sortOption: ApplicationSorter.SortOption
     ) -> [Application] {
         guard folders.first(where: { $0.id == folderId }) != nil else { return [] }
-        
+
         var result: [Application] = []
         var visitedFolders: Set<String> = []
-        
+
         func collectApps(from currentFolderId: String) {
             guard !visitedFolders.contains(currentFolderId),
                   let currentFolder = folders.first(where: { $0.id == currentFolderId })
             else { return }
             visitedFolders.insert(currentFolderId)
-            
+
             let containedApps = currentFolder.appPaths.compactMap { appPathIndex[$0] }
             result.append(contentsOf: containedApps)
-            
-            for childFolder in folders where !visitedFolders.contains(childFolder.id) {
-                if childFolder.appPaths.contains(where: { currentFolder.appPaths.contains($0) }) {
-                    collectApps(from: childFolder.id)
-                }
+
+            // Recursively collect apps from explicit child folders (those with parentFolderId == currentFolderId)
+            for childFolder in folders where childFolder.parentFolderId == currentFolderId && !visitedFolders.contains(childFolder.id) {
+                collectApps(from: childFolder.id)
             }
         }
-        
+
         collectApps(from: folderId)
         result = result.filter { !hiddenAppPaths.contains($0.path) }
         
@@ -105,16 +104,20 @@ final class FolderStore {
     }
     
     func getFolderApplication(_ folder: AppFolder, containedApps: [Application]) -> Application {
+        // `id`/`path` are the bare folder UUID (no synthetic prefix needed — real app paths always
+        // start with "/" and UUIDs never do, so collisions are impossible). `folderId` carries the
+        // identity explicitly so callers don't need to parse it back out of `path`.
         return Application(
-            id: "folder:\(folder.id)",
+            id: folder.id,
             name: folder.name,
-            path: "folder:\(folder.id)",
+            path: folder.id,
             icon: nil, // Icon is handled by IconService
             installationDate: folder.createdAt,
             isFolder: true,
             containedApps: folder.appPaths,
             appSize: nil,
-            bundleDescription: "\(containedApps.count) app\(containedApps.count == 1 ? "" : "s")"
+            bundleDescription: "\(containedApps.count) app\(containedApps.count == 1 ? "" : "s")",
+            folderId: folder.id
         )
     }
 }

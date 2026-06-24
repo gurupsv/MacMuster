@@ -26,8 +26,9 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
             let contents = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
             for item in contents {
                 let fullPath = (dir as NSString).appendingPathComponent(item)
-                guard !seenPaths.contains(fullPath) else { continue }
-                seenPaths.insert(fullPath)
+                let resolvedPath = (fullPath as NSString).resolvingSymlinksInPath
+                guard !seenPaths.contains(resolvedPath) else { continue }
+                seenPaths.insert(resolvedPath)
                 guard FileManager.default.fileExists(atPath: fullPath) else { continue }
                 
                 let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath)

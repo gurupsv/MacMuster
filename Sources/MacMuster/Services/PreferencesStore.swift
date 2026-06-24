@@ -8,6 +8,7 @@ final class PreferencesStore {
     private let defaults = UserDefaults.standard
     
     private enum Keys: String {
+        case schemaVersion = "schemaVersion"
         case hiddenAppPaths = "hiddenAppPaths"
         case columnCount = "columnCount"
         case currentFolderId = "currentFolderId"
@@ -30,8 +31,24 @@ final class PreferencesStore {
         case recentAppsEnabled = "recentAppsEnabled"
         case overlayOpacity = "overlayOpacity"
     }
+
+    /// Current schema version. Increment when adding/removing/changing preference keys.
+    /// Used for future migrations (e.g., renaming keys, consolidating settings, etc.).
+    private let currentSchemaVersion = 1
     
     private init() {
+        // Migrate schema if needed
+        let storedSchemaVersion = defaults.integer(forKey: Keys.schemaVersion.rawValue)
+        if storedSchemaVersion == 0 {
+            // First time or pre-versioning: set to current and run initialization
+            defaults.set(currentSchemaVersion, forKey: Keys.schemaVersion.rawValue)
+        } else if storedSchemaVersion < currentSchemaVersion {
+            // Run any needed migrations here (future use)
+            runMigrations(from: storedSchemaVersion, to: currentSchemaVersion)
+            defaults.set(currentSchemaVersion, forKey: Keys.schemaVersion.rawValue)
+        }
+
+        // Set defaults for new keys if not already present
         if defaults.object(forKey: Keys.recentAppsEnabled.rawValue) == nil {
             defaults.set(true, forKey: Keys.recentAppsEnabled.rawValue)
         }
@@ -41,6 +58,13 @@ final class PreferencesStore {
         if defaults.object(forKey: Keys.overlayOpacity.rawValue) == nil {
             defaults.set(kOverlayOpacityDefault, forKey: Keys.overlayOpacity.rawValue)
         }
+    }
+
+    /// Run any needed migrations when schema version changes.
+    /// Add cases here as new schema versions are introduced.
+    private func runMigrations(from oldVersion: Int, to newVersion: Int) {
+        // Example: if oldVersion < 2 { /* migrate from v1 to v2 */ }
+        // For now, this is a no-op as we're at schema version 1
     }
     
     // MARK: - General Preferences

@@ -33,12 +33,14 @@ Built entirely with **Swift 6.2** and **SwiftUI + AppKit**, MacMuster has zero e
 |---------|-------------|
 | **Full-Screen Overlay** | Beautiful blurred backdrop with native macOS materials |
 | **Keyboard Navigation** | Full arrow-key, Enter, Escape, and `/` search support |
-| **Real-Time Search** | Instant filtering as you type (case-insensitive) |
-| **Smart Categories** | System / User apps with automatic categorization |
+| **Real-Time Search** | Fuzzy & path matching (catches acronyms, vendor names) |
+| **Smart Categories** | All / System / User / Most Used / Recently Launched / Newly Installed |
 | **Folder Organization** | Create, rename, delete folders; drag apps into folders |
-| **Recent Apps** | Tracks last 8 launched applications |
+| **Drag & Drop** | Drag apps onto each other to create folders or reorder |
+| **Recent Apps** | Unique apps launched in the last 30 days (max 8 visible) |
 | **Menu Bar Access** | Quick toggle from menu bar icon |
-| **Multi-Monitor** | Primary screen overlay + dimmed backgrounds on other displays |
+| **Multi-Monitor** | Primary screen overlay + dimmed backgrounds; reacts to display changes |
+| **Accessibility** | Keyboard shortcuts help, screen reader support, reduce motion/transparency |
 
 ### ⚡ Performance
 
@@ -113,7 +115,7 @@ The glow effect smoothly fades from full opacity at the screen edges to transpar
 
 ### Option 1: Download Pre-built Release (Recommended)
 
-1. Download `MacMuster.app` from [Releases](https://github.com/yourusername/MacMuster/releases)
+1. Download `MacMuster.app` from [Releases](https://github.com/MacMuster/releases)
 2. Drag to `/Applications`
 3. Right-click → **Open** (first launch only, due to ad-hoc signing)
 
@@ -121,8 +123,8 @@ The glow effect smoothly fades from full opacity at the screen edges to transpar
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/MacMuster.git
-cd MacMuster
+git clone https://github.com/MacMuster/macos-launcher.git
+cd macos-launcher
 
 # Build production release
 ./build_production.sh

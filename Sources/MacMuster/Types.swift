@@ -14,6 +14,10 @@ struct Application: Identifiable, Hashable {
     let containedApps: [String]?
     let appSize: String?
     let bundleDescription: String?
+    /// The underlying `AppFolder.id` when this `Application` is a synthetic folder icon
+    /// (`isFolder == true`); `nil` for real apps. Lets callers read the folder identity
+    /// directly instead of parsing it back out of `path`/`id`.
+    var folderId: String? = nil
 
     var lowercaseName: String { name.lowercased() }
     
@@ -98,17 +102,20 @@ struct AppFolder: Codable, Identifiable, Hashable {
     var name: String
     var appPaths: [String]
     var customIcon: String?
+    var parentFolderId: String? = nil
     let createdAt: Date
     var modifiedAt: Date
-    
+
     init(id: String = UUID().uuidString,
          name: String,
          appPaths: [String],
-         customIcon: String? = nil) {
+         customIcon: String? = nil,
+         parentFolderId: String? = nil) {
         self.id = id
         self.name = name
         self.appPaths = appPaths
         self.customIcon = customIcon
+        self.parentFolderId = parentFolderId
         self.createdAt = Date()
         self.modifiedAt = Date()
     }

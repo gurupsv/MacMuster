@@ -1,0 +1,23 @@
+name: Swift Build & Test
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check Swift version
+      run: swift --version
+
+    - name: Build
+      run: swift build
+
+    - name: Run tests
+      run: swift test
