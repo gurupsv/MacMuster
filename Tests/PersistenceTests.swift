@@ -345,4 +345,183 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNotNil(UserDefaults.standard.data(forKey: "hiddenAppPaths"))
         XCTAssertNotNil(UserDefaults.standard.stringArray(forKey: "customDirectories"))
     }
+
+    // MARK: - Font Size / Weight Persistence Tests (I-3)
+
+    func testSetFontSizeSavesToUserDefaults() {
+        appModel.fontSize = 18.0
+        let size = UserDefaults.standard.value(forKey: "fontSize") as? Double
+        XCTAssertEqual(size, 18.0)
+    }
+
+    func testLoadFontSizeReadsFromUserDefaults() {
+        UserDefaults.standard.set(18.0, forKey: "fontSize")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.fontSize, 18.0)
+    }
+
+    func testLoadFontSizeWithInvalidValueFallsBackToDefault() {
+        UserDefaults.standard.set(999.0, forKey: "fontSize")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.fontSize, 14.0)
+    }
+
+    func testLoadFontWeightReadsFromUserDefaults() {
+        UserDefaults.standard.set("bold", forKey: "fontWeight")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.fontWeight, "bold")
+    }
+
+    func testSetFontWeightSavesToUserDefaults() {
+        appModel.setFontWeight("bold")
+        let weight = UserDefaults.standard.string(forKey: "fontWeight")
+        XCTAssertEqual(weight, "bold")
+    }
+
+    func testSetFontWeightUpdatesProperty() {
+        appModel.setFontWeight("bold")
+        XCTAssertEqual(appModel.fontWeight, "bold")
+    }
+
+    // MARK: - Glow Settings Persistence Tests (I-3)
+
+    func testSetGlowEnabledSavesToUserDefaults() {
+        appModel.glowEnabled = false
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: "glowEnabled"))
+    }
+
+    func testLoadGlowEnabledReadsFromUserDefaults() {
+        UserDefaults.standard.set(false, forKey: "glowEnabled")
+        let newAppModel = AppModel()
+        XCTAssertFalse(newAppModel.glowEnabled)
+    }
+
+    func testSetGlowColorSavesHexToUserDefaults() {
+        appModel.glowColor = .black
+        let hex = UserDefaults.standard.string(forKey: "glowColor")
+        XCTAssertEqual(hex, "#000000")
+    }
+
+    func testLoadGlowColorReadsFromUserDefaults() {
+        UserDefaults.standard.set("#000000", forKey: "glowColor")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.glowColor, .black)
+    }
+
+    func testSetGlowIntensitySavesToUserDefaults() {
+        appModel.glowIntensity = 0.7
+        let intensity = UserDefaults.standard.value(forKey: "glowIntensity") as? Double
+        XCTAssertEqual(intensity, 0.7)
+    }
+
+    func testSetGlowIntensityClampsAboveOne() {
+        appModel.glowIntensity = 5.0
+        XCTAssertEqual(appModel.glowIntensity, 1.0)
+    }
+
+    func testLoadGlowIntensityReadsFromUserDefaults() {
+        UserDefaults.standard.set(0.7, forKey: "glowIntensity")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.glowIntensity, 0.7)
+    }
+
+    func testSetGlowWidthSavesToUserDefaults() {
+        appModel.glowWidth = 20.0
+        let width = UserDefaults.standard.value(forKey: "glowWidth") as? Double
+        XCTAssertEqual(width, 20.0)
+    }
+
+    func testSetGlowWidthClampsBelowMinimum() {
+        appModel.glowWidth = 1.0
+        XCTAssertEqual(appModel.glowWidth, 5.0)
+    }
+
+    func testLoadGlowWidthReadsFromUserDefaults() {
+        UserDefaults.standard.set(20.0, forKey: "glowWidth")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.glowWidth, 20.0)
+    }
+
+    // MARK: - Toggle Settings Persistence Tests (I-3)
+
+    func testSetShowFoldersFirstSavesToUserDefaults() {
+        appModel.showFoldersFirst = true
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: "showFoldersFirst"))
+    }
+
+    func testLoadShowFoldersFirstReadsFromUserDefaults() {
+        UserDefaults.standard.set(true, forKey: "showFoldersFirst")
+        let newAppModel = AppModel()
+        XCTAssertTrue(newAppModel.showFoldersFirst)
+    }
+
+    func testSetHasShownLauncherSavesToUserDefaults() {
+        appModel.hasShownLauncher = true
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: "hasShownLauncher"))
+    }
+
+    func testLoadHasShownLauncherReadsFromUserDefaults() {
+        UserDefaults.standard.set(true, forKey: "hasShownLauncher")
+        let newAppModel = AppModel()
+        XCTAssertTrue(newAppModel.hasShownLauncher)
+    }
+
+    func testSetShowRecentAppsSavesToUserDefaults() {
+        appModel.showRecentApps = false
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: "recentAppsEnabled"))
+    }
+
+    func testLoadShowRecentAppsReadsFromUserDefaults() {
+        UserDefaults.standard.set(false, forKey: "recentAppsEnabled")
+        let newAppModel = AppModel()
+        XCTAssertFalse(newAppModel.showRecentApps)
+    }
+
+    func testSetPressFeedbackEnabledSavesToUserDefaults() {
+        appModel.pressFeedbackEnabled = false
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: "pressFeedbackEnabled"))
+    }
+
+    func testLoadPressFeedbackEnabledReadsFromUserDefaults() {
+        UserDefaults.standard.set(false, forKey: "pressFeedbackEnabled")
+        let newAppModel = AppModel()
+        XCTAssertFalse(newAppModel.pressFeedbackEnabled)
+    }
+
+    // MARK: - Overlay Opacity Persistence Tests (I-3)
+
+    func testSetOverlayOpacitySavesToUserDefaults() {
+        appModel.overlayOpacity = 0.5
+        let opacity = UserDefaults.standard.value(forKey: "overlayOpacity") as? Double
+        XCTAssertEqual(opacity, 0.5)
+    }
+
+    func testSetOverlayOpacityClampsToRange() {
+        appModel.overlayOpacity = 99.0
+        XCTAssertLessThanOrEqual(appModel.overlayOpacity, kOverlayOpacityMax)
+    }
+
+    func testLoadOverlayOpacityReadsFromUserDefaults() {
+        UserDefaults.standard.set(0.5, forKey: "overlayOpacity")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.overlayOpacity, 0.5)
+    }
+
+    // MARK: - Folders Persistence Tests (I-3)
+
+    func testCreateFolderSavesToUserDefaults() {
+        _ = appModel.createFolder(name: "Dev Tools", appPaths: ["/Applications/Xcode.app"])
+        let data = UserDefaults.standard.data(forKey: "appFolders")
+        XCTAssertNotNil(data)
+    }
+
+    func testLoadFoldersReadsFromUserDefaults() {
+        let folder = AppFolder(name: "Dev Tools", appPaths: ["/Applications/Xcode.app"])
+        let savedData = try? JSONEncoder().encode([folder])
+        UserDefaults.standard.set(savedData, forKey: "appFolders")
+
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.folders.count, 1)
+        XCTAssertEqual(newAppModel.folders.first?.name, "Dev Tools")
+    }
 }

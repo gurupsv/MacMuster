@@ -505,11 +505,35 @@ struct GlowSettingsPanel: View {
                                         .frame(width: 24, height: 24)
                                         .overlay(
                                             Circle()
-                                                .stroke(appModel.glowColor == color ? Color.white : Color.clear, lineWidth: 2)
+                                                .stroke(appModel.glowColor == color ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: appModel.glowColor == color ? 2 : 1)
                                         )
+                                        // Non-color selection cue (G-2): a checkmark badge so the
+                                        // active swatch is legible even when the swatch color itself
+                                        // (e.g. white-on-white) makes a stroke-only cue hard to see.
+                                        .overlay {
+                                            if appModel.glowColor == color {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .font(.system(size: 12))
+                                                    .symbolRenderingMode(.palette)
+                                                    .foregroundStyle(.white, .black.opacity(0.55))
+                                            }
+                                        }
                                 }
                                 .buttonStyle(.plain)
+                                .help(name)
+                                .accessibilityLabel(name)
+                                .accessibilityAddTraits(appModel.glowColor == color ? [.isButton, .isSelected] : .isButton)
                             }
+
+                            Divider().frame(height: 20)
+
+                            // D-5: system color well lets users pick any color, not just the 8 swatches.
+                            // appModel.glowColor already round-trips through parseColor/getHexColorValue.
+                            ColorPicker("", selection: $appModel.glowColor, supportsOpacity: false)
+                                .labelsHidden()
+                                .frame(width: 24, height: 24)
+                                .help("Custom color")
+                                .accessibilityLabel("Custom glow color")
                         }
                     }
                     .padding(kSectionContentPadding)

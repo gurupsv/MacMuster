@@ -974,6 +974,32 @@ class AppModel {
             return ordered
         }
 
+        // Preserve recency ordering for recently launched apps category
+        if selectedCategory == .recentlyLaunched {
+            return ordered.sorted { 
+                let a = RecentAppsTracker.shared.recentAppLaunchTimes[$0.path], b = RecentAppsTracker.shared.recentAppLaunchTimes[$1.path]
+                switch (a, b) {
+                case (nil, nil): return false
+                case (nil, _):   return false
+                case (_, nil):   return true
+                case (let av?, let bv?): return av > bv
+                }
+            }
+        }
+
+        // Preserve most-used ordering for most used apps category
+        if selectedCategory == .mostUsed {
+            return ordered.sorted { 
+                let a = RecentAppsTracker.shared.appLaunchCounts[$0.path], b = RecentAppsTracker.shared.appLaunchCounts[$1.path]
+                switch (a, b) {
+                case (nil, nil): return false
+                case (nil, _):   return false
+                case (_, nil):   return true
+                case (let av?, let bv?): return av > bv
+                }
+            }
+        }
+
         return sortedApplications(ordered)
     }
     

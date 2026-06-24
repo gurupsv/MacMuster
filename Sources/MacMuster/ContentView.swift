@@ -49,11 +49,15 @@ struct ContentView: View {
                 }
 
             if appModel.isLoading {
-                // Loading indicator
-                VStack(spacing: 20) {
+                // D-4: friendlier loading state — an app-like glyph above the spinner instead of
+                // a bare spinner, matching the icon language used by the empty state below.
+                VStack(spacing: 16) {
+                    Image(systemName: "square.grid.3x3.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.tertiary)
                     ProgressView()
-                        .scaleEffect(1.2, anchor: .center)
-                    Text("Loading applications...")
+                        .scaleEffect(1.1, anchor: .center)
+                    Text("Loading applications…")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -108,8 +112,8 @@ struct ContentView: View {
                                 }
                                 .foregroundStyle(.secondary)
                             }
-                            .buttonStyle(.plain)
-                            
+                            .buttonStyle(FocusableButtonStyle())
+
                             Image(systemName: "chevron.right")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary.opacity(0.5))
@@ -139,7 +143,7 @@ struct ContentView: View {
                                     )
                                     .background(.ultraThinMaterial, in: Circle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
                             .help("Keyboard shortcuts")
                             .accessibilityLabel("Show keyboard shortcuts")
 
@@ -154,7 +158,7 @@ struct ContentView: View {
                                     .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
                             .accessibilityLabel("Create new folder")
 
                             Button(action: {
@@ -166,7 +170,7 @@ struct ContentView: View {
                                     .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
                             .accessibilityLabel("Open settings")
                         }
                         .padding(.horizontal)
@@ -206,7 +210,7 @@ struct ContentView: View {
                                     )
                                     .background(.ultraThinMaterial, in: Circle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
                             .help("Keyboard shortcuts")
                             .accessibilityLabel("Show keyboard shortcuts")
 
@@ -246,7 +250,7 @@ struct ContentView: View {
                                     .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
                             .accessibilityLabel("Create new folder")
 
                             Button(action: {
@@ -258,7 +262,7 @@ struct ContentView: View {
                                     .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
                             .accessibilityLabel("Open settings")
                         }
                         .padding(.horizontal)
@@ -273,11 +277,19 @@ struct ContentView: View {
                             ))
                     }
                     
-                      // Recent Apps Section (filtered to exclude apps already shown in main grid)
+                      // Recent Apps Section. At root, the main grid only shows folder icons for
+                      // foldered apps — never a foldered app's own path — so a recent app's path
+                      // collides with `displayedApps` only when it's a loose, top-level app that's
+                      // already sitting in the grid below. Deduping against that at root used to
+                      // hide most/all recently-launched apps for anyone who keeps apps loose rather
+                      // than foldered. Inside a folder, dedup still applies so a recent app that's a
+                      // member of *this* folder doesn't show twice on the same screen.
                       if appModel.showRecentApps {
                           let recentApps = appModel.getRecentApps()
                           let displayedAppPaths = Set(displayedApps.map(\.path))
-                          let uniqueRecentApps = recentApps.filter { !displayedAppPaths.contains($0.path) }
+                          let uniqueRecentApps = appModel.currentFolder != nil
+                              ? recentApps.filter { !displayedAppPaths.contains($0.path) }
+                              : recentApps
                           if !uniqueRecentApps.isEmpty {
                               let recentAppsToShow = Array(uniqueRecentApps.prefix(appModel.columnCount))
                               SectionView(appModel: appModel, title: "Recent", apps: recentAppsToShow, columns: gridColumns) { app in
@@ -291,15 +303,25 @@ struct ContentView: View {
                     // App grid
                     if displayedApps.isEmpty {
                         Spacer()
+                        // D-4: distinguish "nothing here" (empty folder/category) from "no search
+                        // match" with different icon/copy, and offer a way out of a dead-end search.
                         VStack(spacing: 12) {
-                            Image(systemName: appModel.searchTerm.isEmpty ? "folder" : "magnifyingglass")
+                            Image(systemName: appModel.searchTerm.isEmpty ? "tray" : "magnifyingglass")
                                 .font(.system(size: 48))
                                 .foregroundStyle(.secondary)
                             Text(appModel.searchTerm.isEmpty
-                                 ? "No applications found"
+                                 ? "No applications here"
                                  : "No results for \"\(appModel.searchTerm)\"")
                                 .font(.title3)
                                 .foregroundStyle(.secondary)
+                            if !appModel.searchTerm.isEmpty {
+                                Button("Clear Search") {
+                                    appModel.searchTerm = ""
+                                }
+                                .buttonStyle(.plain)
+                                .font(.subheadline)
+                                .foregroundStyle(Color.accentColor)
+                            }
                         }
                         .frame(maxWidth: .infinity)
                         Spacer()
@@ -315,8 +337,33 @@ spacing: kGridSpacing
                                     let selectedPath: String? = (hasUsedKeyboard && displayedApps.indices.contains(appModel.selectedAppIndex))
                                         ? displayedApps[appModel.selectedAppIndex].path
                                         : nil
-                                    ForEach(displayedApps) { app in
-                                        gridItemView(app: app, isSelected: app.path == selectedPath)
+                                    // D-1: group folders and apps under section headers when both are
+                                    // present and the user isn't searching (search results stay flat
+                                    // so ranking order is obvious). Selection/keyboard-nav math is
+                                    // unaffected — it still walks `displayedApps` by index; this only
+                                    // changes how the same items are visually grouped, the same way the
+                                    // separate "Recent" grid above already does.
+                                    let folderItems = displayedApps.filter(\.isFolder)
+                                    let nonFolderItems = displayedApps.filter { !$0.isFolder }
+                                    if appModel.searchTerm.isEmpty && !folderItems.isEmpty && !nonFolderItems.isEmpty {
+                                        Section {
+                                            ForEach(folderItems) { app in
+                                                gridItemView(app: app, isSelected: app.path == selectedPath)
+                                            }
+                                        } header: {
+                                            sectionHeaderLabel("Folders")
+                                        }
+                                        Section {
+                                            ForEach(nonFolderItems) { app in
+                                                gridItemView(app: app, isSelected: app.path == selectedPath)
+                                            }
+                                        } header: {
+                                            sectionHeaderLabel("Applications")
+                                        }
+                                    } else {
+                                        ForEach(displayedApps) { app in
+                                            gridItemView(app: app, isSelected: app.path == selectedPath)
+                                        }
                                     }
                                 }
                                 .contentShape(Rectangle())
@@ -509,9 +556,20 @@ spacing: kGridSpacing
                 )
                 .background(.ultraThinMaterial, in: Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
         .help("Search (/)")
         .accessibilityLabel("Search applications")
+    }
+
+    // A `Section` header inside `LazyVGrid` automatically spans all columns.
+    private func sectionHeaderLabel(_ title: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.top, kLabelSpacingVertical)
     }
 
     private func getCategoryCount(for category: AppCategory) -> Int {
@@ -540,9 +598,6 @@ spacing: kGridSpacing
         .scaleEffect(isLaunching ? 0.95 : 1.0)
         .opacity(isLaunching ? 0.7 : 1.0)
         .animation(appModel.shouldReduceMotion ? .none : .easeInOut(duration: 0.2), value: isLaunching)
-        .onHover { isHovered in
-            hoveredAppPath = isHovered ? app.path : nil
-        }
         .overlay(
             PressTracker(pressedAppPath: $pressedAppPath, appPath: app.path)
         )
@@ -563,6 +618,13 @@ spacing: kGridSpacing
             } else {
                 isDraggingAppPath = nil
             }
+        }
+        // .onHover must come after .draggable/.dropDestination — on macOS, a drag-enabled view's
+        // mouse-tracking setup otherwise suppresses the plain (non-drag) hover callback, which is
+        // why regular grid icons weren't highlighting on hover while the (non-draggable) Recent
+        // strip icons, using the same AppIconView, highlighted correctly.
+        .onHover { isHovered in
+            hoveredAppPath = isHovered ? app.path : nil
         }
     }
 
@@ -765,7 +827,7 @@ spacing: kGridSpacing
             )
             .foregroundStyle(isSelected ? Color(nsColor: .windowBackgroundColor) : Color.secondary)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FocusableButtonStyle(cornerRadius: 16))
         .disabled(getCategoryCount(for: category) == 0)
     }
 }
@@ -811,6 +873,35 @@ struct SectionView: View {
     }
 }
 
+// MARK: - Focusable Button Style (G-4)
+
+/// `.buttonStyle(.plain)` suppresses the system focus ring on macOS, so keyboard users tabbing
+/// through the toolbar get no indication of which control has focus. This restores a visible ring
+/// by reading `\.isFocused` from inside the style's own label, which SwiftUI keeps in sync with the
+/// button's actual focus state without needing a `@FocusState` per button.
+struct FocusableButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat = 8
+
+    func makeBody(configuration: Configuration) -> some View {
+        FocusableButtonLabel(configuration: configuration, cornerRadius: cornerRadius)
+    }
+
+    private struct FocusableButtonLabel: View {
+        let configuration: ButtonStyle.Configuration
+        let cornerRadius: CGFloat
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            configuration.label
+                .opacity(configuration.isPressed ? 0.7 : 1.0)
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(isFocused ? Color.accentColor : Color.clear, lineWidth: 2)
+                )
+        }
+    }
+}
+
 // MARK: - Visual Effect Background
 
 /// NSVisualEffectView wrapper for a translucent, blurred background (like Launchpad)
@@ -845,14 +936,25 @@ struct AppIconView: View {
             .padding(kSectionViewPadding)
             .background(
                 RoundedRectangle(cornerRadius: kAppIconCornerRadius)
-                    .fill(isSelected ? Color.accentColor.opacity(0.3) : (isHovered ? Color.white.opacity(0.15) : Color.white.opacity(0.05)))
+                    .fill(isSelected ? Color.accentColor.opacity(0.18) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: kAppIconCornerRadius)
-                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? Color.accentColor.opacity(0.7) : Color.clear, lineWidth: 1.5)
             )
-            .scaleEffect(isSelected || isHovered || (isPressed && feedbackEnabled) ? kAppIconHoverScale : 1.0)
-            .shadow(color: (isSelected ? Color.accentColor.opacity(0.5) : (isHovered ? Color.accentColor.opacity(0.3) : (isPressed && feedbackEnabled ? Color.accentColor.opacity(0.3) : Color.clear))), radius: kAppIconShadowRadius, x: 0, y: kAppIconShadowOffsetY)
+            // Non-color selection cue (G-2): a checkmark badge so selection is legible without
+            // relying on the accent-color tint/border alone (helps colorblind/low-contrast users).
+            .overlay(alignment: .topTrailing) {
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, Color.accentColor)
+                        .padding(4)
+                        .accessibilityHidden(true)
+                }
+            }
+            .scaleEffect(isSelected || (isPressed && feedbackEnabled) ? kAppIconHoverScale : 1.0)
             .contentShape(Rectangle())
     }
     
@@ -882,7 +984,19 @@ struct AppIconView: View {
                     .frame(width: iconSize, height: iconSize)
                     .padding(kAppIconPadding)
             }
-            
+
+            // D-3: live badge count on folder icons, so the contained-app count is visible at a
+            // glance instead of only on hover (see hoverInfoView).
+            if app.isFolder, let count = app.containedApps?.count, count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor, in: Capsule())
+                    .offset(x: iconSize / 2.6, y: -iconSize / 2.6)
+                    .accessibilityHidden(true)
+            }
         }
     }
     
