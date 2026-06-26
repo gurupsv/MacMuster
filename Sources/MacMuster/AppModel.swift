@@ -206,6 +206,7 @@ class AppModel {
 
     // MARK: - Timer & Observers
     private var refreshTimer: Timer?
+    private var cacheRefreshTimer: Timer?
 
     // MARK: - Initialization
     init() {
@@ -459,16 +460,30 @@ class AppModel {
                 await self?.refreshDisplayOrder()
             }
         }
+
+        // Refresh cached icons periodically (every 6 hours) to pick up app updates
+        cacheRefreshTimer?.invalidate()
+        cacheRefreshTimer = Timer.scheduledTimer(withTimeInterval: 6 * 60 * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.refreshCachedIcons()
+            }
+        }
     }
 
     func cleanupTimerAndObservers() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+        cacheRefreshTimer?.invalidate()
+        cacheRefreshTimer = nil
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
-    /// Loads icons in two passes: the first screenful's worth of apps first (so the grid looks
-    /// fully populated almost immediately), then the remainder in the background.
+    /// Loads icons in passes: the first screenful's worth of apps first (so the grid looks
+    /// fully populated almost immediately), then the remainder in screenful-sized chunks.
+    /// Chunking the remainder (instead of awaiting it as one batch) means icons scrolled into
+    /// view backfill within roughly one chunk's decode time, rather than every icon beyond the
+    /// first screen staying blank until the entire remainder — which can be hundreds of apps —
+    /// has finished decoding.
     private func loadMissingIcons() async {
         let priorityApps = Array(displayOrder.prefix(kPriorityIconLoadCount))
         let priorityIcons = await IconService.shared.loadMissingIcons(for: priorityApps)
@@ -478,9 +493,13 @@ class AppModel {
 
         let remainingApps = Array(displayOrder.dropFirst(kPriorityIconLoadCount))
         guard !remainingApps.isEmpty else { return }
-        let remainingIcons = await IconService.shared.loadMissingIcons(for: remainingApps)
-        if !remainingIcons.isEmpty {
-            applyLoadedIcons(remainingIcons)
+
+        for start in stride(from: 0, to: remainingApps.count, by: kPriorityIconLoadCount) {
+            let end = min(start + kPriorityIconLoadCount, remainingApps.count)
+            let chunkIcons = await IconService.shared.loadMissingIcons(for: Array(remainingApps[start..<end]))
+            if !chunkIcons.isEmpty {
+                applyLoadedIcons(chunkIcons)
+            }
         }
     }
 
@@ -497,6 +516,50 @@ class AppModel {
         cachedDisplayedApps = nil
         // Refresh folder icons now that app icons are available
         IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex)
+    }
+
+    /// Background refresh: checks if any cached icons are stale (bundle modified since cache)
+    /// and re-decodes/updates them. Also prunes cache entries for apps that no longer exist.
+    private func refreshCachedIcons() async {
+        let currentPaths = Set(displayOrder.map(\.path))
+
+        // Prune cache entries for deleted apps
+        IconCacheManager.shared.pruneDeletedApps(currentAppPaths: currentPaths)
+
+        // Find stale cache entries (bundle mtime newer than cached mtime) and refresh them
+        let cachedApps = IconCacheManager.shared.cachedAppPaths()
+        var staleApps: [Application] = []
+
+        for (appPath, _) in cachedApps {
+            // Only refresh if app is in current display order
+            guard currentPaths.contains(appPath),
+                  let app = appPathIndex[appPath] else {
+                continue
+            }
+
+            // Check if bundle has been modified since cache was written
+            let bundleAttrs = try? FileManager.default.attributesOfItem(atPath: appPath)
+            let currentMtime = bundleAttrs?[.modificationDate] as? Date
+
+            if let currentMtime = currentMtime {
+                if let cachedEntry = cachedApps.first(where: { $0.appPath == appPath }) {
+                    // Simple comparison: if mtimes differ at the second level, cache is stale
+                    let cachedSec = Int(cachedEntry.cachedMtime.timeIntervalSince1970)
+                    let currentSec = Int(currentMtime.timeIntervalSince1970)
+                    if cachedSec != currentSec {
+                        staleApps.append(app)
+                    }
+                }
+            }
+        }
+
+        guard !staleApps.isEmpty else { return }
+
+        // Re-decode stale icons in parallel and update cache/display
+        let refreshedIcons = await IconService.shared.loadMissingIcons(for: staleApps)
+        if !refreshedIcons.isEmpty {
+            applyLoadedIcons(refreshedIcons)
+        }
     }
 
     private func rebuildAppPathIndex() {

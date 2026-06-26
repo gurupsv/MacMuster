@@ -1,6 +1,7 @@
 import XCTest
 @testable import MacMuster
 
+@MainActor
 final class AppModelTests: XCTestCase {
     
     private var appModel: AppModel!

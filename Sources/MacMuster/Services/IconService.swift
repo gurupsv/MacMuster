@@ -7,6 +7,34 @@ final class IconService {
     private let folderIconCache = NSCache<NSString, NSImage>()
     private init() {}
     
+    /// Rasterizes an app icon to a fixed-size bitmap on a background thread.
+    /// Forces decode + downscale once, so SwiftUI just blits a small bitmap on the main thread.
+    nonisolated static func rasterize(_ path: String, pixelSize: Int) -> NSImage {
+        let icon = NSWorkspace.shared.icon(forFile: path)
+
+        // Fallback 1: Try to draw into a CGContext (works for most icons)
+        var proposed = NSRect(x: 0, y: 0, width: pixelSize, height: pixelSize)
+        if let cg = icon.cgImage(forProposedRect: &proposed, context: nil, hints: nil),
+           let ctx = CGContext(data: nil, width: pixelSize, height: pixelSize,
+                               bitsPerComponent: 8, bytesPerRow: 0,
+                               space: CGColorSpaceCreateDeviceRGB(),
+                               bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+            ctx.interpolationQuality = .high
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: pixelSize, height: pixelSize))
+            if let scaled = ctx.makeImage() {
+                return NSImage(cgImage: scaled, size: NSSize(width: pixelSize, height: pixelSize))
+            }
+        }
+
+        // Fallback 2: If CGContext approach fails, try to resize the icon directly using NSImage
+        let resized = NSImage(size: NSSize(width: pixelSize, height: pixelSize))
+        resized.lockFocus()
+        icon.draw(in: NSRect(x: 0, y: 0, width: pixelSize, height: pixelSize),
+                  from: NSRect.zero, operation: .copy, fraction: 1.0)
+        resized.unlockFocus()
+        return resized
+    }
+    
     func generateFolderIcon(_ apps: [Application], for folderId: String? = nil, gridSize: Int = 3) -> NSImage? {
         guard !apps.isEmpty else { return nil }
 
@@ -50,12 +78,32 @@ final class IconService {
         }
         guard !missingPaths.isEmpty else { return [] }
 
-        let loadedIcons: [(String, NSImage)] = await Task.detached(priority: .userInitiated) {
-            let workspace = NSWorkspace.shared
-            return missingPaths.map { ($0, workspace.icon(forFile: $0)) }
-        }.value
+        // Each icon loads from cache (instant) or decodes+downscales (background).
+        // Fan the batch out across the cooperative thread pool instead of one at a time.
+        return await withTaskGroup(of: (String, NSImage).self) { group in
+            for path in missingPaths {
+                group.addTask(priority: .userInitiated) {
+                    (path, Self.loadOrDecodeIcon(path))
+                }
+            }
+            var results: [(String, NSImage)] = []
+            results.reserveCapacity(missingPaths.count)
+            for await pair in group {
+                results.append(pair)
+            }
+            return results
+        }
+    }
 
-        return loadedIcons
+    /// Loads icon from cache if fresh, otherwise decodes fresh and caches.
+    nonisolated private static func loadOrDecodeIcon(_ path: String) -> NSImage {
+        if let cached = IconCacheManager.shared.cachedIcon(for: path) {
+            return cached
+        }
+
+        let icon = Self.rasterize(path, pixelSize: kIconRasterPixelSize)
+        IconCacheManager.shared.cacheIcon(icon, for: path)
+        return icon
     }
     
     func updateIconsInPlace(for displayOrder: [Application], with loadedIcons: [(String, NSImage)]) -> [Application] {

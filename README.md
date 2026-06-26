@@ -35,12 +35,13 @@ Built entirely with **Swift 6.2** and **SwiftUI + AppKit**, MacMuster has zero e
 | **Keyboard Navigation** | Full arrow-key, Enter, Escape, and `/` search support |
 | **Real-Time Search** | Fuzzy & path matching (catches acronyms, vendor names) |
 | **Smart Categories** | All / System / User / Most Used / Recently Launched / Newly Installed |
-| **Folder Organization** | Create, rename, delete folders; drag apps into folders |
+| **Folder Organization** | Create, rename, delete folders; drag apps into folders; folder icons show a live app-count badge |
 | **Drag & Drop** | Drag apps onto each other to create folders or reorder |
-| **Recent Apps** | Unique apps launched in the last 30 days (max 8 visible) |
+| **Recent Apps** | Most recently launched apps, max 8 visible (history retained 14 days) |
 | **Menu Bar Access** | Quick toggle from menu bar icon |
 | **Multi-Monitor** | Primary screen overlay + dimmed backgrounds; reacts to display changes |
-| **Accessibility** | Keyboard shortcuts help, screen reader support, reduce motion/transparency |
+| **Accessibility** | Keyboard shortcuts help, screen reader support, reduce motion/transparency, non-color selection cues, visible keyboard focus rings |
+| **Provenance Badge** | Apps installed outside `/Applications`/`/System/Applications` (e.g. `~/Applications`) show a warning badge |
 
 ### ⚡ Performance
 
@@ -66,7 +67,7 @@ Enhanced visual edge glow with customizable options:
 | Setting | Description |
 |---------|-------------|
 | **Enabled** | Toggle glow effect on/off |
-| **Color** | Choose from: White, Black, Red, Blue, Green, Cyan, Yellow |
+| **Color** | 8 preset swatches (White, Black, Orange, Blue, Pink, Green, Cyan, Yellow) or any custom color via the system color picker |
 | **Intensity** | 0–1 (default: 0.3) - Controls brightness |
 | **Width** | 10–100 pixels (default: 40px) - Edge gradient size |
 
@@ -77,9 +78,15 @@ The glow effect smoothly fades from full opacity at the screen edges to transpar
 ### 🔒 Privacy & Security
 
 - **Zero network calls** — completely offline
-- **Local storage only** — UserDefaults for preferences
+- **Local storage only** — UserDefaults for preferences, declared in a `PrivacyInfo.xcprivacy`
+  manifest (same-app-only access, no tracking, no collected data types)
 - **No analytics, no tracking**
-- **Sandbox compatible** (read-only access to /Applications)
+- **Provenance badge** — apps outside `/Applications`/`/System/Applications` are flagged, since a
+  malicious bundle could otherwise impersonate a real app's name/icon from elsewhere
+- **Bounded launch history** — recent/most-used app data is capped to 14 days and 50 entries, well
+  above the 8 ever shown but far short of indefinite retention
+- **Security-scoped bookmarks** for custom scan directories, so access is primed to survive
+  relaunch if App Sandbox is ever enabled (the app ships unsandboxed today)
 
 ---
 
@@ -186,22 +193,27 @@ MacMuster/
 ├── Sources/MacMuster/
 │   ├── AppEntry.swift           # @main entry point
 │   ├── AppDelegate.swift        # App lifecycle, singletons
-│   ├── AppModel.swift           # Core state (ObservableObject)
+│   ├── AppModel.swift           # Core state (@Observable), orchestrates the services below
+│   ├── Types.swift              # Application/AppFolder models + shared constants
 │   ├── ContentView.swift        # Main launcher UI
-│   ├── OverlayWindowManager.swift   # Full-screen window mgmt
+│   ├── OverlayWindowManager.swift   # Full-screen window mgmt + glow effect
 │   ├── StatusBarManager.swift       # Menu bar icon
 │   ├── SettingsWindowManager.swift  # Settings window
 │   ├── SettingsContentView.swift    # Settings UI
 │   ├── Constants.swift              # Magic numbers
-│   ├── Services/
-│   │   ├── ApplicationService.swift   # App launching
-│   │   ├── ApplicationSorter.swift    # Sorting logic
-│   │   └── RecentAppsService.swift    # macOS recents data
-│   └── Resources/                 # Icons, assets
+│   └── Services/
+│       ├── ApplicationScanner.swift   # Directory scanning, custom-dir validation
+│       ├── ApplicationService.swift   # App launching
+│       ├── ApplicationSorter.swift    # Sorting logic
+│       ├── FolderStore.swift          # Folder CRUD, child-folder traversal
+│       ├── IconService.swift          # Icon loading/caching, folder composite icons
+│       ├── PreferencesStore.swift     # UserDefaults persistence (single source of truth)
+│       └── RecentAppsTracker.swift    # Recent/most-used launch history
+├── Resources/                     # Icons, PrivacyInfo.xcprivacy
 ├── Tests/                         # Unit tests
 ├── Package.swift                  # SPM manifest
 ├── build_production.sh            # Production build script
-└── create_app_bundle.sh           # Legacy bundle script
+└── create_app_bundle.sh           # Local dev bundle script
 ```
 
 ### Key Design Decisions

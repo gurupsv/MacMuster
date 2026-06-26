@@ -61,6 +61,7 @@ let kMaxColumnCount = 10
 let kIconSizeSmall: CGFloat = 48
 let kIconSizeMedium: CGFloat = 64
 let kIconSizeLarge: CGFloat = 80
+let kIconRasterPixelSize = 160
 
 // MARK: - SettingsContentView Constants
 
