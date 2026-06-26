@@ -37,6 +37,30 @@ struct Application: Identifiable, Hashable {
         if path.lowercased().contains(query) { return true }
         return query.isSubsequence(of: lowercaseName)
     }
+
+    /// F-1: whether this app lives under one of the two locations macOS reserves for vetted
+    /// installs (`/Applications`, `/System/Applications`). A bundle outside these — including
+    /// `~/Applications` or any user-added custom directory — could be named/iconed to impersonate
+    /// a real app, so callers use this to show a provenance warning rather than trusting name/icon
+    /// alone. Folders are synthetic (no real install location) and are never flagged.
+    var isFromTrustedLocation: Bool {
+        guard !isFolder else { return true }
+        return path.hasPrefix("/Applications/") || path.hasPrefix("/System/Applications/")
+    }
+
+    /// F-1: a specific, human-readable explanation of *where* this app actually lives, for the
+    /// provenance badge's tooltip. `nil` when the app is trusted (no badge shown, nothing to
+    /// explain). Names the real containing folder rather than a generic "outside Applications"
+    /// message, so the warning is actionable instead of just alarming.
+    var provenanceWarning: String? {
+        guard !isFromTrustedLocation else { return nil }
+        let containingFolder = (path as NSString).deletingLastPathComponent
+        let homeApplications = (NSHomeDirectory() as NSString).appendingPathComponent("Applications")
+        if containingFolder == homeApplications {
+            return "Installed in your personal Applications folder (~/Applications), not the system /Applications — verify this app's source."
+        }
+        return "Installed in \(containingFolder), not /Applications or /System/Applications — verify this app's source."
+    }
 }
 
 private extension String {
@@ -58,13 +82,6 @@ struct AppMetadata {
     let modificationDate: Date?
     let size: Int?
     let bundleIdentifier: String?
-}
-
-// MARK: - AppScanResult
-
-struct AppScanResult {
-    let metadata: [String: AppMetadata]
-    let apps: [Application]
 }
 
 // MARK: - AppCategory

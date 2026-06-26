@@ -45,19 +45,16 @@ final class IconService {
     }
     
     func loadMissingIcons(for displayOrder: [Application]) async -> [(String, NSImage)] {
-        var pathToIndex: [String: Int] = [:]
-        for (i, app) in displayOrder.enumerated() where app.icon == nil {
-            pathToIndex[app.path] = i
+        let missingPaths = displayOrder.compactMap { app in
+            app.icon == nil ? app.path : nil
         }
-        guard !pathToIndex.isEmpty else { return [] }
-        
-        let missingPaths = Array(pathToIndex.keys)
-        
+        guard !missingPaths.isEmpty else { return [] }
+
         let loadedIcons: [(String, NSImage)] = await Task.detached(priority: .userInitiated) {
             let workspace = NSWorkspace.shared
             return missingPaths.map { ($0, workspace.icon(forFile: $0)) }
         }.value
-        
+
         return loadedIcons
     }
     

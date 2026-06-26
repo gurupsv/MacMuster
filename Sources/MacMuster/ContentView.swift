@@ -626,12 +626,19 @@ spacing: kGridSpacing
         .onHover { isHovered in
             hoveredAppPath = isHovered ? app.path : nil
         }
+        // Same reasoning applies to .help(): a tooltip set inside AppIconView would be nested
+        // inside .draggable/.dropDestination above and wouldn't reliably show. Applied here,
+        // outside drag support, instead — carries the name plus the F-1 provenance warning, if any.
+        .help(app.provenanceWarning.map { "\(app.name) — \($0)" } ?? app.name)
     }
 
     private func accessibilityLabel(for app: Application) -> String {
         if app.isFolder {
             let count = app.containedApps?.count ?? 0
             return "\(app.name) folder, \(count) app\(count == 1 ? "" : "s")"
+        }
+        if let warning = app.provenanceWarning {
+            return "\(app.name), application. \(warning)"
         }
         return "\(app.name), application"
     }
@@ -701,22 +708,6 @@ spacing: kGridSpacing
         // that detects drop position between items. For now, we prioritize folder creation
         // as specified in the requirements. Users can reorder apps through settings
         // or by using the custom order features accessible elsewhere in the UI.
-    }
-    
-    private func updateCustomOrderAfterDrop(droppedPath: String, targetPath: String) {
-        // Find indices of dropped and target apps
-        guard let droppedIndex = appModel.displayOrder.firstIndex(where: { $0.path == droppedPath }),
-              let targetIndex = appModel.displayOrder.firstIndex(where: { $0.path == targetPath }) else {
-            return
-        }
-        
-        // Create a new array with the dropped item moved to target position
-        var newOrder = appModel.displayOrder
-        let droppedItem = newOrder.remove(at: droppedIndex)
-        newOrder.insert(droppedItem, at: targetIndex)
-        
-        // Update customOrder based on new positions
-        appModel.updateCustomOrder(from: newOrder)
     }
 
     private var scrollAnchor: UnitPoint? {
@@ -859,8 +850,9 @@ struct SectionView: View {
             ) {
                 ForEach(apps) { app in
                     AppIconView(appModel: appModel, app: app, isHovered: hoveredAppPath == app.path, hoveredAppInfo: nil)
-                        .accessibilityLabel("\(app.name), application")
+                        .accessibilityLabel(app.provenanceWarning.map { "\(app.name), application. \($0)" } ?? "\(app.name), application")
                         .accessibilityAddTraits(.isButton)
+                        .help(app.provenanceWarning.map { "\(app.name) — \($0)" } ?? app.name)
                         .onTapGesture {
                             onLaunch(app)
                         }
@@ -954,6 +946,20 @@ struct AppIconView: View {
                         .accessibilityHidden(true)
                 }
             }
+            // F-1: provenance badge — a bundle outside the OS-vetted install locations can be
+            // named/iconed to impersonate a real app (e.g. a fake "Safari.app" in ~/Applications),
+            // so flag anything not under /Applications or /System/Applications.
+            .overlay(alignment: .bottomTrailing) {
+                if !app.isFromTrustedLocation {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.black, Color.yellow)
+                        .padding(3)
+                        .background(Circle().fill(.white))
+                        .accessibilityHidden(true)
+                }
+            }
             .scaleEffect(isSelected || (isPressed && feedbackEnabled) ? kAppIconHoverScale : 1.0)
             .contentShape(Rectangle())
     }
@@ -1008,7 +1014,6 @@ struct AppIconView: View {
             .lineLimit(2)
             .frame(maxWidth: .infinity)
             .foregroundStyle(.primary)
-            .help(app.name)
     }
 
     private func getFontForAppName() -> Font {

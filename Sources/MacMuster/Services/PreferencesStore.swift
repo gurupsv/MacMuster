@@ -26,6 +26,7 @@ final class PreferencesStore {
         case fontSize = "fontSize"
         case fontWeight = "fontWeight"
         case customDirectories = "customDirectories"
+        case customDirectoryBookmarks = "customDirectoryBookmarks"
         case folders = "appFolders"
         case pressFeedbackEnabled = "pressFeedbackEnabled"
         case recentAppsEnabled = "recentAppsEnabled"
@@ -216,7 +217,19 @@ final class PreferencesStore {
     func saveCustomDirectories(_ dirs: [String]) {
         defaults.set(dirs, forKey: Keys.customDirectories.rawValue)
     }
-    
+
+    /// F-4: security-scoped bookmarks for custom directories, keyed by the directory's `path` at
+    /// the time it was added. The app is currently unsandboxed, so the plain path in
+    /// `customDirectories` is sufficient on its own — these bookmarks exist so access survives if
+    /// sandboxing is ever enabled later, instead of silently breaking on relaunch.
+    func loadCustomDirectoryBookmarks() -> [String: Data]? {
+        defaults.dictionary(forKey: Keys.customDirectoryBookmarks.rawValue) as? [String: Data]
+    }
+
+    func saveCustomDirectoryBookmarks(_ bookmarks: [String: Data]) {
+        defaults.set(bookmarks, forKey: Keys.customDirectoryBookmarks.rawValue)
+    }
+
     func loadFolders() -> [AppFolder]? {
         guard let data = defaults.data(forKey: Keys.folders.rawValue) else { return nil }
         return try? JSONDecoder().decode([AppFolder].self, from: data)

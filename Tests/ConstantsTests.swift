@@ -7,20 +7,12 @@ final class ConstantsTests: XCTestCase {
 
     func testKeyConstantsHaveExpectedValues() {
         // AppModel
-        XCTAssertEqual(kIconCacheBatchSize, 12)
         XCTAssertEqual(kMaxRecentApps, 8)
 
         // OverlayWindowManager
         XCTAssertEqual(kWindowAnimationDelay, 0.1)
         XCTAssertEqual(kWindowMinWidth, 900)
         XCTAssertEqual(kWindowMinHeight, 700)
-        XCTAssertEqual(kWindowPadding, 40)
-
-        // ContentView
-        XCTAssertEqual(kGridColumnCount, 8)
-        XCTAssertEqual(kAppIconSize, 64)
-        XCTAssertEqual(kAppIconCornerRadius, 10)
-        XCTAssertEqual(kAppIconHoverScale, 1.08)
 
         // Layout
         XCTAssertEqual(kMinColumnCount, 4)

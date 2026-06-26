@@ -128,9 +128,6 @@ class OverlayWindowManager {
         window?.isVisible ?? false
     }
     
-    // Track last screen frame to persist across launches
-    private var lastScreenFrame: NSRect?
-    
     func setup(appModel: AppModel) {
         self.appModel = appModel
         
@@ -420,9 +417,7 @@ return true
 struct LaunchWrapperView: View {
     let appModel: AppModel
     @State private var scale: CGFloat = 1.0
-    
-    private let kVisualEffectOpacity: Double = 0.95
-    
+
     var body: some View {
         ZStack {
             // Background and glow remain at full screen size (not scaled)

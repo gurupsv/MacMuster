@@ -810,18 +810,6 @@ struct FolderRow: View {
 
 // MARK: - Placeholder Panels
 
-struct HotCornersSettingsPanel: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Hot Corners")
-                .font(.system(size: 15, weight: .semibold))
-            Text("Configure hot corner actions for multi-monitor workflows.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
 struct AppearanceSettingsPanel: View {
     @Bindable var appModel: AppModel
 
@@ -1002,18 +990,6 @@ struct AppearanceSettingsPanel: View {
         case "normal": return .regular
         case "bold": return .bold
         default: return .regular
-        }
-    }
-}
-
-struct SpacesSettingsPanel: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Spaces")
-                .font(.system(size: 15, weight: .semibold))
-            Text("Configure behavior across macOS Spaces and desktops.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
         }
     }
 }
@@ -1393,7 +1369,16 @@ struct AppDirectoriesSettingsPanel: View {
                                 let path = url.path
                                 // Verify it's a directory
                                 if (try? FileManager.default.contentsOfDirectory(atPath: path)) != nil {
-                                    appModel.addCustomDirectory(path)
+                                    // F-4: capture a security-scoped bookmark while we still have
+                                    // access via this picker URL — a plain path string can't be
+                                    // turned into one later, and this is what lets access survive
+                                    // relaunch if sandboxing is ever enabled.
+                                    let bookmarkData = try? url.bookmarkData(
+                                        options: .withSecurityScope,
+                                        includingResourceValuesForKeys: nil,
+                                        relativeTo: nil
+                                    )
+                                    appModel.addCustomDirectory(path, bookmarkData: bookmarkData)
                                     newDirectoryPath = ""
                                 }
                             }
@@ -1479,21 +1464,6 @@ struct AppDirectoryRow: View {
             withAnimation(.easeInOut(duration: 0.1)) {
                 self.isHovered = isHovered
             }
-        }
-    }
-}
-
-// MARK: - Danger Zone Panel
-
-struct DangerZoneSettingsPanel: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Danger Zone")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.red)
-            Text("These actions are irreversible. Proceed with caution.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
         }
     }
 }

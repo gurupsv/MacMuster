@@ -93,6 +93,65 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(newAppModel.allScanDirectories.count, AppModel.defaultScanDirectories.count)
     }
 
+    // MARK: - Custom Directory Bookmarks Persistence Tests (F-4)
+
+    /// A real, owned, non-symlinked directory under the system temp dir — `isValidCustomDirectory`
+    /// requires the path to actually exist (and resolve to itself), so a fabricated path like
+    /// "/Users/test/CustomApps" would silently fail validation and never reach persistence.
+    private func makeTestDirectory() -> String {
+        let tempRoot = (NSTemporaryDirectory() as NSString).resolvingSymlinksInPath
+        let testDir = (tempRoot as NSString).appendingPathComponent("MacMusterF4Test-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(atPath: testDir, withIntermediateDirectories: true)
+        return testDir
+    }
+
+    func testAddCustomDirectoryWithBookmarkSavesBookmarkToUserDefaults() {
+        let testDir = makeTestDirectory()
+        defer { try? FileManager.default.removeItem(atPath: testDir) }
+
+        let bookmarkData = Data([0x01, 0x02, 0x03])
+        appModel.addCustomDirectory(testDir, bookmarkData: bookmarkData)
+
+        XCTAssertTrue(appModel.customDirectories.contains(testDir))
+        let saved = UserDefaults.standard.dictionary(forKey: "customDirectoryBookmarks") as? [String: Data]
+        XCTAssertEqual(saved?[testDir], bookmarkData)
+    }
+
+    func testAddCustomDirectoryWithoutBookmarkStillAddsDirectory() {
+        let testDir = makeTestDirectory()
+        defer { try? FileManager.default.removeItem(atPath: testDir) }
+
+        appModel.addCustomDirectory(testDir)
+
+        XCTAssertTrue(appModel.customDirectories.contains(testDir))
+    }
+
+    func testRemoveCustomDirectoryClearsItsBookmarkFromUserDefaults() {
+        let testDir = makeTestDirectory()
+        defer { try? FileManager.default.removeItem(atPath: testDir) }
+
+        appModel.addCustomDirectory(testDir, bookmarkData: Data([0x01]))
+        appModel.removeCustomDirectory(testDir)
+
+        let saved = UserDefaults.standard.dictionary(forKey: "customDirectoryBookmarks") as? [String: Data]
+        XCTAssertNil(saved?[testDir])
+    }
+
+    func testSaveCustomDirectoryBookmarksWritesToUserDefaults() {
+        let bookmarks = ["/some/path": Data([0x0a, 0x0b])]
+        PreferencesStore.shared.saveCustomDirectoryBookmarks(bookmarks)
+
+        let saved = UserDefaults.standard.dictionary(forKey: "customDirectoryBookmarks") as? [String: Data]
+        XCTAssertEqual(saved?["/some/path"], Data([0x0a, 0x0b]))
+    }
+
+    func testLoadCustomDirectoryBookmarksReadsFromUserDefaults() {
+        UserDefaults.standard.set(["/some/path": Data([0x0c, 0x0d])], forKey: "customDirectoryBookmarks")
+
+        let loaded = PreferencesStore.shared.loadCustomDirectoryBookmarks()
+        XCTAssertEqual(loaded?["/some/path"], Data([0x0c, 0x0d]))
+    }
+
     // MARK: - Font Family Persistence Tests
 
     func testSetFontFamilySavesToUserDefaults() {

@@ -16,7 +16,6 @@ class AppModel {
 
     // MARK: - State
     var isLoading = true
-    var appMetadataCache: [String: AppMetadata] = [:]
     var displayOrder: [Application] = []
     private var appPathIndex: [String: Application] = [:] // Optimization P2: Path -> App lookup index
     // Icons loaded by path, read directly by AppIconView. Application.== only compares `id`
@@ -29,8 +28,6 @@ class AppModel {
 
     // Optimization P1: Scan caching to avoid redundant disk I/O every 5 minutes
     private struct ScanCache {
-        let apps: [Application]
-        let metadata: [String: AppMetadata]
         let dirMtimes: [String: Date]
         let timestamp: Date
     }
@@ -53,6 +50,12 @@ class AppModel {
             dataVersion += 1
         }
     }
+    // F-4: security-scoped bookmarks for custom directories, keyed by path, plus the resolved
+    // URLs currently holding active access. The app is unsandboxed today, so scanning works off
+    // `customDirectories` paths alone regardless of these — they exist so a custom directory's
+    // access survives relaunch if sandboxing is ever turned on, instead of silently breaking.
+    private var customDirectoryBookmarks: [String: Data] = [:]
+    private var activeSecurityScopedURLs: [String: URL] = [:]
 
     // MARK: - Folders
     var folders: [AppFolder] = [] {
@@ -122,7 +125,6 @@ class AppModel {
     }
     var categoryCounts: [AppCategory: Int] = [:]
     var _mostUsedApps: [Application] = []
-    var _recentlyLaunchedApps: [Application] = []
     var customOrder: [String: Int] = [:] {
         didSet {
             dataVersion += 1
@@ -202,10 +204,6 @@ class AppModel {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
-    var shouldReduceTransparency: Bool {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
-    }
-
     // MARK: - Timer & Observers
     private var refreshTimer: Timer?
 
@@ -234,7 +232,6 @@ class AppModel {
 
         let result = ApplicationScanner.shared.scanDirectories(directories: allDirs)
 
-        self.appMetadataCache = result.metadata
         self.displayOrder = self.sortedApplications(result.apps)
 
         rebuildAppPathIndex()
@@ -335,12 +332,33 @@ class AppModel {
 
 
     private func loadCustomDirectories() {
+        customDirectoryBookmarks = PreferencesStore.shared.loadCustomDirectoryBookmarks() ?? [:]
         if let dirs = PreferencesStore.shared.loadCustomDirectories() {
             let validDirs = dirs.filter { ApplicationScanner.isValidCustomDirectory($0) }
             customDirectories = validDirs
             allScanDirectories = Self.defaultScanDirectories + validDirs
+            resolveCustomDirectoryAccess(for: validDirs)
         } else {
             allScanDirectories = Self.defaultScanDirectories
+        }
+    }
+
+    /// F-4: resolve each custom directory's security-scoped bookmark (if one was recorded) and
+    /// start access. Best-effort — a missing or stale bookmark just falls back to today's existing
+    /// behavior of scanning the plain path directly, which is all that's needed while unsandboxed.
+    private func resolveCustomDirectoryAccess(for paths: [String]) {
+        for path in paths {
+            guard let bookmarkData = customDirectoryBookmarks[path] else { continue }
+            var isStale = false
+            guard let url = try? URL(
+                resolvingBookmarkData: bookmarkData,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) else { continue }
+            if url.startAccessingSecurityScopedResource() {
+                activeSecurityScopedURLs[path] = url
+            }
         }
     }
 
@@ -502,7 +520,7 @@ class AppModel {
         // Smart categories are independent memberships, counted against the visible set.
         let visiblePaths = Set(visible.map(\.path))
         counts[.mostUsed] = _mostUsedApps.filter { visiblePaths.contains($0.path) }.count
-        counts[.recentlyLaunched] = _recentlyLaunchedApps.filter { visiblePaths.contains($0.path) }.count
+        counts[.recentlyLaunched] = _recentApps.filter { visiblePaths.contains($0.path) }.count
         counts[.newlyInstalled] = visible.filter { isNewlyInstalled($0) }.count
         categoryCounts = counts
     }
@@ -537,15 +555,14 @@ class AppModel {
         
         let result = ApplicationScanner.shared.scanDirectories(directories: allDirs)
 
-        scanCache = ScanCache(apps: result.apps, metadata: result.metadata, dirMtimes: currentMtimes, timestamp: Date())
+        scanCache = ScanCache(dirMtimes: currentMtimes, timestamp: Date())
         
-        self.appMetadataCache = result.metadata
-        let loadedIconsByPath = Dictionary(uniqueKeysWithValues: displayOrder.compactMap { app -> (String, NSImage)? in
+        let preservedIcons = Dictionary(uniqueKeysWithValues: displayOrder.compactMap { app -> (String, NSImage)? in
             guard let icon = app.icon else { return nil }
             return (app.path, icon)
         })
         
-        let appsWithPreservedIcons = IconService.shared.applicationsPreservingLoadedIcons(from: result.apps, loadedIconsByPath: loadedIconsByPath)
+        let appsWithPreservedIcons = IconService.shared.applicationsPreservingLoadedIcons(from: result.apps, loadedIconsByPath: preservedIcons)
         self.displayOrder = self.sortedApplications(appsWithPreservedIcons)
         
         // Update the path index for O(1) lookups in folders and other methods
@@ -554,6 +571,9 @@ class AppModel {
         dataVersion += 1
         self.updateFilteredApps()
         await self.loadMissingIcons()
+        // Prune icons for apps no longer present (uninstalled since last scan).
+        let currentPaths = Set(displayOrder.map(\.path))
+        loadedIconsByPath = loadedIconsByPath.filter { currentPaths.contains($0.key) }
         // Refresh recent apps so _recentApps gets icon-populated Application structs
         self.updateRecentApps()
     }
@@ -562,8 +582,6 @@ class AppModel {
     func recordAppLaunch(at path: String) {
         RecentAppsTracker.shared.recordAppLaunch(at: path)
         updateRecentApps()
-        // _mostUsedApps/_recentlyLaunchedApps just changed — invalidate the displayed-apps cache
-        // and refresh tab counts so Most Used / Recently Launched reflect the new ranking immediately.
         dataVersion += 1
         updateFilteredApps()
     }
@@ -584,8 +602,6 @@ class AppModel {
     private func updateRecentApps() {
         let recentPaths = RecentAppsTracker.shared.getRecentPaths()
         _recentApps = recentPaths.compactMap { appPathIndex[$0] }
-        // "Recently Launched" category mirrors the same recency-ranked data shown in the Recent section.
-        _recentlyLaunchedApps = _recentApps
         updateMostUsedApps()
     }
 
@@ -747,7 +763,7 @@ class AppModel {
     }
 
     func isRecentlyLaunched(_ app: Application) -> Bool {
-        _recentlyLaunchedApps.contains { $0.path == app.path }
+        _recentApps.contains { $0.path == app.path }
     }
 
     func isNewlyInstalled(_ app: Application) -> Bool {
@@ -772,12 +788,26 @@ class AppModel {
 
     func removeCustomDirectory(_ path: String) {
         customDirectories.removeAll { $0 == path }
+        if let url = activeSecurityScopedURLs.removeValue(forKey: path) {
+            url.stopAccessingSecurityScopedResource()
+        }
+        if customDirectoryBookmarks.removeValue(forKey: path) != nil {
+            PreferencesStore.shared.saveCustomDirectoryBookmarks(customDirectoryBookmarks)
+        }
         Task { await refreshDisplayOrder() }
     }
 
-    func addCustomDirectory(_ path: String) {
+    /// `bookmarkData` is an F-4 security-scoped bookmark for `path`, created by the caller from the
+    /// `URL` the file picker returned (a plain path string can't be turned into a bookmark after the
+    /// fact). Optional and best-effort — if bookmark creation failed or wasn't provided, the
+    /// directory is still added and scanned by its plain path exactly as before.
+    func addCustomDirectory(_ path: String, bookmarkData: Data? = nil) {
         guard ApplicationScanner.isValidCustomDirectory(path), !customDirectories.contains(path) else { return }
         customDirectories.append(path)
+        if let bookmarkData {
+            customDirectoryBookmarks[path] = bookmarkData
+            PreferencesStore.shared.saveCustomDirectoryBookmarks(customDirectoryBookmarks)
+        }
     }
 
     func setFontFamily(_ family: String) {
@@ -802,11 +832,6 @@ class AppModel {
 
     func setRefreshInterval(_ interval: TimeInterval) {
         refreshInterval = interval
-    }
-
-    func setShowFoldersFirst(_ value: Bool) {
-        showFoldersFirst = value
-        cachedDisplayedApps = nil
     }
 
     func setApplications(_ apps: [Application]) {
@@ -1015,9 +1040,5 @@ class AppModel {
             customOrder: customOrder,
             sortOption: sortOption
         )
-    }
-
-    var filteredApplications: [Application] {
-        getDisplayedApps()
     }
 }
