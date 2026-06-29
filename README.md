@@ -47,8 +47,8 @@ Built entirely with **Swift 6.2** and **SwiftUI + AppKit**, MacMuster has zero e
 
 - **< 100ms** cold launch time
 - **Lazy icon loading** with batching (12 icons/frame)
-- **Incremental scanning** — only re-scans changed directories
-- **LRU icon cache** (max 100 entries)
+- **Staleness-aware scanning** — skips a rescan entirely if no scanned directory has changed since the last one
+- **Persistent icon cache** — decoded icons are cached to disk and invalidated automatically when an app bundle is updated
 - **Release binary: 668KB** (stripped)
 
 ### 🎨 Customization
@@ -69,7 +69,7 @@ Enhanced visual edge glow with customizable options:
 | **Enabled** | Toggle glow effect on/off |
 | **Color** | 8 preset swatches (White, Black, Orange, Blue, Pink, Green, Cyan, Yellow) or any custom color via the system color picker |
 | **Intensity** | 0–1 (default: 0.3) - Controls brightness |
-| **Width** | 10–100 pixels (default: 40px) - Edge gradient size |
+| **Width** | 5–40 pixels (default: 40px) - Edge gradient size |
 
 The glow effect smoothly fades from full opacity at the screen edges to transparent inward, creating a soft neon-like border around the launcher.
 

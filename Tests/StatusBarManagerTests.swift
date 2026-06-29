@@ -24,4 +24,12 @@ final class StatusBarManagerTests: XCTestCase {
         let manager = StatusBarManager.shared
         XCTAssertTrue(manager.responds(to: #selector(StatusBarManager.quitApp)))
     }
+
+    /// Regression coverage: the status item button must route through a single click handler
+    /// that can distinguish left/right click, rather than `statusItem.menu` being set directly
+    /// (which would make AppKit show that menu on every click and never call the button's action).
+    func testManagerExposesStatusItemClickHandler() {
+        let manager = StatusBarManager.shared
+        XCTAssertTrue(manager.responds(to: NSSelectorFromString("statusItemClicked")))
+    }
 }

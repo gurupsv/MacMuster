@@ -887,6 +887,9 @@ class AppModel {
 
     func setSortOption(_ option: ApplicationSorter.SortOption) {
         sortOption = option
+        // Explicitly choosing a sort order should actually take effect — a leftover custom order
+        // would otherwise keep taking precedence over it in applyNonSearchOrdering.
+        customOrder.removeAll()
     }
 
     func setIconSize(_ size: IconSize) {
@@ -1015,12 +1018,26 @@ class AppModel {
         if currentFolderId == nil {
             // Root-level search: match against ALL visible apps (loose + inside folders), not just the current view.
             // This lets users find an app regardless of which folder it's in.
-            return sortedApplications(visibleApplications.filter { $0.matchesSearch(lower) })
+            return rankedBySearchMatch(visibleApplications, query: lower)
         }
 
         // Inside a folder: filter only the current folder's apps.
-        let filtered = apps.filter { $0.matchesSearch(lower) }
-        return sortedApplications(filtered)
+        return rankedBySearchMatch(apps, query: lower)
+    }
+
+    /// Filters `apps` to those matching `query`, ordered by match quality (exact/prefix/substring
+    /// name hit before a path-only or acronym hit) rather than name/date — so typing "term"
+    /// surfaces "Terminal" ahead of some unrelated app whose install path merely contains "term".
+    /// Ties within the same rank fall back to alphabetical order.
+    private func rankedBySearchMatch(_ apps: [Application], query: String) -> [Application] {
+        apps.compactMap { app -> (Application, Int)? in
+            guard let rank = app.searchMatchRank(query) else { return nil }
+            return (app, rank)
+        }
+        .sorted { lhs, rhs in
+            lhs.1 != rhs.1 ? lhs.1 < rhs.1 : lhs.0.lowercaseName < rhs.0.lowercaseName
+        }
+        .map(\.0)
     }
 
     /// Apply ordering (folder-first, custom, or default sort) to a list of apps.

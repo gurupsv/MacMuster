@@ -7,7 +7,12 @@ struct SettingsContentView: View {
     @Bindable var appModel: AppModel
     @State private var selectedSection: SettingsSection = .general
     @State private var showRefreshComplete = false
-    
+
+    /// Read from the running bundle rather than hardcoded, so this never goes stale on a version bump.
+    private var appVersionString: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             // Sidebar
@@ -76,7 +81,7 @@ struct SettingsContentView: View {
             
             // Version info
             VStack(alignment: .leading, spacing: 2) {
-                Text("Version 1.0.0")
+                Text("Version \(appVersionString)")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 Text("Mac App Manager")
@@ -90,7 +95,7 @@ struct SettingsContentView: View {
     }
     
     private func getVisibleSections() -> [SettingsSection] {
-        return [.general, .appearance, .hiddenApps, .appDirectories, .folders]
+        SettingsSection.allCases
     }
     
     private func settingsSectionButton(_ section: SettingsSection) -> some View {
@@ -157,12 +162,6 @@ case .appDirectories:
                      AppDirectoriesSettingsPanel(appModel: appModel)
                  case .folders:
                      FoldersSettingsPanel(appModel: appModel)
-                 case .backupRestore:
-                     BackupRestoreSettingsPanel()
-                case .updates:
-                    UpdatesSettingsPanel()
-                case .feedback:
-                    FeedbackSettingsPanel()
                 }
             }
             .padding(.horizontal, kContentPaddingHorizontal)
@@ -194,12 +193,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
      case hiddenApps
      case appDirectories
      case folders
-     case backupRestore
-     case updates
-     case feedback
-     
+
      var id: String { rawValue }
-     
+
      var title: String {
          switch self {
          case .general: return "General"
@@ -207,12 +203,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
          case .hiddenApps: return "Hidden Apps"
          case .appDirectories: return "App Directories"
          case .folders: return "Folders"
-         case .backupRestore: return "Backup & Restore"
-         case .updates: return "Updates & Info"
-         case .feedback: return "Feedback"
          }
      }
-     
+
      var icon: String {
          switch self {
          case .general: return "gearshape"
@@ -220,9 +213,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
          case .hiddenApps: return "eye.slash"
          case .appDirectories: return "folder.badge.plus"
          case .folders: return "folder"
-         case .backupRestore: return "arrow.triangle.2.circlepath"
-         case .updates: return "info.circle"
-         case .feedback: return "envelope"
          }
      }
  }
@@ -1163,48 +1153,6 @@ struct HiddenAppRow: View {
     }
 }
 
-// MARK: - Backup & Restore Panel
-
-struct BackupRestoreSettingsPanel: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Backup & Restore")
-                .font(.system(size: 15, weight: .semibold))
-            Text("Export and import your settings and preferences.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-// MARK: - Updates & Info Panel
-
-struct UpdatesSettingsPanel: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Updates & Info")
-                .font(.system(size: 15, weight: .semibold))
-            Text("Application version and update information.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-// MARK: - Feedback Panel
-
-struct FeedbackSettingsPanel: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Feedback")
-                .font(.system(size: 15, weight: .semibold))
-            Text("Send feedback or report issues.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
 // MARK: - App Directories Settings Panel
 
 struct AppDirectoriesSettingsPanel: View {
@@ -1324,9 +1272,6 @@ struct AppDirectoriesSettingsPanel: View {
                                     path: dir,
                                     onRemove: {
                                         appModel.removeCustomDirectory(dir)
-                                        if searchFilter.isEmpty || !searchFilter.contains(dir) {
-                                            // no-op to trigger refresh
-                                        }
                                     }
                                 )
                             }

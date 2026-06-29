@@ -123,6 +123,7 @@ class OverlayWindowManager {
     private var savedPresentationOptions: NSApplication.PresentationOptions?
     private var arrowKeyEventMonitor: Any?
     private var displayChangeObserver: NSObjectProtocol?
+    private var searchFieldSelectionFixMonitor: Any?
 
     var isWindowVisible: Bool {
         window?.isVisible ?? false
@@ -202,6 +203,8 @@ window.makeKeyAndOrderFront(nil)
         // Observe display configuration changes (monitor plugged in/out, resolution change, etc.)
         installDisplayChangeObserver()
 
+        installSearchFieldSelectionFix()
+
         DispatchQueue.main.asyncAfter(deadline: .now() + kWindowAnimationDelay) {
             NotificationCenter.default.post(name: .launcherDidShow, object: window)
         }
@@ -214,6 +217,7 @@ window.makeKeyAndOrderFront(nil)
         appModel?.clearSearchState()
         removeArrowKeyMonitor()
         removeDisplayChangeObserver()
+        removeSearchFieldSelectionFix()
     }
     
     private func preferredScreen(for window: NSWindow) -> NSScreen? {
@@ -234,7 +238,8 @@ window.makeKeyAndOrderFront(nil)
     
     private func showBackgroundWindows(excluding targetScreen: NSScreen) {
         hideBackgroundWindows()
-        
+        guard let appModel else { return }
+
         backgroundWindows = NSScreen.screens
             .filter { $0.frame != targetScreen.frame }
             .map { screen in
@@ -247,10 +252,10 @@ window.makeKeyAndOrderFront(nil)
                 backgroundWindow.level = .floating
                 backgroundWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
                 backgroundWindow.isOpaque = false
-                let backgroundColor = NSColor.black.withAlphaComponent(appModel!.overlayOpacity)
+                let backgroundColor = NSColor.black.withAlphaComponent(appModel.overlayOpacity)
                 backgroundWindow.backgroundColor = backgroundColor
                 backgroundWindow.hasShadow = false
-                backgroundWindow.contentView = NSHostingView(rootView: SecondaryOverlayBackground(appModel: appModel!))
+                backgroundWindow.contentView = NSHostingView(rootView: SecondaryOverlayBackground(appModel: appModel))
                 backgroundWindow.orderFrontRegardless()
                 return backgroundWindow
             }
@@ -347,8 +352,30 @@ return true
             appModel?.selectAppUp()
             return true
         default:
+            // Type-to-search: Spotlight, Launchpad, Alfred, and Raycast all let you start typing
+            // the instant the window is open — no "/" or click required first. Mirror that instead
+            // of silently dropping the keystroke. Only reachable when no text field already has
+            // first responder (AppKit routes the event straight to the field in that case, so this
+            // default case never fires), so there's no risk of double-handling a keystroke.
+            if let appModel, isPlainTypingKeystroke(event) {
+                appModel.searchTerm += event.characters ?? ""
+                NotificationCenter.default.post(name: NSNotification.Name("focusSearchField"), object: nil)
+                return true
+            }
             return false
         }
+    }
+
+    /// Whether `event` represents an ordinary printable character typed with no command/control
+    /// modifier — i.e. something that should start a search rather than be treated as a shortcut.
+    /// Excludes control characters, Delete, and AppKit's function-key private-use range (arrows,
+    /// F-keys, Home/End, etc. — already handled by the explicit cases above, or not search input).
+    private func isPlainTypingKeystroke(_ event: NSEvent) -> Bool {
+        guard !event.modifierFlags.contains(.command), !event.modifierFlags.contains(.control) else { return false }
+        guard let characters = event.characters,
+              let scalar = characters.unicodeScalars.first,
+              characters.unicodeScalars.count == 1 else { return false }
+        return scalar.value >= 0x20 && scalar.value != 0x7F && !(0xF700...0xF8FF).contains(scalar.value)
     }
 
     // MARK: - Arrow Key Event Monitoring
@@ -409,6 +436,66 @@ return true
             window.contentView?.frame = CGRect(origin: .zero, size: newFrame.size)
             showBackgroundWindows(excluding: targetScreen)
         }
+    }
+
+    // MARK: - Search Field Selection Fix
+
+    /// AppKit auto-selects all existing text whenever a populated NSTextField becomes first
+    /// responder (the standard select-all-on-focus behavior). With type-to-search, the first
+    /// keystroke sets `searchTerm` *before* the field gains focus, so the field opens with that
+    /// character already in it — and that character fully selected. The next keystroke then
+    /// replaces it instead of appending, which is the reported bug.
+    ///
+    /// The previous approach observed `NSControl.textDidBeginEditingNotification`, but that
+    /// notification fires *before* AppKit applies the auto-select-all, so the collapse was
+    /// immediately overridden.
+    ///
+    /// Instead, install a local `keyDown` monitor that runs on *every* key event. AppKit applies
+    /// its auto-select-all as part of making the field first responder, which happens *before*
+    /// the next key event is dispatched. So at the moment our monitor runs — just before that
+    /// next keystroke reaches the field editor — the select-all has already been applied. If we
+    /// detect the full-string-selected state there, we collapse it to a cursor at the end, and
+    /// the incoming keystroke appends instead of replacing.
+    ///
+    /// This handles all focus paths uniformly (type-to-search, the "/" shortcut, and clicking
+    /// the search icon) and only intervenes when the *entire* string is selected — a manual
+    /// cursor or partial selection is left alone.
+    private func installSearchFieldSelectionFix() {
+        removeSearchFieldSelectionFix()
+        searchFieldSelectionFixMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.collapseSearchFieldSelectionIfSelectAll()
+            return event
+        }
+    }
+
+    private func removeSearchFieldSelectionFix() {
+        if let monitor = searchFieldSelectionFixMonitor {
+            NSEvent.removeMonitor(monitor)
+            searchFieldSelectionFixMonitor = nil
+        }
+    }
+
+    /// Detects AppKit's auto-select-all (whole string highlighted) and collapses it to a cursor
+    /// at the end so the next keystroke appends. A manual selection or cursor is left untouched.
+    private func collapseSearchFieldSelectionIfSelectAll() {
+        guard let fieldEditor = window?.firstResponder as? NSText else { return }
+        let length = (fieldEditor.string as NSString).length
+        guard length > 0, isFullSelection(fieldEditor.selectedRange, fieldLength: length) else { return }
+        collapseSelectionToEnd(of: fieldEditor)
+    }
+
+    /// True only when `range` covers the entire `fieldLength` (AppKit's auto-select-all state).
+    /// Split out so the decision is unit-testable without a live window and first responder.
+    nonisolated func isFullSelection(_ range: NSRange, fieldLength: Int) -> Bool {
+        range.location == 0 && range.length == fieldLength
+    }
+
+    /// Moves the insertion point to the end of `fieldEditor`, clearing any selection (such as the
+    /// select-all AppKit applies when a populated field becomes first responder). Split out from
+    /// `collapseSearchFieldSelectionIfSelectAll()` so the selection math is unit-testable without
+    /// a live window and first responder; internal for `@testable` access.
+    nonisolated func collapseSelectionToEnd(of fieldEditor: NSText) {
+        fieldEditor.selectedRange = NSRange(location: (fieldEditor.string as NSString).length, length: 0)
     }
 }
 

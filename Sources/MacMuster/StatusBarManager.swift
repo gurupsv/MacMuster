@@ -8,11 +8,16 @@ class StatusBarManager: NSObject {
     static let shared = StatusBarManager()
     private var statusItem: NSStatusItem?
     private weak var appModel: AppModel?
+    // Deliberately NOT assigned to `statusItem.menu` directly — doing so makes AppKit pop up that
+    // menu on *every* click (left and right), and the button's own target/action never fires at
+    // all. Instead, `statusItemClicked` below inspects which mouse button was pressed and only
+    // attaches/pops this menu for a right-click, so a left-click reaches `toggleWindow()`.
+    private var rightClickMenu: NSMenu?
     private override init() {}
-    
+
     func setup() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
+
         if let iconURL = Bundle.main.url(forResource: "MacMusterMenuBarTemplate", withExtension: "png"),
             let menuBarIcon = NSImage(contentsOf: iconURL) {
             menuBarIcon.isTemplate = true
@@ -21,29 +26,42 @@ class StatusBarManager: NSObject {
                 button.image = menuBarIcon
                 button.imagePosition = .imageOnly
                 button.target = self
-                button.action = #selector(toggleWindow)
+                button.action = #selector(statusItemClicked)
+                button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             }
         }
-        
+
         let menu = NSMenu()
-        
+
         let toggleItem = NSMenuItem(title: "Show MacMuster", action: #selector(showWindow), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
-        
+
         menu.addItem(NSMenuItem.separator())
-        
+
         let quitItem = NSMenuItem(title: "Quit MacMuster", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
-        
-        statusItem?.menu = menu
+
+        rightClickMenu = menu
     }
-    
+
     func setAppModel(_ model: AppModel) {
         appModel = model
     }
-    
+
+    @objc private func statusItemClicked() {
+        guard NSApp.currentEvent?.type == .rightMouseUp, let button = statusItem?.button else {
+            toggleWindow()
+            return
+        }
+        // Attach the menu only for this click, then detach it again — if it stayed attached,
+        // the *next* left-click would also show it instead of reaching toggleWindow().
+        statusItem?.menu = rightClickMenu
+        button.performClick(nil)
+        statusItem?.menu = nil
+    }
+
     @objc func toggleWindow() {
         // Toggle launcher visibility on menu bar button click
         if OverlayWindowManager.shared.isWindowVisible {

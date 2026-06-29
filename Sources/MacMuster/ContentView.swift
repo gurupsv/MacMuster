@@ -1017,8 +1017,10 @@ struct AppIconView: View {
     }
 
     private func getFontForAppName() -> Font {
-        if appModel.fontFamily == "SF Pro" || appModel.fontFamily.starts(with: "SF Pro") {
-            let weight = appModel.fontWeight == "bold" ? Font.Weight.bold : appModel.fontWeight == "light" ? Font.Weight.light : Font.Weight.regular
+        let weight = appModel.fontWeight == "bold" ? Font.Weight.bold : appModel.fontWeight == "light" ? Font.Weight.light : Font.Weight.regular
+        if appModel.fontFamily == "SF Pro Rounded" {
+            return .system(size: appModel.fontSize, weight: weight, design: .rounded)
+        } else if appModel.fontFamily == "SF Pro" || appModel.fontFamily.starts(with: "SF Pro") {
             return .system(size: appModel.fontSize, weight: weight, design: .default)
         } else {
             return .custom(appModel.fontFamily, size: appModel.fontSize)

@@ -139,7 +139,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST_EOF
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>${VERSION}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>NSHighResolutionCapable</key>

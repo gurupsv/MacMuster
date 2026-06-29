@@ -32,10 +32,21 @@ struct Application: Identifiable, Hashable {
     /// Matches `query` against this app's name (substring), its path (substring — catches vendor
     /// folder names), or as an in-order subsequence of the name (catches acronyms like "vsc").
     func matchesSearch(_ query: String) -> Bool {
-        guard !query.isEmpty else { return true }
-        if lowercaseName.contains(query) { return true }
-        if path.lowercased().contains(query) { return true }
-        return query.isSubsequence(of: lowercaseName)
+        searchMatchRank(query) != nil
+    }
+
+    /// Ranks how well `query` matches this app — lower is better, `nil` means no match at all.
+    /// Used to sort search results by match quality (an exact/prefix hit on the app's *name*
+    /// should always outrank a coincidental substring hit somewhere in its install path), rather
+    /// than leaving every match equally ranked and falling back to alphabetical/date order.
+    func searchMatchRank(_ query: String) -> Int? {
+        guard !query.isEmpty else { return 0 }
+        if lowercaseName == query { return 0 }
+        if lowercaseName.hasPrefix(query) { return 1 }
+        if lowercaseName.contains(query) { return 2 }
+        if path.lowercased().contains(query) { return 3 }
+        if query.isSubsequence(of: lowercaseName) { return 4 }
+        return nil
     }
 
     /// F-1: whether this app lives under one of the two locations macOS reserves for vetted

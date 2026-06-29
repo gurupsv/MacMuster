@@ -19,7 +19,15 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         var apps: [Application] = []
         var metadata: [String: AppMetadata] = [:]
         var seenPaths: Set<String> = []
-        
+
+        // "/Applications/Utilities" (and its /System counterpart) is both a configured scan
+        // directory in its own right *and* a plain child folder of "/Applications" — without this,
+        // the plain-folder handling below would wrap it as a synthetic in-launcher folder while its
+        // contents are *also* being surfaced individually because it's scanned directly, showing
+        // every utility twice. Any directory that's explicitly configured to be scanned on its own
+        // should never additionally be treated as a wrapper folder to synthesize.
+        let resolvedConfiguredDirs = Set(directories.map { ($0 as NSString).resolvingSymlinksInPath })
+
         for dir in directories {
             guard FileManager.default.fileExists(atPath: dir) else { continue }
             
@@ -33,24 +41,23 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
                 
                 let attributes = try? FileManager.default.attributesOfItem(atPath: fullPath)
                 let fileType = (attributes?[.type] as? FileAttributeType) ?? .typeRegular
-                
+
                 if fileType == .typeRegular {
                     continue
                 }
-                
-                let bundlePath = (fullPath as NSString).appendingPathComponent("Contents")
-                guard FileManager.default.fileExists(atPath: bundlePath) else { continue }
-                
-                let bundle = Bundle(path: bundlePath)
-                let name = bundle?.infoDictionary?["CFBundleName"] as? String ?? item.replacingOccurrences(of: ".app", with: "")
-                let date = attributes?[.modificationDate] as? Date ?? Date()
-                let size = attributes?[.size] as? Int
-                
-                let containedApps = findContainedApps(in: fullPath)
-                
-                let isFolder: Bool
+
                 if item.hasSuffix(".app") {
-                    isFolder = false
+                    // A real .app bundle must have its own Contents directory; if it doesn't,
+                    // it's broken/incomplete and there's nothing useful to show.
+                    let bundlePath = (fullPath as NSString).appendingPathComponent("Contents")
+                    guard FileManager.default.fileExists(atPath: bundlePath) else { continue }
+
+                    let bundle = Bundle(path: bundlePath)
+                    let name = bundle?.infoDictionary?["CFBundleName"] as? String ?? item.replacingOccurrences(of: ".app", with: "")
+                    let date = attributes?[.modificationDate] as? Date ?? Date()
+                    let size = attributes?[.size] as? Int
+                    let containedApps = findContainedApps(in: fullPath)
+
                     apps.append(Application(
                         id: fullPath,
                         name: name,
@@ -71,62 +78,95 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
 
                     if let nestedApps = containedApps {
                         for nestedFullPath in nestedApps {
-                            guard FileManager.default.fileExists(atPath: nestedFullPath) else { continue }
-                            guard !seenPaths.contains(nestedFullPath) else { continue }
-                            seenPaths.insert(nestedFullPath)
-                            
-                            let nestedBundlePath = (nestedFullPath as NSString).appendingPathComponent("Contents")
-                            guard FileManager.default.fileExists(atPath: nestedBundlePath) else { continue }
-                            
-                            let nestedBundle = Bundle(path: nestedBundlePath)
-                            let nestedName = nestedBundle?.infoDictionary?["CFBundleName"] as? String ?? (nestedFullPath as NSString).lastPathComponent.replacingOccurrences(of: ".app", with: "")
-                            let nestedAttributes = try? FileManager.default.attributesOfItem(atPath: nestedFullPath)
-                            let nestedDate = nestedAttributes?[.modificationDate] as? Date ?? Date()
-                            let nestedSize = nestedAttributes?[.size] as? Int
-                            
-                            apps.append(Application(
-                                id: nestedFullPath,
-                                name: nestedName,
-                                path: nestedFullPath,
-                                icon: nil,
-                                installationDate: nestedDate,
-                                isFolder: false,
-                                containedApps: nil,
-                                appSize: nestedSize.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
-                                bundleDescription: nestedBundle?.infoDictionary?["CFBundleShortVersionString"] as? String
-                            ))
-                            
-                            metadata[nestedFullPath] = AppMetadata(
-                                modificationDate: nestedDate,
-                                size: nestedSize,
-                                bundleIdentifier: nestedBundle?.bundleIdentifier
-                            )
+                            appendDiscoveredApp(at: nestedFullPath, apps: &apps, metadata: &metadata, seenPaths: &seenPaths)
                         }
                     }
                 } else {
-                    isFolder = (containedApps?.count ?? 0) >= 2
-                    apps.append(Application(
-                        id: fullPath,
-                        name: name,
-                        path: fullPath,
-                        icon: nil,
-                        installationDate: date,
-                        isFolder: isFolder,
-                        containedApps: containedApps,
-                        appSize: size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
-                        bundleDescription: bundle?.infoDictionary?["CFBundleShortVersionString"] as? String
-                    ))
+                    // Not a bundle itself — a plain Finder folder (vendor installers create these
+                    // constantly: "Microsoft Office", "Canon Utilities", etc.) never has its own
+                    // Contents directory, so don't gate on that the way .app bundles are gated
+                    // above. Whether there's anything to show here is determined by what's inside,
+                    // not by whether this directory happens to look like a bundle itself.
+                    guard !resolvedConfiguredDirs.contains(resolvedPath) else { continue }
+                    guard let containedApps = findAppsInPlainFolder(at: fullPath) else { continue }
 
-                    metadata[fullPath] = AppMetadata(
-                        modificationDate: date,
-                        size: size,
-                        bundleIdentifier: bundle?.bundleIdentifier
-                    )
+                    if containedApps.count >= 2 {
+                        // Multiple apps grouped under one folder — surface it as a synthetic
+                        // in-launcher folder rather than picking one arbitrarily.
+                        let date = attributes?[.modificationDate] as? Date ?? Date()
+                        let size = attributes?[.size] as? Int
+                        apps.append(Application(
+                            id: fullPath,
+                            name: item,
+                            path: fullPath,
+                            icon: nil,
+                            installationDate: date,
+                            isFolder: true,
+                            containedApps: containedApps,
+                            appSize: size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
+                            bundleDescription: nil
+                        ))
+
+                        metadata[fullPath] = AppMetadata(
+                            modificationDate: date,
+                            size: size,
+                            bundleIdentifier: nil
+                        )
+                    } else {
+                        // Exactly one nested app — the wrapper folder itself isn't launchable, so
+                        // surface the real app directly instead of an inert wrapper entry.
+                        for nestedFullPath in containedApps {
+                            appendDiscoveredApp(at: nestedFullPath, apps: &apps, metadata: &metadata, seenPaths: &seenPaths)
+                        }
+                    }
                 }
             }
         }
-        
+
         return ScanResult(apps: apps, metadata: metadata)
+    }
+
+    /// Adds a single discovered `.app` bundle at `path` to `apps`/`metadata`, deduping against
+    /// `seenPaths`. Shared by the "nested apps inside another bundle" case (e.g. Xcode's embedded
+    /// Simulator.app) and the "single app inside a plain wrapper folder" case, so the same
+    /// bundle-reading logic isn't duplicated for each.
+    nonisolated private func appendDiscoveredApp(
+        at path: String,
+        apps: inout [Application],
+        metadata: inout [String: AppMetadata],
+        seenPaths: inout Set<String>
+    ) {
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        guard !seenPaths.contains(path) else { return }
+        seenPaths.insert(path)
+
+        let bundlePath = (path as NSString).appendingPathComponent("Contents")
+        guard FileManager.default.fileExists(atPath: bundlePath) else { return }
+
+        let bundle = Bundle(path: bundlePath)
+        let itemName = (path as NSString).lastPathComponent
+        let name = bundle?.infoDictionary?["CFBundleName"] as? String ?? itemName.replacingOccurrences(of: ".app", with: "")
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+        let date = attributes?[.modificationDate] as? Date ?? Date()
+        let size = attributes?[.size] as? Int
+
+        apps.append(Application(
+            id: path,
+            name: name,
+            path: path,
+            icon: nil,
+            installationDate: date,
+            isFolder: false,
+            containedApps: nil,
+            appSize: size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
+            bundleDescription: bundle?.infoDictionary?["CFBundleShortVersionString"] as? String
+        ))
+
+        metadata[path] = AppMetadata(
+            modificationDate: date,
+            size: size,
+            bundleIdentifier: bundle?.bundleIdentifier
+        )
     }
     
     /// Finds .app bundles inside a directory, including nested locations.
@@ -169,7 +209,38 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         
         return appBundles.isEmpty ? nil : appBundles
     }
-    
+
+    /// Maximum recursion depth for `findAppsInPlainFolder` — generous for ordinary installer
+    /// folder structures (rarely more than 2-3 levels deep) while still bounding worst-case work.
+    private static let kMaxPlainFolderSearchDepth = 4
+
+    /// Finds `.app` bundles nested arbitrarily deep inside a *plain* (non-bundle) folder, e.g.
+    /// "Canon Utilities/Inkjet Extended Survey Program/Inkjet Extended Survey Program.app".
+    /// Unlike `findContainedApps` (which only checks one level plus two hardcoded paths — fine for
+    /// peeking inside an actual `.app` bundle, and deliberately shallow so it doesn't recurse
+    /// through huge bundles like Xcode.app), this walks every subdirectory generically. That's
+    /// only safe to do here because plain installer-created wrapper folders are small and shallow;
+    /// once a `.app` is found it's treated as a leaf and never recursed into.
+    nonisolated private func findAppsInPlainFolder(at directoryPath: String, depth: Int = 0) -> [String]? {
+        guard depth <= Self.kMaxPlainFolderSearchDepth else { return nil }
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: directoryPath) else { return nil }
+
+        var appBundles: [String] = []
+        for item in contents {
+            let fullPath = (directoryPath as NSString).appendingPathComponent(item)
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: fullPath, isDirectory: &isDirectory), isDirectory.boolValue else { continue }
+
+            if item.hasSuffix(".app") {
+                appBundles.append(fullPath)
+            } else if let nested = findAppsInPlainFolder(at: fullPath, depth: depth + 1) {
+                appBundles.append(contentsOf: nested)
+            }
+        }
+
+        return appBundles.isEmpty ? nil : appBundles
+    }
+
     /// Checks if a custom directory is valid (absolute, directory, not world-writable, not a symlink, owned by user).
     static func isValidCustomDirectory(_ path: String) -> Bool {
         guard path.hasPrefix("/") else { return false }
