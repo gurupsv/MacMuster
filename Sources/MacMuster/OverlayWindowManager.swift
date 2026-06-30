@@ -494,7 +494,7 @@ return true
     /// select-all AppKit applies when a populated field becomes first responder). Split out from
     /// `collapseSearchFieldSelectionIfSelectAll()` so the selection math is unit-testable without
     /// a live window and first responder; internal for `@testable` access.
-    nonisolated func collapseSelectionToEnd(of fieldEditor: NSText) {
+    func collapseSelectionToEnd(of fieldEditor: NSText) {
         fieldEditor.selectedRange = NSRange(location: (fieldEditor.string as NSString).length, length: 0)
     }
 }

@@ -27,12 +27,29 @@ final class RecentAppsTracker {
     /// Total launch count per app path, used to compute "Most Used".
     var appLaunchCounts: [String: Int] = [:]
 
+    /// Coalesces rapid-succession launches (e.g. opening several apps in a row) into a single
+    /// UserDefaults write instead of one synchronous encode+write per launch. The in-memory
+    /// state is updated immediately so the UI stays responsive; only the disk flush is deferred.
+    private var persistTask: Task<Void, Never>?
+    private static let persistDebounceSeconds: UInt64 = 2_000_000_000 // 2s
+
     func recordAppLaunch(at path: String) {
         guard isEnabled else { return }
         recentAppLaunchTimes[path] = Date()
         appLaunchCounts[path, default: 0] += 1
         pruneRecentLaunchTimes()
-        persistRecentLaunchTimes()
+        schedulePersistRecentLaunchTimes()
+    }
+
+    /// Schedules a single coalesced persist. Cancels any in-flight deferred write so only the
+    /// latest state is flushed, and a burst of launches produces one encode+write rather than N.
+    private func schedulePersistRecentLaunchTimes() {
+        persistTask?.cancel()
+        persistTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.persistDebounceSeconds)
+            guard !Task.isCancelled, let self else { return }
+            self.persistRecentLaunchTimes()
+        }
     }
 
     func pruneRecentLaunchTimes() {

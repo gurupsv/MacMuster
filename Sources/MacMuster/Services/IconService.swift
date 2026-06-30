@@ -125,8 +125,18 @@ final class IconService {
         }
     }
 
-    func refreshFolderIcons(folders: [AppFolder], appPathIndex: [String: Application]) {
+    /// Refreshes folder icons. Only folders whose member app icons are in `changedAppPaths` are
+    /// regenerated — the previous behavior evicted and regenerated *every* folder on every icon
+    /// batch, which was O(folders × icon-load-passes) even when none of a folder's members changed.
+    /// Pass an empty set to regenerate all folders (e.g. on a full reload where icons were reset).
+    func refreshFolderIcons(folders: [AppFolder], appPathIndex: [String: Application], changedAppPaths: Set<String>) {
         for folder in folders {
+            // Skip folders whose member app icons weren't touched in this batch.
+            if !changedAppPaths.isEmpty {
+                let folderAffected = folder.appPaths.contains { changedAppPaths.contains($0) }
+                guard folderAffected else { continue }
+            }
+
             folderIconCache.removeObject(forKey: folder.id as NSString)
             let apps = folder.appPaths.compactMap { appPathIndex[$0] }
             _ = generateFolderIcon(apps, for: folder.id)

@@ -343,8 +343,13 @@ spacing: kGridSpacing
                                     // unaffected — it still walks `displayedApps` by index; this only
                                     // changes how the same items are visually grouped, the same way the
                                     // separate "Recent" grid above already does.
-                                    let folderItems = displayedApps.filter(\.isFolder)
-                                    let nonFolderItems = displayedApps.filter { !$0.isFolder }
+                                    //
+                                    // Single-pass partition instead of two full filter passes — halves
+                                    // the array allocation work per body evaluation.
+                                    var partitionedApps = displayedApps
+                                    let folderBoundary = partitionedApps.partition(by: { !$0.isFolder })
+                                    let folderItems = Array(partitionedApps[..<folderBoundary])
+                                    let nonFolderItems = Array(partitionedApps[folderBoundary...])
                                     if appModel.searchTerm.isEmpty && !folderItems.isEmpty && !nonFolderItems.isEmpty {
                                         Section {
                                             ForEach(folderItems) { app in

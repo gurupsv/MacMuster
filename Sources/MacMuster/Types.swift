@@ -19,7 +19,36 @@ struct Application: Identifiable, Hashable {
     /// directly instead of parsing it back out of `path`/`id`.
     var folderId: String? = nil
 
-    var lowercaseName: String { name.lowercased() }
+    /// Pre-computed at init so the sort comparator and search ranker don't allocate a fresh
+    /// lowercased copy of the name on every comparison (thousands of times per sort/search).
+    let lowercaseName: String
+    /// Pre-computed lowercased path so `searchMatchRank` doesn't allocate one per app per
+    /// keystroke.
+    let lowercasePath: String
+
+    init(id: String,
+         name: String,
+         path: String,
+         icon: NSImage? = nil,
+         installationDate: Date,
+         isFolder: Bool,
+         containedApps: [String]? = nil,
+         appSize: String? = nil,
+         bundleDescription: String? = nil,
+         folderId: String? = nil) {
+        self.id = id
+        self.name = name
+        self.path = path
+        self.icon = icon
+        self.installationDate = installationDate
+        self.isFolder = isFolder
+        self.containedApps = containedApps
+        self.appSize = appSize
+        self.bundleDescription = bundleDescription
+        self.folderId = folderId
+        self.lowercaseName = name.lowercased()
+        self.lowercasePath = path.lowercased()
+    }
     
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
@@ -44,7 +73,7 @@ struct Application: Identifiable, Hashable {
         if lowercaseName == query { return 0 }
         if lowercaseName.hasPrefix(query) { return 1 }
         if lowercaseName.contains(query) { return 2 }
-        if path.lowercased().contains(query) { return 3 }
+        if lowercasePath.contains(query) { return 3 }
         if query.isSubsequence(of: lowercaseName) { return 4 }
         return nil
     }

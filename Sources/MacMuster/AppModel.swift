@@ -59,8 +59,15 @@ class AppModel {
 
     // MARK: - Folders
     var folders: [AppFolder] = [] {
-        didSet { FolderStore.shared.folders = folders }
+        didSet {
+            FolderStore.shared.folders = folders
+            cachedAppsInAnyFolder = nil
+        }
     }
+    /// Cached set of all app paths that belong to any user-created folder. Rebuilt only when
+    /// `folders` changes (the previous code rebuilt it via `reduce(into:)` on every
+    /// `getDisplayedApps` cache miss).
+    private var cachedAppsInAnyFolder: Set<String>?
     var currentFolderId: String? = nil {
         didSet {
             dataVersion += 1
@@ -225,13 +232,20 @@ class AppModel {
 
     /// Start loading applications asynchronously. Called from the view's `.task` modifier
     /// so it's tied to the SwiftUI lifecycle and ensures proper observation setup.
+    ///
+    /// The disk scan (directory listings, Info.plist reads, symlink resolution — ~1000+ syscalls
+    /// for a few hundred apps) runs on a background task so the main thread stays free to render
+    /// the window. Only the final assignment to `displayOrder` hops back to the main actor.
     @MainActor
     func startLoading() async {
         guard isLoading else { return }
 
         let allDirs = allScanDirectories
 
-        let result = ApplicationScanner.shared.scanDirectories(directories: allDirs)
+        // Run the scan off the main actor — it's pure I/O with no UI dependencies.
+        let result = await Task.detached(priority: .userInitiated) {
+            ApplicationScanner.shared.scanDirectories(directories: allDirs)
+        }.value
 
         self.displayOrder = self.sortedApplications(result.apps)
 
@@ -484,6 +498,11 @@ class AppModel {
     /// view backfill within roughly one chunk's decode time, rather than every icon beyond the
     /// first screen staying blank until the entire remainder — which can be hundreds of apps —
     /// has finished decoding.
+    ///
+    /// The priority batch is applied immediately (one `dataVersion` bump) so the first screenful
+    /// appears fast. The remaining chunks are accumulated and applied in a *single* pass at the
+    /// end — collapsing what used to be N cache invalidations, N index rebuilds, and N folder-icon
+    /// regenerations into one.
     private func loadMissingIcons() async {
         let priorityApps = Array(displayOrder.prefix(kPriorityIconLoadCount))
         let priorityIcons = await IconService.shared.loadMissingIcons(for: priorityApps)
@@ -494,12 +513,16 @@ class AppModel {
         let remainingApps = Array(displayOrder.dropFirst(kPriorityIconLoadCount))
         guard !remainingApps.isEmpty else { return }
 
+        // Collect all remaining-chunk icons and apply them once, instead of bumping dataVersion
+        // (and rebuilding caches / folder icons) per chunk.
+        var remainingIcons: [(String, NSImage)] = []
         for start in stride(from: 0, to: remainingApps.count, by: kPriorityIconLoadCount) {
             let end = min(start + kPriorityIconLoadCount, remainingApps.count)
             let chunkIcons = await IconService.shared.loadMissingIcons(for: Array(remainingApps[start..<end]))
-            if !chunkIcons.isEmpty {
-                applyLoadedIcons(chunkIcons)
-            }
+            remainingIcons.append(contentsOf: chunkIcons)
+        }
+        if !remainingIcons.isEmpty {
+            applyLoadedIcons(remainingIcons)
         }
     }
 
@@ -514,8 +537,10 @@ class AppModel {
         dataVersion += 1
         cachedVisibleApps = nil
         cachedDisplayedApps = nil
-        // Refresh folder icons now that app icons are available
-        IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex)
+        // Refresh folder icons now that app icons are available — only for folders whose member
+        // app icons actually changed in this batch, rather than regenerating every folder each time.
+        let changedPaths = Set(loadedIcons.map(\.0))
+        IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex, changedAppPaths: changedPaths)
     }
 
     /// Background refresh: checks if any cached icons are stale (bundle modified since cache)
@@ -528,9 +553,12 @@ class AppModel {
 
         // Find stale cache entries (bundle mtime newer than cached mtime) and refresh them
         let cachedApps = IconCacheManager.shared.cachedAppPaths()
+        // Key by path so the per-app mtime lookup is O(1) instead of an O(n) linear scan inside
+        // the loop — the previous `cachedApps.first(where:)` made the whole pass O(n²).
+        let cachedByPath: [String: Date] = Dictionary(uniqueKeysWithValues: cachedApps.map { ($0.appPath, $0.cachedMtime) })
         var staleApps: [Application] = []
 
-        for (appPath, _) in cachedApps {
+        for (appPath, cachedMtime) in cachedByPath {
             // Only refresh if app is in current display order
             guard currentPaths.contains(appPath),
                   let app = appPathIndex[appPath] else {
@@ -542,13 +570,11 @@ class AppModel {
             let currentMtime = bundleAttrs?[.modificationDate] as? Date
 
             if let currentMtime = currentMtime {
-                if let cachedEntry = cachedApps.first(where: { $0.appPath == appPath }) {
-                    // Simple comparison: if mtimes differ at the second level, cache is stale
-                    let cachedSec = Int(cachedEntry.cachedMtime.timeIntervalSince1970)
-                    let currentSec = Int(currentMtime.timeIntervalSince1970)
-                    if cachedSec != currentSec {
-                        staleApps.append(app)
-                    }
+                // Simple comparison: if mtimes differ at the second level, cache is stale
+                let cachedSec = Int(cachedMtime.timeIntervalSince1970)
+                let currentSec = Int(currentMtime.timeIntervalSince1970)
+                if cachedSec != currentSec {
+                    staleApps.append(app)
                 }
             }
         }
@@ -615,8 +641,11 @@ class AppModel {
                 return
             }
         }
-        
-        let result = ApplicationScanner.shared.scanDirectories(directories: allDirs)
+
+        // Run the scan off the main actor so a periodic refresh can't stall the UI.
+        let result = await Task.detached(priority: .utility) {
+            ApplicationScanner.shared.scanDirectories(directories: allDirs)
+        }.value
 
         scanCache = ScanCache(dirMtimes: currentMtimes, timestamp: Date())
         
@@ -987,8 +1016,14 @@ class AppModel {
 
     /// Build the initial app list based on folder context (root vs inside folder) and category filter.
     private func getBaseAppsForCurrentContext() -> [Application] {
-        // Collect all app paths that belong to user-created folders.
-        let appsInAnyFolder: Set<String> = folders.reduce(into: Set()) { $0.formUnion($1.appPaths) }
+        // Collect all app paths that belong to user-created folders — cached, rebuilt only when
+        // `folders` changes (the previous `reduce(into:)` ran on every cache miss).
+        let appsInAnyFolder: Set<String> = {
+            if let cached = cachedAppsInAnyFolder { return cached }
+            let set = folders.reduce(into: Set<String>()) { $0.formUnion($1.appPaths) }
+            cachedAppsInAnyFolder = set
+            return set
+        }()
 
         if let folderId = currentFolderId {
             // Inside a folder: show only apps from this folder (and its child folders)

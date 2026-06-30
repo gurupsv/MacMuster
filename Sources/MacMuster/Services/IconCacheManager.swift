@@ -8,6 +8,12 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     static let shared = IconCacheManager()
     private init() {}
 
+    /// In-memory layer in front of the disk cache. A cache hit here skips the SHA256 key
+    /// derivation, 5 file-existence/stat syscalls, two disk reads (meta + icon), the JSON decode,
+    /// and the `NSKeyedUnarchiver` deserialization that the disk path would otherwise do every
+    /// time — which matters for icons that scroll back into view and re-hit the cache.
+    private let memoryCache = NSCache<NSString, NSImage>()
+
     // "v2": the original cache key scheme truncated the path hash to its first 8 bytes, so any
     // two apps sharing an 8-character path prefix (e.g. everything under /System/Applications/
     // or /Applications/) collided on the same cache file. Using a new directory name abandons
@@ -21,7 +27,15 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     }
 
     /// Tries to load a cached icon for the given app path. Returns nil if cache miss or stale.
+    ///
+    /// Checks the in-memory cache first (zero I/O on a hit). Only on a memory miss does it fall
+    /// through to the on-disk cache (stat + two disk reads + decode). A disk hit is then promoted
+    /// into the memory cache so subsequent reads for the same path are free.
     func cachedIcon(for appPath: String) -> NSImage? {
+        if let memory = memoryCache.object(forKey: appPath as NSString) {
+            return memory
+        }
+
         let cacheKey = cacheKey(for: appPath)
         let iconURL = cacheDir.appendingPathComponent(cacheKey, isDirectory: false)
         let metaURL = cacheDir.appendingPathComponent(cacheKey + ".meta", isDirectory: false)
@@ -53,6 +67,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         do {
             let imageData = try Data(contentsOf: iconURL)
             if let image = try NSKeyedUnarchiver.unarchivedObject(ofClass: NSImage.self, from: imageData) {
+                memoryCache.setObject(image, forKey: appPath as NSString)
                 return image
             }
         } catch {
@@ -64,7 +79,12 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     }
 
     /// Saves an icon to cache along with bundle modification time.
+    ///
+    /// Writes to both the in-memory cache (for instant subsequent reads) and the on-disk cache
+    /// (so the icon survives relaunch).
     func cacheIcon(_ icon: NSImage, for appPath: String) {
+        memoryCache.setObject(icon, forKey: appPath as NSString)
+
         guard let bundleMtime = currentBundleModificationTime(for: appPath) else {
             return
         }
@@ -141,6 +161,8 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     }
 
     private func deleteCache(for appPath: String) {
+        memoryCache.removeObject(forKey: appPath as NSString)
+
         let cacheKey = cacheKey(for: appPath)
         let iconURL = cacheDir.appendingPathComponent(cacheKey, isDirectory: false)
         let metaURL = cacheDir.appendingPathComponent(cacheKey + ".meta", isDirectory: false)
