@@ -31,6 +31,7 @@ final class PreferencesStore {
         case pressFeedbackEnabled = "pressFeedbackEnabled"
         case recentAppsEnabled = "recentAppsEnabled"
         case overlayOpacity = "overlayOpacity"
+        case showInDock = "showInDock"
     }
 
     /// Current schema version. Increment when adding/removing/changing preference keys.
@@ -271,5 +272,16 @@ final class PreferencesStore {
     
     func loadOverlayOpacity() -> Double? {
         defaults.value(forKey: Keys.overlayOpacity.rawValue) as? Double
+    }
+    
+    func loadShowInDock() -> Bool {
+        if defaults.object(forKey: Keys.showInDock.rawValue) == nil {
+            return true
+        }
+        return defaults.bool(forKey: Keys.showInDock.rawValue)
+    }
+    
+    func saveShowInDock(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Keys.showInDock.rawValue)
     }
 }

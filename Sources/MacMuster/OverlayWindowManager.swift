@@ -3,6 +3,8 @@ import SwiftUI
 
 extension Notification.Name {
     static let launcherDidShow = Notification.Name("launcherDidShow")
+    static let focusSearchField = Notification.Name("focusSearchField")
+    static let keyboardNavigationDidStart = Notification.Name("keyboardNavigationDidStart")
 }
 
 // MARK: - Glow Effect View (SwiftUI overlay for glowing edges)
@@ -10,7 +12,6 @@ extension Notification.Name {
 struct GlowEffectView: View {
     let appModel: AppModel
     
-    /// Maximum opacity for the glow at the very edge
     private let glowMaxOpacity: CGFloat = 1.0
     
     var body: some View {
@@ -21,80 +22,68 @@ struct GlowEffectView: View {
             
             Rectangle()
                 .fill(.clear)
-                // Top edge glow: brightest at top, fades inward
-                .overlay(
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    color.opacity(intensity * glowMaxOpacity),
-                                    color.opacity(intensity * glowMaxOpacity * 0.6),
-                                    color.opacity(intensity * glowMaxOpacity * 0.15),
-                                    .clear,
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(height: glowInset)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                )
-                // Bottom edge glow
-                .overlay(
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    color.opacity(intensity * glowMaxOpacity),
-                                    color.opacity(intensity * glowMaxOpacity * 0.6),
-                                    color.opacity(intensity * glowMaxOpacity * 0.15),
-                                    .clear,
-                                ],
-                                startPoint: .bottom,
-                                endPoint: .top
-                            )
-                        )
-                        .frame(height: glowInset)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-                )
-                // Left edge glow
-                .overlay(
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    color.opacity(intensity * glowMaxOpacity),
-                                    color.opacity(intensity * glowMaxOpacity * 0.6),
-                                    color.opacity(intensity * glowMaxOpacity * 0.15),
-                                    .clear,
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: glowInset)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                )
-                // Right edge glow
-                .overlay(
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    color.opacity(intensity * glowMaxOpacity),
-                                    color.opacity(intensity * glowMaxOpacity * 0.6),
-                                    color.opacity(intensity * glowMaxOpacity * 0.15),
-                                    .clear,
-                                ],
-                                startPoint: .trailing,
-                                endPoint: .leading
-                            )
-                        )
-                        .frame(width: glowInset)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                )
+                .overlay(EdgeGlow(edge: .top, color: color, intensity: intensity, inset: glowInset))
+                .overlay(EdgeGlow(edge: .bottom, color: color, intensity: intensity, inset: glowInset))
+                .overlay(EdgeGlow(edge: .leading, color: color, intensity: intensity, inset: glowInset))
+                .overlay(EdgeGlow(edge: .trailing, color: color, intensity: intensity, inset: glowInset))
                 .allowsHitTesting(false)
                 .drawingGroup(opaque: false)
+        }
+    }
+}
+
+struct EdgeGlow: View {
+    let edge: Alignment
+    let color: Color
+    let intensity: CGFloat
+    let inset: CGFloat
+    
+    private let glowMaxOpacity: CGFloat = 1.0
+    
+    var body: some View {
+        let nsColor = NSColor(color)
+        guard let rgb = nsColor.usingColorSpace(.sRGB) else {
+            return GlowEdgeView(edge: edge, colors: [.clear], inset: inset)
+        }
+        let maxOpacity = intensity * glowMaxOpacity
+        let midOpacity = intensity * glowMaxOpacity * 0.6
+        let fadeOpacity = intensity * glowMaxOpacity * 0.15
+        let colors: [Color] = [
+            Color(nsColor: rgb.withAlphaComponent(maxOpacity)),
+            Color(nsColor: rgb.withAlphaComponent(midOpacity)),
+            Color(nsColor: rgb.withAlphaComponent(fadeOpacity)),
+            .clear,
+        ]
+        
+        return GlowEdgeView(edge: edge, colors: colors, inset: inset)
+    }
+}
+
+struct GlowEdgeView: View {
+    let edge: Alignment
+    let colors: [Color]
+    let inset: CGFloat
+    
+    var body: some View {
+        switch edge {
+        case .top:
+            Rectangle()
+                .fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
+                .frame(minHeight: inset, idealHeight: inset, maxHeight: .infinity, alignment: .top)
+        case .bottom:
+            Rectangle()
+                .fill(LinearGradient(colors: colors, startPoint: .bottom, endPoint: .top))
+                .frame(minHeight: inset, idealHeight: inset, maxHeight: .infinity, alignment: .bottom)
+        case .leading:
+            Rectangle()
+                .fill(LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing))
+                .frame(minWidth: inset, idealWidth: inset, maxWidth: .infinity, alignment: .leading)
+        case .trailing:
+            Rectangle()
+                .fill(LinearGradient(colors: colors, startPoint: .trailing, endPoint: .leading))
+                .frame(minWidth: inset, idealWidth: inset, maxWidth: .infinity, alignment: .trailing)
+        default:
+            Rectangle().fill(.clear)
         }
     }
 }
@@ -323,11 +312,11 @@ return true
                     let idx = appModel.selectedAppIndex
                     if idx >= 0, idx < displayedApps.count, displayedApps[idx].isFolder {
                         // Folder selected — navigate in, don't hide
-                        appModel.launchSelectedApp()
+                        _ = appModel.launchSelectedApp()
                         return true
                     }
                 }
-                appModel?.launchSelectedApp()
+                _ = appModel?.launchSelectedApp()
             }
             hide()
             return true
@@ -336,19 +325,19 @@ return true
             NotificationCenter.default.post(name: NSNotification.Name("focusSearchField"), object: nil)
             return true
         case 123: // Left arrow - move selection left
-            NotificationCenter.default.post(name: NSNotification.Name("keyboardNavigationDidStart"), object: nil)
+            NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
             appModel?.selectAppLeft()
             return true
         case 124: // Right arrow - move selection right
-            NotificationCenter.default.post(name: NSNotification.Name("keyboardNavigationDidStart"), object: nil)
+            NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
             appModel?.selectAppRight()
             return true
         case 125: // Down arrow - move selection down
-            NotificationCenter.default.post(name: NSNotification.Name("keyboardNavigationDidStart"), object: nil)
+            NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
             appModel?.selectAppDown()
             return true
         case 126: // Up arrow - move selection up
-            NotificationCenter.default.post(name: NSNotification.Name("keyboardNavigationDidStart"), object: nil)
+            NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
             appModel?.selectAppUp()
             return true
         default:
@@ -359,7 +348,7 @@ return true
             // default case never fires), so there's no risk of double-handling a keystroke.
             if let appModel, isPlainTypingKeystroke(event) {
                 appModel.searchTerm += event.characters ?? ""
-                NotificationCenter.default.post(name: NSNotification.Name("focusSearchField"), object: nil)
+            NotificationCenter.default.post(name: .focusSearchField, object: nil)
                 return true
             }
             return false

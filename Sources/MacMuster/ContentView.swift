@@ -147,31 +147,13 @@ struct ContentView: View {
                             .help("Keyboard shortcuts")
                             .accessibilityLabel("Show keyboard shortcuts")
 
-                            Button {
-                                newFolderName = "Folder"
-                                selectedAppPathsForFolder = []
-                                showCreateFolder = true
-                            } label: {
-                                Image(systemName: "folder.badge.plus")
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
-                                    .background(.ultraThinMaterial, in: Circle())
-                            }
-                            .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
-                            .accessibilityLabel("Create new folder")
-
-                            Button(action: {
-                                SettingsWindowManager.shared.show()
-                            }) {
-                                Image(systemName: "gearshape")
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
-                                    .background(.ultraThinMaterial, in: Circle())
-                            }
-                            .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
-                            .accessibilityLabel("Open settings")
+                            ToolbarButtons(
+                appModel: appModel,
+                showKeyboardHint: $showKeyboardHint,
+                newFolderName: $newFolderName,
+                showCreateFolder: $showCreateFolder,
+                selectedAppPathsForFolder: $selectedAppPathsForFolder
+            )
                         }
                         .padding(.horizontal)
                         .padding(.bottom, 4)
@@ -239,31 +221,13 @@ struct ContentView: View {
                             .help("Sort: \(appModel.sortOption.rawValue)")
                             .accessibilityLabel("Sort applications")
 
-                            Button {
-                                newFolderName = "Folder"
-                                selectedAppPathsForFolder = []
-                                showCreateFolder = true
-                            } label: {
-                                Image(systemName: "folder.badge.plus")
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
-                                    .background(.ultraThinMaterial, in: Circle())
-                            }
-                            .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
-                            .accessibilityLabel("Create new folder")
-
-                            Button(action: {
-                                SettingsWindowManager.shared.show()
-                            }) {
-                                Image(systemName: "gearshape")
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
-                                    .background(.ultraThinMaterial, in: Circle())
-                            }
-                            .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
-                            .accessibilityLabel("Open settings")
+                            ToolbarButtons(
+                appModel: appModel,
+                showKeyboardHint: $showKeyboardHint,
+                newFolderName: $newFolderName,
+                showCreateFolder: $showCreateFolder,
+                selectedAppPathsForFolder: $selectedAppPathsForFolder
+            )
                         }
                         .padding(.horizontal)
                     }
@@ -420,10 +384,10 @@ spacing: kGridSpacing
             hasUsedKeyboard = false
             withAnimation(.easeInOut(duration: 0.2)) { isSearchExpanded = false }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("keyboardNavigationDidStart"))) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .keyboardNavigationDidStart)) { _ in
             hasUsedKeyboard = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("focusSearchField"))) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .focusSearchField)) { _ in
             withAnimation(.easeInOut(duration: 0.2)) { isSearchExpanded = true }
             isSearchFocused = true
         }
@@ -493,9 +457,9 @@ spacing: kGridSpacing
                 Button(selectedAppPathsForFolder.isEmpty ? "Create Folder" : "Add") {
                     if !selectedAppPathsForFolder.isEmpty {
                         if newFolderName.trimmingCharacters(in: .whitespaces).isEmpty {
-                            appModel.createFolder(name: "Folder", appPaths: selectedAppPathsForFolder)
+                            _ = appModel.createFolder(name: "Folder", appPaths: selectedAppPathsForFolder)
                         } else {
-                            appModel.createFolder(name: newFolderName, appPaths: selectedAppPathsForFolder)
+                            _ = appModel.createFolder(name: newFolderName, appPaths: selectedAppPathsForFolder)
                         }
                     }
                     showCreateFolder = false
@@ -1127,5 +1091,58 @@ private struct PressTracker: NSViewRepresentable {
         func setPressed(_ pressed: Bool) {
             pressedAppPath = pressed ? appPath : nil
         }
+    }
+}
+
+struct ToolbarButtons: View {
+    @Bindable var appModel: AppModel
+    @Binding var showKeyboardHint: Bool
+    @Binding var newFolderName: String
+    @Binding var showCreateFolder: Bool
+    @Binding var selectedAppPathsForFolder: [String]
+    
+    var body: some View {
+        Button(action: {
+            if appModel.shouldReduceMotion {
+                showKeyboardHint.toggle()
+            } else {
+                withAnimation(.easeInOut(duration: 0.2)) { showKeyboardHint.toggle() }
+            }
+        }) {
+            Image(systemName: "questionmark.circle")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
+        .help("Keyboard shortcuts")
+        .accessibilityLabel("Show keyboard shortcuts")
+
+        Button {
+            newFolderName = "Folder"
+            selectedAppPathsForFolder = []
+            showCreateFolder = true
+        } label: {
+            Image(systemName: "folder.badge.plus")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
+        .accessibilityLabel("Create new folder")
+
+        Button(action: {
+            SettingsWindowManager.shared.show()
+        }) {
+            Image(systemName: "gearshape")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .frame(width: kSettingsButtonSize, height: kSettingsButtonSize)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(FocusableButtonStyle(cornerRadius: kSettingsButtonSize / 2))
+        .accessibilityLabel("Open settings")
     }
 }

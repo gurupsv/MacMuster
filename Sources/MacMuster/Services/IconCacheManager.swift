@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import CryptoKit
+import UniformTypeIdentifiers
 
 /// Manages persistent on-disk caching of decoded app icons.
 /// Caches icons by app bundle path with modification-time tracking for automatic invalidation.
@@ -10,7 +11,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
 
     /// In-memory layer in front of the disk cache. A cache hit here skips the SHA256 key
     /// derivation, 5 file-existence/stat syscalls, two disk reads (meta + icon), the JSON decode,
-    /// and the `NSKeyedUnarchiver` deserialization that the disk path would otherwise do every
+    /// and the `CGImageSource` PNG deserialization that the disk path would otherwise do every
     /// time — which matters for icons that scroll back into view and re-hit the cache.
     private let memoryCache = NSCache<NSString, NSImage>()
 
@@ -19,7 +20,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     // or /Applications/) collided on the same cache file. Using a new directory name abandons
     // those corrupted entries rather than risk ever reading one back.
     private let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("MacMuster/icons-v2", isDirectory: true)
+        .appendingPathComponent("MacMuster/icons-v3", isDirectory: true)
 
     private struct CacheEntry: Codable {
         let appPath: String
@@ -63,15 +64,18 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
             return nil
         }
 
-        // Load the cached icon image using NSKeyedUnarchiver
+        // Load the cached icon image from PNG
         do {
             let imageData = try Data(contentsOf: iconURL)
-            if let image = try NSKeyedUnarchiver.unarchivedObject(ofClass: NSImage.self, from: imageData) {
-                memoryCache.setObject(image, forKey: appPath as NSString)
-                return image
+            guard let source = CGImageSourceCreateWithData(imageData as CFData, nil),
+                  let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                return nil
             }
+            let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+            memoryCache.setObject(nsImage, forKey: appPath as NSString)
+            return nsImage
         } catch {
-            // If unarchiving fails, delete corrupted cache entry
+            // If PNG decode fails, delete corrupted cache entry
         }
 
         deleteCache(for: appPath)
@@ -99,11 +103,16 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         let iconURL = cacheDir.appendingPathComponent(cacheKey, isDirectory: false)
         let metaURL = cacheDir.appendingPathComponent(cacheKey + ".meta", isDirectory: false)
 
-        // Use NSKeyedArchiver for robust serialization of NSImage.
-        // This preserves all image data, representations, and properties better than PNG.
+        // Store icon as PNG for smaller size, faster round-trip, and format-stability across OS versions.
         do {
-            let iconData = try NSKeyedArchiver.archivedData(withRootObject: icon, requiringSecureCoding: false)
-            try iconData.write(to: iconURL)
+            guard let cgImage = icon.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                return
+            }
+            guard let destination = CGImageDestinationCreateWithURL(iconURL as CFURL, "public.png" as CFString, 1, nil) else {
+                return
+            }
+            CGImageDestinationAddImage(destination, cgImage, nil)
+            try CGImageDestinationFinalize(destination)
 
             let entry = CacheEntry(appPath: appPath, bundleMtime: bundleMtime)
             let metaData = try JSONEncoder().encode(entry)

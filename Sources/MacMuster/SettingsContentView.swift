@@ -7,6 +7,7 @@ struct SettingsContentView: View {
     @Bindable var appModel: AppModel
     @State private var selectedSection: SettingsSection = .general
     @State private var showRefreshComplete = false
+    @State private var showInDock = true
 
     /// Read from the running bundle rather than hardcoded, so this never goes stale on a version bump.
     private var appVersionString: String {
@@ -160,9 +161,11 @@ struct SettingsContentView: View {
                     HiddenAppsSettingsPanel(appModel: appModel)
 case .appDirectories:
                      AppDirectoriesSettingsPanel(appModel: appModel)
-                 case .folders:
-                     FoldersSettingsPanel(appModel: appModel)
-                }
+                  case .dock:
+                      DockSettingsPanel(showInDock: $showInDock)
+                  case .folders:
+                      FoldersSettingsPanel(appModel: appModel)
+                 }
             }
             .padding(.horizontal, kContentPaddingHorizontal)
             .padding(.vertical, kContentPaddingVertical)
@@ -186,12 +189,12 @@ case .appDirectories:
 }
 
 // MARK: - Settings Section Enum
-
 enum SettingsSection: String, CaseIterable, Identifiable {
      case general
      case appearance
      case hiddenApps
      case appDirectories
+     case dock
      case folders
 
      var id: String { rawValue }
@@ -202,6 +205,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
          case .appearance: return "Appearance"
          case .hiddenApps: return "Hidden Apps"
          case .appDirectories: return "App Directories"
+         case .dock: return "Dock"
          case .folders: return "Folders"
          }
      }
@@ -212,11 +216,11 @@ enum SettingsSection: String, CaseIterable, Identifiable {
          case .appearance: return "paintpalette"
          case .hiddenApps: return "eye.slash"
          case .appDirectories: return "folder.badge.plus"
+         case .dock: return "rectangle.on.rectangle"
          case .folders: return "folder"
          }
      }
- }
-
+}
 // MARK: - General Settings Panel
 
 struct GeneralSettingsPanel: View {
@@ -401,6 +405,8 @@ struct GeneralSettingsPanel: View {
                 .background(Color(nsColor: .textBackgroundColor))
                 .cornerRadius(kSectionContentCornerRadius)
             }
+            
+
         }
     }
     
@@ -1409,6 +1415,39 @@ struct AppDirectoryRow: View {
             withAnimation(.easeInOut(duration: 0.1)) {
                 self.isHovered = isHovered
             }
+        }
+    }
+}
+
+struct DockSettingsPanel: View {
+    @Binding var showInDock: Bool
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: kSectionContentSpacing) {
+            Text("Dock")
+                .font(.system(size: 15, weight: .semibold))
+            VStack(alignment: .leading, spacing: kLabelSpacing) {
+                HStack(alignment: .top, spacing: kLabelSpacingVertical) {
+                    VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                        Text("Show in Dock")
+                            .font(.system(size: 14, weight: .medium))
+                        Text("Display the MacMuster icon in the Dock when running")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $showInDock)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .onChange(of: showInDock) { _, newValue in
+                            PreferencesStore.shared.saveShowInDock(newValue)
+                            NSApp.setActivationPolicy(newValue ? .regular : .accessory)
+                        }
+                }
+                .padding(kSectionContentPadding)
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+            .cornerRadius(kSectionContentCornerRadius)
         }
     }
 }
