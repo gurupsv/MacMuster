@@ -112,7 +112,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
                 return
             }
             CGImageDestinationAddImage(destination, cgImage, nil)
-            try CGImageDestinationFinalize(destination)
+            CGImageDestinationFinalize(destination)
 
             let entry = CacheEntry(appPath: appPath, bundleMtime: bundleMtime)
             let metaData = try JSONEncoder().encode(entry)
