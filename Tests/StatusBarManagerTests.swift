@@ -1,6 +1,7 @@
 import XCTest
 @testable import MacMuster
 
+@MainActor
 final class StatusBarManagerTests: XCTestCase {
     
     func testManagerIsSingleton() {
@@ -12,12 +13,12 @@ final class StatusBarManagerTests: XCTestCase {
     func testManagerHasShowWindowMethod() {
         // Verify the method exists and is callable
         let manager = StatusBarManager.shared
-        XCTAssertNoThrow(try manager.showWindow())
+        manager.showWindow()
     }
-    
+
     func testManagerHasHideWindowMethod() {
         let manager = StatusBarManager.shared
-        XCTAssertNoThrow(try manager.hideWindow())
+        manager.hideWindow()
     }
     
     func testManagerExposesQuitAction() {

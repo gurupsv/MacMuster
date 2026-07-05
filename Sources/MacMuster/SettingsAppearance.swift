@@ -41,10 +41,10 @@ class SettingsAppearance {
             PreferencesStore.shared.saveGlowWidth(glowWidth)
         }
     }
-    var overlayOpacity: Double = kOverlayOpacityDefault {
+    var overlayOpacity: Double = AppMetrics.overlayOpacityDefault {
         didSet {
-            if overlayOpacity < kOverlayOpacityMin { overlayOpacity = kOverlayOpacityMin }
-            if overlayOpacity > kOverlayOpacityMax { overlayOpacity = kOverlayOpacityMax }
+            if overlayOpacity < AppMetrics.overlayOpacityMin { overlayOpacity = AppMetrics.overlayOpacityMin }
+            if overlayOpacity > AppMetrics.overlayOpacityMax { overlayOpacity = AppMetrics.overlayOpacityMax }
             PreferencesStore.shared.saveOverlayOpacity(overlayOpacity)
         }
     }
@@ -70,7 +70,7 @@ class SettingsAppearance {
         showRecentApps = PreferencesStore.shared.loadRecentAppsEnabled()
         pressFeedbackEnabled = PreferencesStore.shared.loadPressFeedbackEnabled()
         if let opacityRaw = PreferencesStore.shared.loadOverlayOpacity() {
-            overlayOpacity = max(kOverlayOpacityMin, min(kOverlayOpacityMax, opacityRaw))
+            overlayOpacity = max(AppMetrics.overlayOpacityMin, min(AppMetrics.overlayOpacityMax, opacityRaw))
         }
     }
 
@@ -89,7 +89,7 @@ class SettingsAppearance {
         glowEnabled = PreferencesStore.shared.loadGlowEnabled()
         if let glowColorHex = PreferencesStore.shared.loadGlowColor() { glowColor = parseColor(from: glowColorHex) }
         if let glowIntensityRaw = PreferencesStore.shared.loadGlowIntensity() { glowIntensity = max(0, min(1, glowIntensityRaw)) }
-        if let glowWidthRaw = PreferencesStore.shared.loadGlowWidth() { glowWidth = max(5, min(40, glowWidthRaw)) }
+        if let glowWidthRaw = PreferencesStore.shared.loadGlowWidth() { glowWidth = max(AppMetrics.glowWidthMin, min(AppMetrics.glowWidthMax, glowWidthRaw)) }
     }
 
     private func parseColor(from hexString: String) -> Color {

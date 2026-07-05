@@ -18,7 +18,7 @@ struct SettingsContentView: View {
         HStack(spacing: 0) {
             // Sidebar
             settingsSidebar
-                .frame(width: kSidebarWidth)
+                .frame(width: AppMetrics.sidebarWidth)
             
             // Divider
             Rectangle()
@@ -65,12 +65,12 @@ struct SettingsContentView: View {
             // Header
             Text("Settings")
                 .font(.system(size: 18, weight: .bold))
-                .padding(.horizontal, kSidebarHeaderPaddingHorizontal)
-                .padding(.vertical, kSidebarHeaderPaddingVertical)
+                .padding(.horizontal, AppMetrics.sidebarHeaderPaddingHorizontal)
+                .padding(.vertical, AppMetrics.sidebarHeaderPaddingVertical)
             
             // Section list - only show enabled sections
             ScrollView {
-                VStack(alignment: .leading, spacing: kSidebarSectionSpacing) {
+                VStack(alignment: .leading, spacing: AppMetrics.sidebarSectionSpacing) {
                     ForEach(getVisibleSections()) { section in
                         settingsSectionButton(section)
                     }
@@ -89,8 +89,8 @@ struct SettingsContentView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, kSidebarVersionPaddingHorizontal)
-            .padding(.bottom, kSidebarVersionPaddingBottom)
+            .padding(.horizontal, AppMetrics.sidebarVersionPaddingHorizontal)
+            .padding(.bottom, AppMetrics.sidebarVersionPaddingBottom)
         }
         .background(Color(nsColor: .controlBackgroundColor))
     }
@@ -110,10 +110,10 @@ struct SettingsContentView: View {
         }
         .foregroundStyle(selectedSection == section ? .white : Color(nsColor: .labelColor))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, kSidebarSectionPaddingHorizontal)
-        .padding(.vertical, kSidebarSectionPaddingVertical)
+        .padding(.horizontal, AppMetrics.sidebarSectionPaddingHorizontal)
+        .padding(.vertical, AppMetrics.sidebarSectionPaddingVertical)
         .background(
-            RoundedRectangle(cornerRadius: kSidebarSectionCornerRadius)
+            RoundedRectangle(cornerRadius: AppMetrics.sidebarSectionCornerRadius)
                 .fill(selectedSection == section ? Color.blue : Color.clear)
         )
         .onTapGesture {
@@ -143,15 +143,15 @@ struct SettingsContentView: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, kHeaderPaddingHorizontal)
-        .padding(.vertical, kHeaderPaddingVertical)
+        .padding(.horizontal, AppMetrics.headerPaddingHorizontal)
+        .padding(.vertical, AppMetrics.headerPaddingVertical)
     }
     
     // MARK: - Content
     
     private var settingsContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: kSectionSpacing) {
+            VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
                 switch selectedSection {
                 case .general:
                     GeneralSettingsPanel(appModel: appModel, showRefreshComplete: $showRefreshComplete)
@@ -167,8 +167,8 @@ case .appDirectories:
                       FoldersSettingsPanel(appModel: appModel)
                  }
             }
-            .padding(.horizontal, kContentPaddingHorizontal)
-            .padding(.vertical, kContentPaddingVertical)
+            .padding(.horizontal, AppMetrics.contentPaddingHorizontal)
+            .padding(.vertical, AppMetrics.contentPaddingVertical)
         }
     }
     
@@ -183,8 +183,8 @@ case .appDirectories:
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
         }
-        .padding(.horizontal, kFooterPaddingHorizontal)
-        .padding(.vertical, kFooterPaddingVertical)
+        .padding(.horizontal, AppMetrics.footerPaddingHorizontal)
+        .padding(.vertical, AppMetrics.footerPaddingVertical)
     }
 }
 
@@ -231,12 +231,12 @@ struct GeneralSettingsPanel: View {
     @State private var isRefreshing = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: kSectionSpacing) {
+        VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
             // Startup section
             settingsSection(title: "Startup") {
-                VStack(alignment: .leading, spacing: kLabelSpacing) {
-                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
                             Text("Start at Login")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Automatically launch MacMuster when you log in")
@@ -251,18 +251,18 @@ struct GeneralSettingsPanel: View {
                                 updateStartAtLogin(newValue)
                             }
                     }
-                    .padding(kSectionContentPadding)
+                    .padding(AppMetrics.sectionContentPadding)
                     
                     if let startAtLoginError {
                         Text(startAtLoginError)
                             .font(.system(size: 12))
                             .foregroundStyle(.red)
-                            .padding(.horizontal, kErrorPaddingHorizontal)
-                            .padding(.bottom, kErrorPaddingBottom)
+                            .padding(.horizontal, AppMetrics.errorPaddingHorizontal)
+                            .padding(.bottom, AppMetrics.errorPaddingBottom)
                     }
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(kSectionContentCornerRadius)
+                .cornerRadius(AppMetrics.sectionContentCornerRadius)
             }
             .onAppear {
                 startAtLogin = SMAppService.mainApp.status == .enabled
@@ -270,9 +270,9 @@ struct GeneralSettingsPanel: View {
             
             // Folders section
             settingsSection(title: "Folders") {
-                VStack(alignment: .leading, spacing: kLabelSpacing) {
-                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
                             Text("Show Folders First")
                                 .font(.system(size: 14, weight: .medium))
                             Text("When enabled, folder icons appear at the top of the app list")
@@ -284,17 +284,17 @@ struct GeneralSettingsPanel: View {
                             .toggleStyle(.switch)
                             .labelsHidden()
                     }
-                    .padding(kSectionContentPadding)
+                    .padding(AppMetrics.sectionContentPadding)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(kSectionContentCornerRadius)
+                .cornerRadius(AppMetrics.sectionContentCornerRadius)
               }
               
               // Press Feedback section
               settingsSection(title: "Press Feedback") {
-                  VStack(alignment: .leading, spacing: kLabelSpacing) {
-                      HStack(alignment: .top, spacing: kLabelSpacingVertical) {
-                          VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                  VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
+                      HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
+                          VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
                               Text("Press Feedback")
                                   .font(.system(size: 14, weight: .medium))
                               Text("When enabled, app icons animate when pressed")
@@ -307,16 +307,16 @@ struct GeneralSettingsPanel: View {
                               .labelsHidden()
                       }
                   }
-                  .padding(kSectionContentPadding)
+                  .padding(AppMetrics.sectionContentPadding)
                   .background(Color(nsColor: .textBackgroundColor))
-                  .cornerRadius(kSectionContentCornerRadius)
+                  .cornerRadius(AppMetrics.sectionContentCornerRadius)
               }
               
               // Recent Apps section
              settingsSection(title: "Recent Apps") {
-                 VStack(alignment: .leading, spacing: kLabelSpacing) {
-                     HStack(alignment: .top, spacing: kLabelSpacingVertical) {
-                         VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                 VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
+                     HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
+                         VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
                              Text("Show Recent Apps")
                                  .font(.system(size: 14, weight: .medium))
                              Text("When enabled, recent applications are displayed in the launcher")
@@ -329,16 +329,16 @@ struct GeneralSettingsPanel: View {
                              .labelsHidden()
                      }
                  }
-                 .padding(kSectionContentPadding)
+                 .padding(AppMetrics.sectionContentPadding)
                  .background(Color(nsColor: .textBackgroundColor))
-                 .cornerRadius(kSectionContentCornerRadius)
+                 .cornerRadius(AppMetrics.sectionContentCornerRadius)
              }
              
              // App Management section
             settingsSection(title: "App Management") {
-                VStack(alignment: .leading, spacing: kLabelSpacing) {
+                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
                     HStack {
-                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
                             Text("Refresh Apps")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Scan for newly installed or removed applications")
@@ -356,13 +356,12 @@ struct GeneralSettingsPanel: View {
                                     isRefreshing = false
                                     showRefreshComplete = true
                                 }
-                                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                                 await MainActor.run {
                                     showRefreshComplete = false
                                 }
                             }
                         } label: {
-                            HStack(spacing: kButtonSpacing) {
+                            HStack(spacing: AppMetrics.buttonSpacing) {
                                 if isRefreshing {
                                     ProgressView()
                                         .scaleEffect(0.8)
@@ -380,7 +379,7 @@ struct GeneralSettingsPanel: View {
                     Divider()
                     
                     HStack {
-                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
                             Text("Auto Refresh")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Automatically scan for new apps at regular intervals")
@@ -401,9 +400,9 @@ struct GeneralSettingsPanel: View {
                         }
                     }
                 }
-                .padding(kSectionContentPadding)
+                .padding(AppMetrics.sectionContentPadding)
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(kSectionContentCornerRadius)
+                .cornerRadius(AppMetrics.sectionContentCornerRadius)
             }
             
 
@@ -414,7 +413,7 @@ struct GeneralSettingsPanel: View {
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: kSectionContentSpacing) {
+        VStack(alignment: .leading, spacing: AppMetrics.sectionContentSpacing) {
             Text(title)
                 .font(.system(size: 15, weight: .semibold))
             content()
@@ -457,12 +456,12 @@ struct GlowSettingsPanel: View {
     ]
     
     var body: some View {
-        VStack(alignment: .leading, spacing: kSectionSpacing) {
+        VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
             // Glow effect toggle
             settingsSection(title: "Glow Effect") {
-                VStack(alignment: .leading, spacing: kLabelSpacing) {
-                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
                             Text("Enable Glow")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Show glowing edges around the overlay window")
@@ -474,17 +473,17 @@ struct GlowSettingsPanel: View {
                             .toggleStyle(.switch)
                             .labelsHidden()
                     }
-                    .padding(kSectionContentPadding)
+                    .padding(AppMetrics.sectionContentPadding)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(kSectionContentCornerRadius)
+                .cornerRadius(AppMetrics.sectionContentCornerRadius)
             }
             
             // Color selection
             settingsSection(title: "Glow Color") {
-                VStack(alignment: .leading, spacing: kLabelSpacing) {
-                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
                             Text("Select Glow Color")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Choose the color for the overlay window edges")
@@ -532,17 +531,17 @@ struct GlowSettingsPanel: View {
                                 .accessibilityLabel("Custom glow color")
                         }
                     }
-                    .padding(kSectionContentPadding)
+                    .padding(AppMetrics.sectionContentPadding)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(kSectionContentCornerRadius)
+                .cornerRadius(AppMetrics.sectionContentCornerRadius)
             }
             
             // Intensity slider
             settingsSection(title: "Glow Intensity") {
-                VStack(alignment: .leading, spacing: kLabelSpacing) {
-                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
                             Text("Intensity")
                                 .font(.system(size: 14, weight: .medium))
                             HStack(spacing: 4) {
@@ -560,17 +559,17 @@ struct GlowSettingsPanel: View {
                             // Intensity is clamped in AppModel
                         }
                     }
-                    .padding(kSectionContentPadding)
+                    .padding(AppMetrics.sectionContentPadding)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(kSectionContentCornerRadius)
+                .cornerRadius(AppMetrics.sectionContentCornerRadius)
             }
             
             // Width slider
             settingsSection(title: "Glow Width") {
-                VStack(alignment: .leading, spacing: kLabelSpacing) {
-                    HStack(alignment: .top, spacing: kLabelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
                             Text("Width")
                                 .font(.system(size: 14, weight: .medium))
                             HStack(spacing: 4) {
@@ -589,10 +588,10 @@ struct GlowSettingsPanel: View {
                         }
                         .frame(width: 180)
                     }
-                    .padding(kSectionContentPadding)
+                    .padding(AppMetrics.sectionContentPadding)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(kSectionContentCornerRadius)
+                .cornerRadius(AppMetrics.sectionContentCornerRadius)
             }
         }
     }
@@ -601,7 +600,7 @@ struct GlowSettingsPanel: View {
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: kSectionContentSpacing) {
+        VStack(alignment: .leading, spacing: AppMetrics.sectionContentSpacing) {
             Text(title)
                 .font(.system(size: 15, weight: .semibold))
             content()
@@ -628,7 +627,7 @@ struct FoldersSettingsPanel: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: kSectionSpacing) {
+        VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
             // Header
             HStack {
                 Text("Folder Management")
@@ -644,7 +643,7 @@ struct FoldersSettingsPanel: View {
                 .foregroundStyle(.secondary)
             
             // Search bar
-            HStack(spacing: kSearchPadding) {
+            HStack(spacing: AppMetrics.searchPadding) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                     .font(.body)
@@ -661,11 +660,11 @@ struct FoldersSettingsPanel: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, kSearchPadding)
-            .padding(.vertical, kSearchPadding)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: kSearchCornerRadius))
+            .padding(.horizontal, AppMetrics.searchPadding)
+            .padding(.vertical, AppMetrics.searchPadding)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: kSearchCornerRadius)
+                RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius)
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
             )
             
@@ -673,7 +672,7 @@ struct FoldersSettingsPanel: View {
                 Text("No folders created yet.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, kHiddenAppsListPaddingVertical)
+                    .padding(.vertical, AppMetrics.hiddenAppsListPaddingVertical)
             } else {
                 // Folders list
                 ScrollView {
@@ -885,9 +884,9 @@ struct AppearanceSettingsPanel: View {
                         .pickerStyle(.menu)
                     }
                 }
-                .padding(kSectionContentPadding)
+                .padding(AppMetrics.sectionContentPadding)
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(kSectionContentCornerRadius)
+                .cornerRadius(AppMetrics.sectionContentCornerRadius)
             }
             
             // Layout section
@@ -912,7 +911,7 @@ struct AppearanceSettingsPanel: View {
                             set: { newValue in
                                 appModel.setColumnCount(Int(newValue.rounded()))
                             }
-                        ), in: Double(kMinColumnCount)...Double(kMaxColumnCount), step: 1)
+                        ), in: Double(AppMetrics.minColumnCount)...Double(AppMetrics.maxColumnCount), step: 1)
                     }
                     
                     Divider()
@@ -957,14 +956,14 @@ struct AppearanceSettingsPanel: View {
                              .font(.system(size: 12))
                              .foregroundStyle(.secondary)
                          
-                         Slider(value: $appModel.overlayOpacity, in: kOverlayOpacityMin...kOverlayOpacityMax, step: kOverlayOpacityStep) { _ in
+                         Slider(value: $appModel.overlayOpacity, in: AppMetrics.overlayOpacityMin...AppMetrics.overlayOpacityMax, step: AppMetrics.overlayOpacityStep) { _ in
                              // Opacity is clamped in AppModel
                          }
                      }
                  }
-                .padding(kSectionContentPadding)
+                .padding(AppMetrics.sectionContentPadding)
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(kSectionContentCornerRadius)
+                .cornerRadius(AppMetrics.sectionContentCornerRadius)
             }
         }
     }
@@ -973,7 +972,7 @@ struct AppearanceSettingsPanel: View {
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: kSectionContentSpacing) {
+        VStack(alignment: .leading, spacing: AppMetrics.sectionContentSpacing) {
             Text(title)
                 .font(.system(size: 15, weight: .semibold))
             content()
@@ -1045,10 +1044,10 @@ struct HiddenAppsSettingsPanel: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(kSearchPadding)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: kSearchCornerRadius))
+            .padding(AppMetrics.searchPadding)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: kSearchCornerRadius)
+                RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius)
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
             )
             
@@ -1056,7 +1055,7 @@ struct HiddenAppsSettingsPanel: View {
                 Text("No applications found.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, kHiddenAppsListPaddingVertical)
+                    .padding(.vertical, AppMetrics.hiddenAppsListPaddingVertical)
             } else {
                 // All apps list with checkboxes
                 ScrollView {
@@ -1169,11 +1168,11 @@ struct AppDirectoriesSettingsPanel: View {
     @State private var searchFilter: String = ""
     @State private var showClearAllConfirmation = false
     
-    private let kSearchPadding: CGFloat = 12
-    private let kSearchCornerRadius: CGFloat = 10
-    private let kSearchBG: Color = Color(nsColor: .controlBackgroundColor)
-    private let kSearchBorder: Color = Color(nsColor: .textBackgroundColor)
-    private let kSearchBorderFocused: Color = Color.blue
+    private let searchPadding: CGFloat = 12
+    private let searchCornerRadius: CGFloat = 10
+    private let searchBG: Color = Color(nsColor: .controlBackgroundColor)
+    private let searchBorder: Color = Color(nsColor: .textBackgroundColor)
+    private let searchBorderFocused: Color = Color.blue
     
     var filteredDirectories: [String] {
         if searchFilter.isEmpty {
@@ -1249,13 +1248,13 @@ struct AppDirectoriesSettingsPanel: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, kSearchPadding)
+                .padding(.horizontal, AppMetrics.searchPadding)
                 .padding(.vertical, 10)
-                .background(kSearchBG)
-                .cornerRadius(kSearchCornerRadius)
+                .background(searchBG)
+                .cornerRadius(AppMetrics.searchCornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: kSearchCornerRadius)
-                        .stroke(searchFilter.isEmpty ? kSearchBorder : kSearchBorderFocused, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius)
+                        .stroke(searchFilter.isEmpty ? searchBorder : searchBorderFocused, lineWidth: 1)
                 )
                 
                 // Directory list
@@ -1423,12 +1422,12 @@ struct DockSettingsPanel: View {
     @Binding var showInDock: Bool
     
     var body: some View {
-        VStack(alignment: .leading, spacing: kSectionContentSpacing) {
+        VStack(alignment: .leading, spacing: AppMetrics.sectionContentSpacing) {
             Text("Dock")
                 .font(.system(size: 15, weight: .semibold))
-            VStack(alignment: .leading, spacing: kLabelSpacing) {
-                HStack(alignment: .top, spacing: kLabelSpacingVertical) {
-                    VStack(alignment: .leading, spacing: kLabelSpacingVertical) {
+            VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
+                HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
+                    VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
                         Text("Show in Dock")
                             .font(.system(size: 14, weight: .medium))
                         Text("Display the MacMuster icon in the Dock when running")
@@ -1444,10 +1443,10 @@ struct DockSettingsPanel: View {
                             NSApp.setActivationPolicy(newValue ? .regular : .accessory)
                         }
                 }
-                .padding(kSectionContentPadding)
+                .padding(AppMetrics.sectionContentPadding)
             }
             .background(Color(nsColor: .textBackgroundColor))
-            .cornerRadius(kSectionContentCornerRadius)
+            .cornerRadius(AppMetrics.sectionContentCornerRadius)
         }
     }
 }

@@ -1,93 +1,107 @@
-import AppKit
-import SwiftUI
+import Foundation
 
-// MARK: - AppModel Constants
+// MARK: - App Metrics Constants
 
-let kMaxRecentApps = 8
-// F-3: the Recent/Most Used UI never shows more than `kMaxRecentApps` (8) entries, so retaining
-// up to 500 launch records for 30 days was far more launch history than the app ever needed —
-// trimmed to a small multiple of the display limit (room for ranking to stay stable as apps cycle
-// in/out) and a shorter retention window.
-let kMaxStoredRecentApps = 50
-let kRecentAppsRetentionSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
-let kSearchDebounceNanoseconds: UInt64 = 150_000_000 // 150ms
-// Roughly covers the largest first screenful (kMaxColumnCount=10 × ~6 visible rows) so the
-// initial icon batch finishes fast; the rest backfills afterward without blocking the grid.
-let kPriorityIconLoadCount = 60
-let kNewlyInstalledWindowSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
+enum AppMetrics {
+    // F-3: the Recent/Most Used UI never shows more than 8 entries, so retaining
+    // up to 50 launch records for 14 days was far more launch history than the app ever needed —
+    // trimmed to a small multiple of the display limit (room for ranking to stay stable as apps cycle
+    // in/out) and a shorter retention window.
+    static let maxRecentApps = 8
+    static let maxStoredRecentApps = 50
+    static let recentAppsRetentionSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
+    static let searchDebounceNanoseconds: UInt64 = 150_000_000 // 150ms
 
-// MARK: - OverlayWindowManager Constants
+    // Roughly covers the largest first screenful (kMaxColumnCount=10 × ~6 visible rows) so the
+    // initial icon batch finishes fast; the rest backfills afterward without blocking the grid.
+    static let priorityIconLoadCount = 60
+    static let newlyInstalledWindowSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
 
-let kWindowAnimationDelay: TimeInterval = 0.1
-let kWindowMinWidth: CGFloat = 900
-let kWindowMinHeight: CGFloat = 700
+    // MARK: - Overlay Window Metrics
 
-// MARK: - Launch Animation Constants
+    static let windowAnimationDelay: TimeInterval = 0.1
+    static let windowMinWidth: CGFloat = 900
+    static let windowMinHeight: CGFloat = 700
 
-let kLaunchZoomOutStartScale: CGFloat = 1.25
-let kLaunchZoomOutDuration: TimeInterval = 0.8
+    // MARK: - Launch Animation Metrics
 
-// MARK: - SettingsWindowManager Constants
+    static let launchZoomOutStartScale: CGFloat = 1.25
+    static let launchZoomOutDuration: TimeInterval = 0.8
 
-let kSettingsWindowWidth: CGFloat = 820
-let kSettingsWindowHeight: CGFloat = 560
-let kSettingsWindowMinWidth: CGFloat = 700
-let kSettingsWindowMinHeight: CGFloat = 480
-let kSettingsWindowMaxWidth: CGFloat = 1400
-let kSettingsWindowMaxHeight: CGFloat = 1000
+    // MARK: - Settings Window Metrics
 
-// MARK: - Opacity Constants
+    static let settingsWindowWidth: CGFloat = 820
+    static let settingsWindowHeight: CGFloat = 560
+    static let settingsWindowMinWidth: CGFloat = 700
+    static let settingsWindowMinHeight: CGFloat = 480
+    static let settingsWindowMaxWidth: CGFloat = 1400
+    static let settingsWindowMaxHeight: CGFloat = 1000
 
-let kOverlayOpacityDefault: Double = 0.95
+    // MARK: - Glow Metrics
 
-// MARK: - ContentView Constants
+    static let glowEnabledDefault: Bool = true
+    static let glowColorDefault: String = "#ffffff"
+    static let glowIntensityDefault: Double = 0.3
+    static let glowWidthDefault: Double = 40.0
+    static let glowWidthMin: Double = 5.0
+    static let glowWidthMax: Double = 40.0
 
-let kGridSpacing: CGFloat = 20
-let kAppIconPadding: CGFloat = 8
-let kAppIconCornerRadius: CGFloat = 10
-let kAppIconHoverScale: CGFloat = 1.08
-let kSectionViewPadding: CGFloat = 10
-let kSearchPadding: CGFloat = 10
-let kSearchCornerRadius: CGFloat = 8
-let kCategoryTabPaddingHorizontal: CGFloat = 10
-let kCategoryTabPaddingVertical: CGFloat = 5
-let kCategoryTabCornerRadius: CGFloat = 6
-let kSettingsButtonSize: CGFloat = 28
+    // MARK: - Opacity Metrics
 
-// MARK: - Layout Constants
+    static let overlayOpacityDefault: Double = 0.95
+    static let overlayOpacityMin: Double = 0.1
+    static let overlayOpacityMax: Double = 1.0
+    static let overlayOpacityStep: Double = 0.05
 
-let kMinColumnCount = 4
-let kMaxColumnCount = 10
-let kIconSizeSmall: CGFloat = 48
-let kIconSizeMedium: CGFloat = 64
-let kIconSizeLarge: CGFloat = 80
-let kIconRasterPixelSize = 160
+    // MARK: - ContentView Layout Metrics
 
-// MARK: - SettingsContentView Constants
+    static let gridSpacing: CGFloat = 20
+    static let appIconPadding: CGFloat = 8
+    static let appIconCornerRadius: CGFloat = 10
+    static let appIconHoverScale: CGFloat = 1.08
+    static let sectionViewPadding: CGFloat = 10
+    static let searchPadding: CGFloat = 10
+    static let searchCornerRadius: CGFloat = 8
+    static let categoryTabPaddingHorizontal: CGFloat = 10
+    static let categoryTabPaddingVertical: CGFloat = 5
+    static let categoryTabCornerRadius: CGFloat = 6
+    static let settingsButtonSize: CGFloat = 28
 
-let kSidebarWidth: CGFloat = 200
-let kSidebarHeaderPaddingHorizontal: CGFloat = 20
-let kSidebarHeaderPaddingVertical: CGFloat = 16
-let kSidebarSectionPaddingHorizontal: CGFloat = 12
-let kSidebarSectionPaddingVertical: CGFloat = 7
-let kSidebarSectionCornerRadius: CGFloat = 6
-let kSidebarSectionSpacing: CGFloat = 4
-let kSidebarVersionPaddingHorizontal: CGFloat = 16
-let kSidebarVersionPaddingBottom: CGFloat = 12
-let kHeaderPaddingHorizontal: CGFloat = 28
-let kHeaderPaddingVertical: CGFloat = 18
-let kContentPaddingHorizontal: CGFloat = 28
-let kContentPaddingVertical: CGFloat = 20
-let kFooterPaddingHorizontal: CGFloat = 28
-let kFooterPaddingVertical: CGFloat = 14
-let kSectionSpacing: CGFloat = 28
-let kSectionContentSpacing: CGFloat = 14
-let kSectionContentPadding: CGFloat = 14
-let kSectionContentCornerRadius: CGFloat = 10
-let kTogglePaddingTop: CGFloat = 14
-let kErrorPaddingHorizontal: CGFloat = 14
-let kErrorPaddingBottom: CGFloat = 14
-let kButtonSpacing: CGFloat = 6
-let kLabelSpacing: CGFloat = 14
-let kLabelSpacingVertical: CGFloat = 4
-let kHiddenAppsListPaddingVertical: CGFloat = 20
+    // MARK: - Layout Metrics
+
+    static let minColumnCount = 4
+    static let maxColumnCount = 10
+    static let iconSizeSmall: CGFloat = 48
+    static let iconSizeMedium: CGFloat = 64
+    static let iconSizeLarge: CGFloat = 80
+    static let iconRasterPixelSizePx = 160
+
+    // MARK: - SettingsContentView Layout Metrics
+
+    static let sidebarWidth: CGFloat = 200
+    static let sidebarHeaderPaddingHorizontal: CGFloat = 20
+    static let sidebarHeaderPaddingVertical: CGFloat = 16
+    static let sidebarSectionPaddingHorizontal: CGFloat = 12
+    static let sidebarSectionPaddingVertical: CGFloat = 7
+    static let sidebarSectionCornerRadius: CGFloat = 6
+    static let sidebarSectionSpacing: CGFloat = 4
+    static let sidebarVersionPaddingHorizontal: CGFloat = 16
+    static let sidebarVersionPaddingBottom: CGFloat = 12
+    static let headerPaddingHorizontal: CGFloat = 28
+    static let headerPaddingVertical: CGFloat = 18
+    static let contentPaddingHorizontal: CGFloat = 28
+    static let contentPaddingVertical: CGFloat = 20
+    static let footerPaddingHorizontal: CGFloat = 28
+    static let footerPaddingVertical: CGFloat = 14
+    static let sectionSpacing: CGFloat = 28
+    static let sectionContentSpacing: CGFloat = 14
+    static let sectionContentPadding: CGFloat = 14
+    static let sectionContentCornerRadius: CGFloat = 10
+    static let togglePaddingTop: CGFloat = 14
+    static let errorPaddingHorizontal: CGFloat = 14
+    static let errorPaddingBottom: CGFloat = 14
+    static let buttonSpacing: CGFloat = 6
+    static let labelSpacing: CGFloat = 14
+    static let labelSpacingVertical: CGFloat = 4
+    static let hiddenAppsListPaddingVertical: CGFloat = 20
+}

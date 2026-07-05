@@ -6,12 +6,43 @@ final class AppModelTests: XCTestCase {
     
     private var appModel: AppModel!
     
-    override func setUpWithError() throws {
+    override func setUp() async throws {
+        clearAllUserDefaultsState()
+        RecentAppsTracker.shared.clearHistory()
         appModel = AppModel()
     }
-    
-    override func tearDownWithError() throws {
+
+    override func tearDown() async throws {
+        clearAllUserDefaultsState()
+        RecentAppsTracker.shared.clearHistory()
         appModel = nil
+    }
+
+    nonisolated func clearAllUserDefaultsState() {
+        UserDefaults.standard.removeObject(forKey: "appFolders")
+        UserDefaults.standard.removeObject(forKey: "hiddenAppPaths")
+        UserDefaults.standard.removeObject(forKey: "customDirectories")
+        UserDefaults.standard.removeObject(forKey: "customDirectoryBookmarks")
+        UserDefaults.standard.removeObject(forKey: "currentFolderId")
+        UserDefaults.standard.removeObject(forKey: "customOrder")
+        UserDefaults.standard.removeObject(forKey: "sortOption")
+        UserDefaults.standard.removeObject(forKey: "columnCount")
+        UserDefaults.standard.removeObject(forKey: "iconSize")
+        UserDefaults.standard.removeObject(forKey: "refreshInterval")
+        UserDefaults.standard.removeObject(forKey: "fontFamily")
+        UserDefaults.standard.removeObject(forKey: "fontSize")
+        UserDefaults.standard.removeObject(forKey: "fontWeight")
+        UserDefaults.standard.removeObject(forKey: "glowEnabled")
+        UserDefaults.standard.removeObject(forKey: "glowColor")
+        UserDefaults.standard.removeObject(forKey: "glowIntensity")
+        UserDefaults.standard.removeObject(forKey: "glowWidth")
+        UserDefaults.standard.removeObject(forKey: "overlayOpacity")
+        UserDefaults.standard.removeObject(forKey: "showFoldersFirst")
+        UserDefaults.standard.removeObject(forKey: "hasShownLauncher")
+        UserDefaults.standard.removeObject(forKey: "recentAppsEnabled")
+        UserDefaults.standard.removeObject(forKey: "pressFeedbackEnabled")
+        UserDefaults.standard.removeObject(forKey: "recentAppLaunchTimes")
+        UserDefaults.standard.removeObject(forKey: "appLaunchCounts")
     }
     
     // MARK: - Application Identity Tests
@@ -194,7 +225,8 @@ final class AppModelTests: XCTestCase {
     
     func testAllCategoriesExist() {
         let categories = AppCategory.allCases
-        XCTAssertEqual(categories.count, 6)
+        // all, mostUsed, recentlyLaunched, newlyInstalled, system, utilities, user
+        XCTAssertEqual(categories.count, 7)
         XCTAssertTrue(categories.contains(where: { $0 == .system }))
         XCTAssertTrue(categories.contains(where: { $0 == .utilities }))
         XCTAssertTrue(categories.contains(where: { $0 == .user }))

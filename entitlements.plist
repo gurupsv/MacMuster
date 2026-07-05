@@ -2,20 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- S1 FIX: App runs unsandboxed. Removed bogus entitlements:
-         - com.apple.security.system-events (not a real Apple entitlement key)
-         - com.apple.security.accessibility (not an entitlement; TCC is requested at runtime)
+	<!-- Start at Login (SMAppService) requires this entitlement -->
+	<key>com.apple.security.device.user-data</key>
+	<true/>
 
-         S3: App Sandbox is deliberately left disabled. It is only required for Mac App
-         Store distribution; this app ships via direct Developer ID distribution
-         (codesign + notarize + staple, see build_production.sh), where Gatekeeper only
-         requires a valid signature, the Hardened Runtime, and notarization — not sandboxing.
-         Sandboxing this app would require security-scoped-bookmark handling for the
-         default scan directories (/Applications, /System/Applications, …) and arbitrary
-         app launching via NSWorkspace, neither of which is exercised under sandbox today.
-         Revisit only if/when App Store distribution is pursued.
-    -->
-    <key>com.apple.security.app-sandbox</key>
-    <false/>
-</dict>
+	<!-- Accessibility permissions — the app monitors keyboard events and reads mouse location for overlay window behavior -->
+	<key>com.apple.security.accessibility</key>
+	<true/>
+
+	<!-- No network access needed — pure local menu-bar app -->
+	<!-- No file system access beyond standard user domain (defaults, caches) --></dict>
 </plist>

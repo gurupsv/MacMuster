@@ -13,9 +13,13 @@ class AppModel {
     let navigation = NavigationSelection()
 
     init() {
+        // Navigation needs displayed apps, categories, and counts for selection logic
         navigation.library = library
+        // Navigation needs column count and font info for selected item display
         navigation.settings = settings
+        // Library needs refresh interval and icon size preferences for sorting/load
         library.settings = settings
+        // Library needs selectedAppIndex for sort-aware position tracking
         library.navigation = navigation
     }
 

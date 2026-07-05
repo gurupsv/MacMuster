@@ -1,26 +1,27 @@
 import XCTest
 @testable import MacMuster
 
+@MainActor
 final class ConstantsTests: XCTestCase {
 
     // MARK: - Representative Constant Checks
 
     func testKeyConstantsHaveExpectedValues() {
         // AppModel
-        XCTAssertEqual(kMaxRecentApps, 8)
+        XCTAssertEqual(AppMetrics.maxRecentApps, 8)
 
         // OverlayWindowManager
-        XCTAssertEqual(kWindowAnimationDelay, 0.1)
-        XCTAssertEqual(kWindowMinWidth, 900)
-        XCTAssertEqual(kWindowMinHeight, 700)
+        XCTAssertEqual(AppMetrics.windowAnimationDelay, 0.1)
+        XCTAssertEqual(AppMetrics.windowMinWidth, 900)
+        XCTAssertEqual(AppMetrics.windowMinHeight, 700)
 
         // Layout
-        XCTAssertEqual(kMinColumnCount, 4)
-        XCTAssertEqual(kMaxColumnCount, 10)
+        XCTAssertEqual(AppMetrics.minColumnCount, 4)
+        XCTAssertEqual(AppMetrics.maxColumnCount, 10)
 
         // Settings
-        XCTAssertEqual(kSettingsWindowWidth, 820)
-        XCTAssertEqual(kSettingsWindowHeight, 560)
-        XCTAssertEqual(kSidebarWidth, 200)
+        XCTAssertEqual(AppMetrics.settingsWindowWidth, 820)
+        XCTAssertEqual(AppMetrics.settingsWindowHeight, 560)
+        XCTAssertEqual(AppMetrics.sidebarWidth, 200)
     }
 }

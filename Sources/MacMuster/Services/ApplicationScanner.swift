@@ -53,7 +53,7 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
                     guard FileManager.default.fileExists(atPath: bundlePath) else { continue }
 
                     let bundle = Bundle(path: bundlePath)
-                    let name = bundle?.infoDictionary?["CFBundleName"] as? String ?? item.replacingOccurrences(of: ".app", with: "")
+                    let name = bundle?.infoDictionary?["CFBundleName"] as? String ?? (item.hasSuffix(".app") ? String(item.dropLast(4)) : item)
                     let date = attributes?[.modificationDate] as? Date ?? Date()
                     let size = attributes?[.size] as? Int
                     let containedApps = findContainedApps(in: fullPath)
@@ -136,16 +136,17 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         metadata: inout [String: AppMetadata],
         seenPaths: inout Set<String>
     ) {
+        let resolvedPath = (path as NSString).resolvingSymlinksInPath
         guard FileManager.default.fileExists(atPath: path) else { return }
-        guard !seenPaths.contains(path) else { return }
-        seenPaths.insert(path)
+        guard !seenPaths.contains(resolvedPath) else { return }
+        seenPaths.insert(resolvedPath)
 
         let bundlePath = (path as NSString).appendingPathComponent("Contents")
         guard FileManager.default.fileExists(atPath: bundlePath) else { return }
 
         let bundle = Bundle(path: bundlePath)
         let itemName = (path as NSString).lastPathComponent
-        let name = bundle?.infoDictionary?["CFBundleName"] as? String ?? itemName.replacingOccurrences(of: ".app", with: "")
+        let name = bundle?.infoDictionary?["CFBundleName"] as? String ?? (itemName.hasSuffix(".app") ? String(itemName.dropLast(4)) : itemName)
         let attributes = try? FileManager.default.attributesOfItem(atPath: path)
         let date = attributes?[.modificationDate] as? Date ?? Date()
         let size = attributes?[.size] as? Int
@@ -241,16 +242,21 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         return appBundles.isEmpty ? nil : appBundles
     }
 
-    /// Checks if a custom directory is valid (absolute, directory, not world-writable, not a symlink, owned by user).
+    /// Checks if a custom directory path is valid (absolute, not world-writable, not a symlink).
+    /// Deliberately does not check ownership — standard system directories like /Applications are
+    /// owned by root, not the current user, so an ownership check would reject legitimate directories.
+    /// A path that doesn't exist yet (e.g. an unmounted external volume) is still considered valid —
+    /// only a path that exists as something other than a directory (e.g. a plain file) is rejected.
     static func isValidCustomDirectory(_ path: String) -> Bool {
         guard path.hasPrefix("/") else { return false }
         let fm = FileManager.default
 
-        // Reject symlinks to prevent directory traversal attacks
         var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { return false }
+        let exists = fm.fileExists(atPath: path, isDirectory: &isDir)
+        if exists && !isDir.boolValue { return false }
+        guard exists else { return true }
 
-        // Check it's not a symlink by comparing resolved path
+        // Reject symlinks to prevent directory traversal attacks
         let resolvedPath = (path as NSString).resolvingSymlinksInPath
         guard resolvedPath == path else { return false }
 
@@ -258,12 +264,6 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         guard let attrs = try? fm.attributesOfItem(atPath: path),
               let posixPerms = attrs[.posixPermissions] as? Int,
               (posixPerms & 0o002) == 0 else { return false }
-
-        // Reject if not owned by current user (prevents privilege escalation via shared writable dirs)
-        if let ownerID = attrs[.ownerAccountID] as? NSNumber {
-            let currentUID = getuid()
-            guard ownerID.uintValue == currentUID else { return false }
-        }
 
         return true
     }

@@ -58,7 +58,7 @@ final class PreferencesStore {
             defaults.set(true, forKey: Keys.pressFeedbackEnabled.rawValue)
         }
         if defaults.object(forKey: Keys.overlayOpacity.rawValue) == nil {
-            defaults.set(kOverlayOpacityDefault, forKey: Keys.overlayOpacity.rawValue)
+            defaults.set(AppMetrics.overlayOpacityDefault, forKey: Keys.overlayOpacity.rawValue)
         }
     }
 
@@ -123,7 +123,8 @@ final class PreferencesStore {
     }
     
     func loadGlowEnabled() -> Bool {
-        defaults.bool(forKey: Keys.glowEnabled.rawValue)
+        if defaults.object(forKey: Keys.glowEnabled.rawValue) == nil { return true }
+        return defaults.bool(forKey: Keys.glowEnabled.rawValue)
     }
     
     func saveGlowColor(_ hex: String) {
@@ -147,7 +148,8 @@ final class PreferencesStore {
     }
     
     func loadGlowWidth() -> Double? {
-        defaults.value(forKey: Keys.glowWidth.rawValue) as? Double
+        if defaults.object(forKey: Keys.glowWidth.rawValue) == nil { return AppMetrics.glowWidthDefault }
+        return defaults.value(forKey: Keys.glowWidth.rawValue) as? Double
     }
     
     func saveCurrentFolderId(_ folderId: String?) {

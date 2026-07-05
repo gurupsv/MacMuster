@@ -1,16 +1,44 @@
 import XCTest
 @testable import MacMuster
 
+@MainActor
 final class FolderTests: XCTestCase {
 
     private var appModel: AppModel!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
+        clearAllUserDefaultsState()
         appModel = AppModel()
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
+        clearAllUserDefaultsState()
         appModel = nil
+    }
+
+    nonisolated func clearAllUserDefaultsState() {
+        UserDefaults.standard.removeObject(forKey: "appFolders")
+        UserDefaults.standard.removeObject(forKey: "hiddenAppPaths")
+        UserDefaults.standard.removeObject(forKey: "customDirectories")
+        UserDefaults.standard.removeObject(forKey: "customDirectoryBookmarks")
+        UserDefaults.standard.removeObject(forKey: "currentFolderId")
+        UserDefaults.standard.removeObject(forKey: "customOrder")
+        UserDefaults.standard.removeObject(forKey: "sortOption")
+        UserDefaults.standard.removeObject(forKey: "columnCount")
+        UserDefaults.standard.removeObject(forKey: "iconSize")
+        UserDefaults.standard.removeObject(forKey: "refreshInterval")
+        UserDefaults.standard.removeObject(forKey: "fontFamily")
+        UserDefaults.standard.removeObject(forKey: "fontSize")
+        UserDefaults.standard.removeObject(forKey: "fontWeight")
+        UserDefaults.standard.removeObject(forKey: "glowEnabled")
+        UserDefaults.standard.removeObject(forKey: "glowColor")
+        UserDefaults.standard.removeObject(forKey: "glowIntensity")
+        UserDefaults.standard.removeObject(forKey: "glowWidth")
+        UserDefaults.standard.removeObject(forKey: "overlayOpacity")
+        UserDefaults.standard.removeObject(forKey: "showFoldersFirst")
+        UserDefaults.standard.removeObject(forKey: "hasShownLauncher")
+        UserDefaults.standard.removeObject(forKey: "recentAppsEnabled")
+        UserDefaults.standard.removeObject(forKey: "pressFeedbackEnabled")
     }
 
     // MARK: - AppFolder Codable Tests
@@ -37,8 +65,9 @@ final class FolderTests: XCTestCase {
     }
 
     func testAppFolderHashableBasedOnId() {
-        let folder1 = AppFolder(name: "Test", appPaths: ["/Applications/App1.app"])
-        let folder2 = AppFolder(name: "Test", appPaths: ["/Applications/App2.app"])
+        let id = UUID().uuidString
+        let folder1 = AppFolder(id: id, name: "Test", appPaths: ["/Applications/App1.app"])
+        let folder2 = AppFolder(id: id, name: "Different", appPaths: ["/Applications/App2.app"])
         XCTAssertEqual(folder1.hashValue, folder2.hashValue)
     }
 
@@ -58,7 +87,7 @@ final class FolderTests: XCTestCase {
     // MARK: - Folder CRUD Tests
 
     func testCreateFolderAddsToFoldersList() {
-        let folder = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
+        _ = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
         XCTAssertEqual(appModel.folders.count, 1)
         XCTAssertEqual(appModel.folders[0].name, "Development")
         XCTAssertEqual(appModel.folders[0].appPaths, ["/Applications/Xcode.app"])
@@ -197,7 +226,7 @@ final class FolderTests: XCTestCase {
 
     func testCurrentFolderReturnsMatchingFolder() {
         let folder1 = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
-        let folder2 = appModel.createFolder(name: "Tools", appPaths: ["/Applications/VSCode.app"])
+        _ = appModel.createFolder(name: "Tools", appPaths: ["/Applications/VSCode.app"])
         appModel.openFolder(folder1.id)
         XCTAssertEqual(appModel.currentFolder?.name, "Development")
         XCTAssertEqual(appModel.currentFolder?.id, folder1.id)
@@ -276,7 +305,7 @@ final class FolderTests: XCTestCase {
     // MARK: - Folder Persistence Tests
 
     func testSaveFoldersWritesToUserDefaults() {
-        let folder = appModel.createFolder(name: "Test", appPaths: ["/Applications/Test.app"])
+        _ = appModel.createFolder(name: "Test", appPaths: ["/Applications/Test.app"])
         let data = UserDefaults.standard.data(forKey: "appFolders")
         XCTAssertNotNil(data)
     }
@@ -311,7 +340,7 @@ final class FolderTests: XCTestCase {
             Application(id: "/Applications/VSCode.app", name: "VSCode", path: "/Applications/VSCode.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
         ]
         appModel.setApplications(apps)
-        let folder = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app", "/Applications/VSCode.app"])
+        _ = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app", "/Applications/VSCode.app"])
         XCTAssertEqual(appModel.folders.count, 1)
     }
 
@@ -418,19 +447,17 @@ final class FolderTests: XCTestCase {
 
     func testChildFolderRecursionIncludesNestedFolderApps() {
         appModel.setApplications([
-            makeApp("/Applications/Shared.app"),
             makeApp("/Applications/ParentOnly.app"),
             makeApp("/Applications/ChildOnly.app"),
         ])
-        let parent = appModel.createFolder(name: "Parent", appPaths: ["/Applications/Shared.app", "/Applications/ParentOnly.app"])
-        // The child folder shares "Shared.app" with the parent, which is how getAllAppsIncludingChildFolders
-        // discovers the parent/child relationship (see FolderStore.getAllAppsIncludingChildFolders).
-        _ = appModel.createFolder(name: "Child", appPaths: ["/Applications/Shared.app", "/Applications/ChildOnly.app"])
+        let parent = AppFolder(name: "Parent", appPaths: ["/Applications/ParentOnly.app"])
+        // Explicit parent/child relationship via parentFolderId — the only supported nesting mechanism.
+        let child = AppFolder(name: "Child", appPaths: ["/Applications/ChildOnly.app"], parentFolderId: parent.id)
+        appModel.folders = [parent, child]
 
         appModel.openFolder(parent.id)
         let paths = Set(appModel.getDisplayedApps().map(\.path))
         XCTAssertTrue(paths.contains("/Applications/ParentOnly.app"))
         XCTAssertTrue(paths.contains("/Applications/ChildOnly.app"))
-        XCTAssertTrue(paths.contains("/Applications/Shared.app"))
     }
 }

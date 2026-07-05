@@ -32,10 +32,8 @@ class SettingsWindowManager {
         }
         
         DispatchQueue.main.async {
-            settingsWindow.deminiaturize(nil)
             NSApp.activate(ignoringOtherApps: true)
             settingsWindow.makeKeyAndOrderFront(nil)
-            settingsWindow.orderFrontRegardless()
         }
     }
     
@@ -52,11 +50,11 @@ class SettingsWindowManager {
         
         // Use a larger initial size that accommodates the content comfortably
         let screenFrame = (NSScreen.main ?? NSScreen.screens.first).map(\.visibleFrame) ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let windowX = screenFrame.midX - (kSettingsWindowWidth / 2)
-        let windowY = screenFrame.midY - (kSettingsWindowHeight / 2)
+        let windowX = screenFrame.midX - (AppMetrics.settingsWindowWidth / 2)
+        let windowY = screenFrame.midY - (AppMetrics.settingsWindowHeight / 2)
         
         settingsWindow = NSWindow(
-            contentRect: NSRect(x: windowX, y: windowY, width: kSettingsWindowWidth, height: kSettingsWindowHeight),
+            contentRect: NSRect(x: windowX, y: windowY, width: AppMetrics.settingsWindowWidth, height: AppMetrics.settingsWindowHeight),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
@@ -70,7 +68,7 @@ class SettingsWindowManager {
         settingsWindow?.contentView = hostingView
         
         // Set minimum and maximum size to ensure content is always comfortably visible
-        settingsWindow?.minSize = NSSize(width: kSettingsWindowMinWidth, height: kSettingsWindowMinHeight)
-        settingsWindow?.maxSize = NSSize(width: kSettingsWindowMaxWidth, height: kSettingsWindowMaxHeight)
+        settingsWindow?.minSize = NSSize(width: AppMetrics.settingsWindowMinWidth, height: AppMetrics.settingsWindowMinHeight)
+        settingsWindow?.maxSize = NSSize(width: AppMetrics.settingsWindowMaxWidth, height: AppMetrics.settingsWindowMaxHeight)
     }
 }

@@ -1,16 +1,44 @@
 import XCTest
 @testable import MacMuster
 
+@MainActor
 final class PersistenceTests: XCTestCase {
 
     private var appModel: AppModel!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
+        clearAllUserDefaultsState()
         appModel = AppModel()
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
+        clearAllUserDefaultsState()
         appModel = nil
+    }
+
+    nonisolated func clearAllUserDefaultsState() {
+        UserDefaults.standard.removeObject(forKey: "appFolders")
+        UserDefaults.standard.removeObject(forKey: "hiddenAppPaths")
+        UserDefaults.standard.removeObject(forKey: "customDirectories")
+        UserDefaults.standard.removeObject(forKey: "customDirectoryBookmarks")
+        UserDefaults.standard.removeObject(forKey: "currentFolderId")
+        UserDefaults.standard.removeObject(forKey: "customOrder")
+        UserDefaults.standard.removeObject(forKey: "sortOption")
+        UserDefaults.standard.removeObject(forKey: "columnCount")
+        UserDefaults.standard.removeObject(forKey: "iconSize")
+        UserDefaults.standard.removeObject(forKey: "refreshInterval")
+        UserDefaults.standard.removeObject(forKey: "fontFamily")
+        UserDefaults.standard.removeObject(forKey: "fontSize")
+        UserDefaults.standard.removeObject(forKey: "fontWeight")
+        UserDefaults.standard.removeObject(forKey: "glowEnabled")
+        UserDefaults.standard.removeObject(forKey: "glowColor")
+        UserDefaults.standard.removeObject(forKey: "glowIntensity")
+        UserDefaults.standard.removeObject(forKey: "glowWidth")
+        UserDefaults.standard.removeObject(forKey: "overlayOpacity")
+        UserDefaults.standard.removeObject(forKey: "showFoldersFirst")
+        UserDefaults.standard.removeObject(forKey: "hasShownLauncher")
+        UserDefaults.standard.removeObject(forKey: "recentAppsEnabled")
+        UserDefaults.standard.removeObject(forKey: "pressFeedbackEnabled")
     }
 
     // MARK: - Hidden Apps Persistence Tests
@@ -369,7 +397,10 @@ final class PersistenceTests: XCTestCase {
         UserDefaults.standard.set("Large", forKey: "iconSize")
         UserDefaults.standard.set(600, forKey: "refreshInterval")
         UserDefaults.standard.set("Helvetica", forKey: "fontFamily")
-        UserDefaults.standard.set(["/Applications/Test.app"], forKey: "hiddenAppPaths")
+        // hiddenAppPaths is persisted as JSON-encoded Data (see PreferencesStore.saveHiddenApps),
+        // not a raw array — matches testLoadHiddenAppsReadsFromUserDefaults.
+        let hiddenData = try? JSONEncoder().encode(Set(["/Applications/Test.app"]))
+        UserDefaults.standard.set(hiddenData, forKey: "hiddenAppPaths")
         UserDefaults.standard.set(["/Users/test/CustomApps"], forKey: "customDirectories")
 
         let newAppModel = AppModel()
@@ -557,7 +588,7 @@ final class PersistenceTests: XCTestCase {
 
     func testSetOverlayOpacityClampsToRange() {
         appModel.overlayOpacity = 99.0
-        XCTAssertLessThanOrEqual(appModel.overlayOpacity, kOverlayOpacityMax)
+        XCTAssertLessThanOrEqual(appModel.overlayOpacity, AppMetrics.overlayOpacityMax)
     }
 
     func testLoadOverlayOpacityReadsFromUserDefaults() {

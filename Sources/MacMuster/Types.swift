@@ -186,8 +186,4 @@ struct AppFolder: Codable, Identifiable, Hashable {
     }
 }
 
-// MARK: - OverlayOpacity
 
-let kOverlayOpacityMin: Double = 0.1
-let kOverlayOpacityMax: Double = 1.0
-let kOverlayOpacityStep: Double = 0.05

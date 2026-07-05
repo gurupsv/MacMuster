@@ -16,7 +16,7 @@ class NavigationSelection {
                 library?.dataVersion += 1
             } else {
                 searchDebounceTask = Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: kSearchDebounceNanoseconds)
+                    try? await Task.sleep(nanoseconds: AppMetrics.searchDebounceNanoseconds)
                     guard !Task.isCancelled, let self, let library else { return }
                     library.dataVersion += 1
                 }

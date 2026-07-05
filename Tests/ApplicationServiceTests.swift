@@ -1,7 +1,23 @@
 import XCTest
 @testable import MacMuster
 
+@MainActor
 final class ApplicationServiceTests: XCTestCase {
+
+    override func setUp() async throws {
+        clearAllUserDefaultsState()
+        RecentAppsTracker.shared.clearHistory()
+    }
+
+    override func tearDown() async throws {
+        clearAllUserDefaultsState()
+        RecentAppsTracker.shared.clearHistory()
+    }
+
+    nonisolated func clearAllUserDefaultsState() {
+        UserDefaults.standard.removeObject(forKey: "recentAppLaunchTimes")
+        UserDefaults.standard.removeObject(forKey: "appLaunchCounts")
+    }
 
     func testServiceIsSingleton() {
         let service1 = ApplicationService.shared

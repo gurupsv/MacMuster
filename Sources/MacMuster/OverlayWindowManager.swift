@@ -1,6 +1,17 @@
 import AppKit
 import SwiftUI
 
+enum KeyCodes {
+    static let escape: UInt16 = 53
+    static let backspaceDelete: UInt16 = 51
+    static let returnEnter: [UInt16] = [36, 76]
+    static let forwardSlash: UInt16 = 43
+    static let leftArrow: UInt16 = 123
+    static let rightArrow: UInt16 = 124
+    static let downArrow: UInt16 = 125
+    static let upArrow: UInt16 = 126
+}
+
 extension Notification.Name {
     static let launcherDidShow = Notification.Name("launcherDidShow")
     static let focusSearchField = Notification.Name("focusSearchField")
@@ -22,10 +33,10 @@ struct GlowEffectView: View {
             
             Rectangle()
                 .fill(.clear)
-                .overlay(EdgeGlow(edge: .top, color: color, intensity: intensity, inset: glowInset))
-                .overlay(EdgeGlow(edge: .bottom, color: color, intensity: intensity, inset: glowInset))
-                .overlay(EdgeGlow(edge: .leading, color: color, intensity: intensity, inset: glowInset))
-                .overlay(EdgeGlow(edge: .trailing, color: color, intensity: intensity, inset: glowInset))
+                .overlay(alignment: .top) { EdgeGlow(edge: .top, color: color, intensity: intensity, inset: glowInset) }
+                .overlay(alignment: .bottom) { EdgeGlow(edge: .bottom, color: color, intensity: intensity, inset: glowInset) }
+                .overlay(alignment: .leading) { EdgeGlow(edge: .leading, color: color, intensity: intensity, inset: glowInset) }
+                .overlay(alignment: .trailing) { EdgeGlow(edge: .trailing, color: color, intensity: intensity, inset: glowInset) }
                 .allowsHitTesting(false)
                 .drawingGroup(opaque: false)
         }
@@ -69,19 +80,19 @@ struct GlowEdgeView: View {
         case .top:
             Rectangle()
                 .fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
-                .frame(minHeight: inset, idealHeight: inset, maxHeight: .infinity, alignment: .top)
+                .frame(width: nil, height: inset, alignment: .top)
         case .bottom:
             Rectangle()
                 .fill(LinearGradient(colors: colors, startPoint: .bottom, endPoint: .top))
-                .frame(minHeight: inset, idealHeight: inset, maxHeight: .infinity, alignment: .bottom)
+                .frame(width: nil, height: inset, alignment: .bottom)
         case .leading:
             Rectangle()
                 .fill(LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing))
-                .frame(minWidth: inset, idealWidth: inset, maxWidth: .infinity, alignment: .leading)
+                .frame(width: inset, height: nil, alignment: .leading)
         case .trailing:
             Rectangle()
                 .fill(LinearGradient(colors: colors, startPoint: .trailing, endPoint: .leading))
-                .frame(minWidth: inset, idealWidth: inset, maxWidth: .infinity, alignment: .trailing)
+                .frame(width: inset, height: nil, alignment: .trailing)
         default:
             Rectangle().fill(.clear)
         }
@@ -110,9 +121,8 @@ class OverlayWindowManager {
     private var backgroundWindows: [NSWindow] = []
     private weak var appModel: AppModel?
     private var savedPresentationOptions: NSApplication.PresentationOptions?
-    private var arrowKeyEventMonitor: Any?
+    private var combinedKeyEventMonitor: Any?
     private var displayChangeObserver: NSObjectProtocol?
-    private var searchFieldSelectionFixMonitor: Any?
 
     var isWindowVisible: Bool {
         window?.isVisible ?? false
@@ -147,7 +157,7 @@ class OverlayWindowManager {
         window?.hasShadow = false
         
         // Set minimum size for content
-        window?.minSize = NSSize(width: kWindowMinWidth, height: kWindowMinHeight)
+        window?.minSize = NSSize(width: AppMetrics.windowMinWidth, height: AppMetrics.windowMinHeight)
         
         // Hide title bar buttons (should already be hidden with borderless)
         window?.standardWindowButton(.closeButton)?.isHidden = true
@@ -187,14 +197,12 @@ window.makeKeyAndOrderFront(nil)
         // Install a local event monitor to capture arrow keys even when search field is focused.
         // This is necessary because SwiftUI's TextField intercepts arrow keys before the
         // window's keyDown handler can see them.
-        installArrowKeyMonitor()
+        installCombinedEventMonitor()
 
         // Observe display configuration changes (monitor plugged in/out, resolution change, etc.)
         installDisplayChangeObserver()
 
-        installSearchFieldSelectionFix()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + kWindowAnimationDelay) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + AppMetrics.windowAnimationDelay) {
             NotificationCenter.default.post(name: .launcherDidShow, object: window)
         }
     }
@@ -204,9 +212,8 @@ window.makeKeyAndOrderFront(nil)
         hideBackgroundWindows()
         exitLauncherPresentationMode()
         appModel?.clearSearchState()
-        removeArrowKeyMonitor()
+        removeCombinedEventMonitor()
         removeDisplayChangeObserver()
-        removeSearchFieldSelectionFix()
     }
     
     private func preferredScreen(for window: NSWindow) -> NSScreen? {
@@ -272,7 +279,7 @@ window.makeKeyAndOrderFront(nil)
     // internal (not private) so OverlayWindowManagerTests can simulate key events via @testable import.
     func handleKeyDown(_ event: NSEvent) -> Bool {
         switch event.keyCode {
-case 53: // Escape: if search is focused, unfocus it; else close folder if inside one; else hide launcher
+case KeyCodes.escape: // Escape: if search is focused, unfocus it; else close folder if inside one; else hide launcher
 if window?.firstResponder is NSTextView || window?.firstResponder is NSTextField {
 // Search field is focused - unfocus it
 window?.makeFirstResponder(nil)
@@ -286,7 +293,7 @@ return true
 hide()
 return true
 }
-        case 51: // Backspace/Delete: go up one level when inside a folder (and not editing search text)
+        case KeyCodes.backspaceDelete: // Backspace/Delete: go up one level when inside a folder (and not editing search text)
             if window?.firstResponder is NSTextView || window?.firstResponder is NSTextField {
                 return false
             }
@@ -295,7 +302,7 @@ return true
                 return true
             }
             return false
-        case 36, 76: // Return, Enter
+        case KeyCodes.returnEnter[0], KeyCodes.returnEnter[1]: // Return, Enter
             if let appModel = appModel, !appModel.searchTerm.isEmpty {
                 let displayedApps = appModel.getDisplayedApps()
                 if let first = displayedApps.first {
@@ -320,23 +327,23 @@ return true
             }
             hide()
             return true
-        case 43: // Forward slash (/)
+        case KeyCodes.forwardSlash: // Forward slash (/)
             // Focus search field when / is pressed
             NotificationCenter.default.post(name: NSNotification.Name("focusSearchField"), object: nil)
             return true
-        case 123: // Left arrow - move selection left
+        case KeyCodes.leftArrow: // Left arrow - move selection left
             NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
             appModel?.selectAppLeft()
             return true
-        case 124: // Right arrow - move selection right
+        case KeyCodes.rightArrow: // Right arrow - move selection right
             NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
             appModel?.selectAppRight()
             return true
-        case 125: // Down arrow - move selection down
+        case KeyCodes.downArrow: // Down arrow - move selection down
             NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
             appModel?.selectAppDown()
             return true
-        case 126: // Up arrow - move selection up
+        case KeyCodes.upArrow: // Up arrow - move selection up
             NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
             appModel?.selectAppUp()
             return true
@@ -369,32 +376,31 @@ return true
 
     // MARK: - Arrow Key Event Monitoring
 
-    private func installArrowKeyMonitor() {
-        removeArrowKeyMonitor()
+    private func installCombinedEventMonitor() {
+        removeCombinedEventMonitor()
 
-        let arrowKeyCodes: Set<UInt16> = [123, 124, 125, 126]  // Left, Right, Down, Up
+        let arrowKeyCodes: Set<UInt16> = Set([KeyCodes.leftArrow, KeyCodes.rightArrow, KeyCodes.downArrow, KeyCodes.upArrow])
 
-        arrowKeyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard arrowKeyCodes.contains(event.keyCode) else { return event }
-
-            // Only consume arrow keys when search is empty - allow cursor movement when searching
-            if let appModel = self?.appModel, !appModel.searchTerm.isEmpty {
-                // Search has content - pass event to TextField for cursor movement
-                return event
+        combinedKeyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            // Handle arrow keys first — consume when search is empty
+            if arrowKeyCodes.contains(event.keyCode) {
+                if let appModel = self?.appModel, !appModel.searchTerm.isEmpty {
+                    return event // Search has content - pass to TextField for cursor movement
+                }
+                _ = self?.handleKeyDown(event)
+                return nil // Consume the event (prevent TextField from seeing it)
             }
 
-            // Let our handler process it
-            _ = self?.handleKeyDown(event)
-
-            // Return nil to consume the event (prevent TextField from seeing it)
-            return nil
+            // Always run selection collapse on every keyDown
+            self?.collapseSearchFieldSelectionIfSelectAll()
+            return event
         }
     }
 
-    private func removeArrowKeyMonitor() {
-        if let monitor = arrowKeyEventMonitor {
+    private func removeCombinedEventMonitor() {
+        if let monitor = combinedKeyEventMonitor {
             NSEvent.removeMonitor(monitor)
-            arrowKeyEventMonitor = nil
+            combinedKeyEventMonitor = nil
         }
     }
 
@@ -446,23 +452,6 @@ return true
     /// detect the full-string-selected state there, we collapse it to a cursor at the end, and
     /// the incoming keystroke appends instead of replacing.
     ///
-    /// This handles all focus paths uniformly (type-to-search, the "/" shortcut, and clicking
-    /// the search icon) and only intervenes when the *entire* string is selected — a manual
-    /// cursor or partial selection is left alone.
-    private func installSearchFieldSelectionFix() {
-        removeSearchFieldSelectionFix()
-        searchFieldSelectionFixMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.collapseSearchFieldSelectionIfSelectAll()
-            return event
-        }
-    }
-
-    private func removeSearchFieldSelectionFix() {
-        if let monitor = searchFieldSelectionFixMonitor {
-            NSEvent.removeMonitor(monitor)
-            searchFieldSelectionFixMonitor = nil
-        }
-    }
 
     /// Detects AppKit's auto-select-all (whole string highlighted) and collapses it to a cursor
     /// at the end so the next keystroke appends. A manual selection or cursor is left untouched.
@@ -476,7 +465,8 @@ return true
     /// True only when `range` covers the entire `fieldLength` (AppKit's auto-select-all state).
     /// Split out so the decision is unit-testable without a live window and first responder.
     nonisolated func isFullSelection(_ range: NSRange, fieldLength: Int) -> Bool {
-        range.location == 0 && range.length == fieldLength
+        guard fieldLength > 0 else { return false }
+        return range.location == 0 && range.length == fieldLength
     }
 
     /// Moves the insertion point to the end of `fieldEditor`, clearing any selection (such as the
@@ -510,9 +500,9 @@ struct LaunchWrapperView: View {
             guard !appModel.hasShownLauncher else { return }
             // Set the starting scale *before* the next render tick so SwiftUI
             // picks up the initial value, then animate back to 1.0.
-            scale = kLaunchZoomOutStartScale
+            scale = AppMetrics.launchZoomOutStartScale
             DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: kLaunchZoomOutDuration)) {
+                withAnimation(.easeInOut(duration: AppMetrics.launchZoomOutDuration)) {
                     scale = 1.0
                 }
             }

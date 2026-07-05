@@ -15,12 +15,25 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     /// time — which matters for icons that scroll back into view and re-hit the cache.
     private let memoryCache = NSCache<NSString, NSImage>()
 
+    /// In-memory mtime cache — avoids repeated fileExists + attributesOfItem syscalls for apps that
+    /// are already in the display order. Cached mtimes are refreshed during pruneDeletedApps so they
+    /// stay accurate and never drift stale without a fresh check.
+    private let mtimeCache = NSCache<NSString, NSDate>()
+
+    func cachedMtime(for appPath: String) -> Date? {
+        return mtimeCache.object(forKey: appPath as NSString) as? Date
+    }
+
     // "v2": the original cache key scheme truncated the path hash to its first 8 bytes, so any
     // two apps sharing an 8-character path prefix (e.g. everything under /System/Applications/
     // or /Applications/) collided on the same cache file. Using a new directory name abandons
     // those corrupted entries rather than risk ever reading one back.
-    private let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("MacMuster/icons-v3", isDirectory: true)
+    private let cacheDir = {
+        guard let first = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Caches/MacMuster/icons-v3", isDirectory: true)
+        }
+        return first.appendingPathComponent("MacMuster/icons-v3", isDirectory: true)
+    }()
 
     private struct CacheEntry: Codable {
         let appPath: String
@@ -155,6 +168,14 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         for (appPath, _) in cachedApps {
             guard !currentAppPaths.contains(appPath) else { continue }
             deleteCache(for: appPath)
+            mtimeCache.removeObject(forKey: appPath as NSString)
+        }
+
+        // Refresh mtime cache for remaining apps so subsequent reads skip fileExists/syscalls
+        for appPath in currentAppPaths {
+            if let mtime = currentBundleModificationTime(for: appPath) {
+                mtimeCache.setObject(NSDate(timeIntervalSinceReferenceDate: mtime.timeIntervalSinceReferenceDate), forKey: appPath as NSString)
+            }
         }
     }
 
@@ -164,7 +185,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     /// of how many paths share a common prefix (unlike a truncated byte-hex encoding, which
     /// previously collided for every app under the same top-level directory, e.g. all of
     /// /System/Applications/* hashed to the same key and shared one cache file).
-    private func cacheKey(for appPath: String) -> String {
+    func cacheKey(for appPath: String) -> String {
         let digest = SHA256.hash(data: Data(appPath.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
@@ -181,12 +202,18 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     }
 
     private func currentBundleModificationTime(for appPath: String) -> Date? {
+        if let cached = mtimeCache.object(forKey: appPath as NSString) as? Date {
+            return cached
+        }
+
         guard FileManager.default.fileExists(atPath: appPath) else {
             return nil
         }
 
         let attrs = try? FileManager.default.attributesOfItem(atPath: appPath)
-        return attrs?[.modificationDate] as? Date
+        let mtime = attrs?[.modificationDate] as? Date
+        if let mtime { mtimeCache.setObject(NSDate(timeIntervalSinceReferenceDate: mtime.timeIntervalSinceReferenceDate), forKey: appPath as NSString) }
+        return mtime
     }
 
     private func datesEqualIgnoringSubsecond(_ d1: Date, _ d2: Date) -> Bool {

@@ -33,9 +33,6 @@ final class FolderStore {
     
     func addAppToFolder(_ appPath: String, folderId: String) {
         guard let index = folders.firstIndex(where: { $0.id == folderId }) else { return }
-        guard FileManager.default.fileExists(atPath: appPath) else { return }
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: appPath, isDirectory: &isDir), isDir.boolValue else { return }
         guard appPath.hasSuffix(".app") else { return }
         if !folders[index].appPaths.contains(appPath) {
             folders[index].appPaths.append(appPath)
@@ -77,7 +74,7 @@ final class FolderStore {
             let containedApps = currentFolder.appPaths.compactMap { appPathIndex[$0] }
             result.append(contentsOf: containedApps)
 
-            // Recursively collect apps from explicit child folders (those with parentFolderId == currentFolderId)
+            // Recursively collect apps from explicit child folders (parentFolderId == currentFolderId)
             for childFolder in folders where childFolder.parentFolderId == currentFolderId && !visitedFolders.contains(childFolder.id) {
                 collectApps(from: childFolder.id)
             }
@@ -103,10 +100,11 @@ final class FolderStore {
         return result
     }
     
-    func getFolderApplication(_ folder: AppFolder, containedApps: [Application]) -> Application {
+    func getFolderApplication(_ folder: AppFolder, containedApps: [Application], displayCount: Int? = nil) -> Application {
         // `id`/`path` are the bare folder UUID (no synthetic prefix needed — real app paths always
         // start with "/" and UUIDs never do, so collisions are impossible). `folderId` carries the
-        // identity explicitly so callers don't need to parse it back out of `path`.
+        // identity explicitly so callers don't need to parse it back out of `path`/`id`.
+        let count = displayCount ?? containedApps.count
         return Application(
             id: folder.id,
             name: folder.name,
@@ -116,7 +114,7 @@ final class FolderStore {
             isFolder: true,
             containedApps: folder.appPaths,
             appSize: nil,
-            bundleDescription: "\(containedApps.count) app\(containedApps.count == 1 ? "" : "s")",
+            bundleDescription: "\(count) app\(count == 1 ? "" : "s")",
             folderId: folder.id
         )
     }
