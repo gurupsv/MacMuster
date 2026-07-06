@@ -711,6 +711,7 @@ struct FoldersSettingsPanel: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .disabled(appModel.currentFolderId != nil)
             }
         }
     }
@@ -723,6 +724,7 @@ struct FolderRow: View {
     @State private var isEditing: Bool = false
     @State private var editedName: String = ""
     @State private var showDeleteAlert: Bool = false
+    @State private var showContents: Bool = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -767,6 +769,16 @@ struct FolderRow: View {
                 
                 Spacer()
                 
+                // Expand contents button
+                Button {
+                    showContents.toggle()
+                } label: {
+                    Image(systemName: showContents ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                
                 // Edit button
                 Button {
                     isEditing = true
@@ -797,7 +809,27 @@ struct FolderRow: View {
                 }
             }
             
-            Divider()
+            if showContents && !folder.appPaths.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Divider()
+                    ForEach(folder.appPaths, id: \.self) { appPath in
+                        HStack {
+                            Text((appPath as NSString).lastPathComponent.replacingOccurrences(of: ".app", with: ""))
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button(role: .destructive) {
+                                appModel.moveAppToRoot(appPath, folderId: folder.id)
+                            } label: {
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
         }
         .padding(.vertical, 4)
     }

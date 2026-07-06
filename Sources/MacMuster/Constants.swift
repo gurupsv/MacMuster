@@ -1,5 +1,15 @@
 import Foundation
 
+// MARK: - App Version
+// Single source of truth. Update version.txt and tag with v<version> on release.
+enum AppVersion {
+    static let current = "1.0.0"
+    static let build: Int = {
+        let n = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0")
+        return n ?? 0
+    }()
+}
+
 // MARK: - App Metrics Constants
 
 enum AppMetrics {

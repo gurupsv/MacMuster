@@ -320,7 +320,7 @@ final class PersistenceTests: XCTestCase {
 
     func testOpenFolderSavesCurrentFolderId() {
         let folder = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         appModel.openFolder(folderId)
         let folderIdStored = UserDefaults.standard.string(forKey: "currentFolderId")
         XCTAssertEqual(folderIdStored, folderId)
@@ -328,7 +328,7 @@ final class PersistenceTests: XCTestCase {
 
     func testCloseFolderResetsCurrentFolderId() {
         let folder = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         appModel.openFolder(folderId)
         appModel.closeFolder()
         let folderIdStored = UserDefaults.standard.string(forKey: "currentFolderId")
@@ -416,7 +416,7 @@ final class PersistenceTests: XCTestCase {
 
     func testSaveAllPersistedPreferencesWritesToUserDefaults() {
         let folder = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         appModel.openFolder(folderId)
         appModel.setSortOption(.installationDate)
         appModel.iconSize = .large

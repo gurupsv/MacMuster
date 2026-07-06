@@ -402,8 +402,17 @@ spacing: AppMetrics.gridSpacing
     // MARK: - Create Folder Sheet
     private var createFolderSheet: some View {
         VStack(spacing: 16) {
-            Text(selectedAppPathsForFolder.isEmpty ? "Create New Folder" : "Add to Folder")
-                .font(.headline)
+            if appModel.currentFolderId != nil {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.orange)
+                    Text("Cannot create folders inside another folder. Close this folder first.")
+                        .font(.subheadline)
+                }
+            } else {
+                Text(selectedAppPathsForFolder.isEmpty ? "Create New Folder" : "Add to Folder")
+                    .font(.headline)
+            }
             
             TextField("Folder Name", text: $newFolderName)
                 .textFieldStyle(.roundedBorder)
@@ -428,6 +437,7 @@ spacing: AppMetrics.gridSpacing
                             }
                         }
                         .buttonStyle(.plain)
+        .disabled(appModel.currentFolderId != nil)
                         .foregroundStyle(.primary)
                     }
                 }
@@ -462,6 +472,7 @@ spacing: AppMetrics.gridSpacing
                     }
                     showCreateFolder = false
                 }
+        .disabled(appModel.currentFolderId != nil)
                 .keyboardShortcut(.defaultAction)
             }
         }
@@ -571,7 +582,7 @@ spacing: AppMetrics.gridSpacing
         .onTapGesture {
             handleAppTap(app)
         }
-        .contextMenu { folderContextMenu(app) }
+        .contextMenu { appContextMenu(app) }
         .draggable(app.path)
         .dropDestination(for: String.self) { items, location in
             if let droppedPath = items.first {
@@ -756,6 +767,77 @@ spacing: AppMetrics.gridSpacing
             } label: {
                 Label("Copy Path", systemImage: "doc.on.doc")
             }
+        }
+    }
+
+    @ViewBuilder
+    private func appContextMenu(_ app: Application) -> some View {
+        if !app.isFolder {
+            Button {
+                let parentPath = (app.path as NSString).deletingLastPathComponent
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: parentPath)])
+            } label: {
+                Label("Show in Finder", systemImage: "folder")
+            }
+        }
+        Button {
+            selectedAppPathsForFolder = [app.path]
+            newFolderName = "Folder"
+            showCreateFolder = true
+        } label: {
+            Label("Add to Folder", systemImage: "folder.badge.plus")
+        }
+        .disabled(appModel.currentFolderId != nil)
+        if !appModel.folders.isEmpty && app.folderId == nil {
+            Menu("Add to Existing Folder") {
+                ForEach(appModel.folders, id: \.id) { folder in
+                    Button {
+                        appModel.addAppToFolder(app.path, folderId: folder.id)
+                    } label: {
+                        Text("Add to \(folder.name)")
+                    }
+                }
+            }
+            .disabled(appModel.currentFolderId != nil)
+        }
+        if let folderId = app.folderId {
+            Button(role: .destructive) {
+                appModel.moveAppToRoot(app.path, folderId: folderId)
+            } label: {
+                Label("Move to Root", systemImage: "arrow.up.right")
+            }
+            if !appModel.folders.isEmpty && appModel.currentFolderId != nil && folderId != appModel.currentFolderId {
+                Menu("Move to Other Folder") {
+                    ForEach(appModel.folders, id: \.id) { folder in
+                        Button {
+                            appModel.moveAppInFolder(app.path, from: app.folderId!, to: folder.id)
+                        } label: {
+                            Text("Move to \(folder.name)")
+                        }
+                    }
+                }
+            } else if !appModel.folders.isEmpty && appModel.currentFolderId != nil {
+                Menu("Move to Other Folder") {
+                    ForEach(appModel.folders, id: \.id) { folder in
+                        Button {
+                            appModel.moveAppInFolder(app.path, from: app.folderId!, to: folder.id)
+                        } label: {
+                            Text("Move to \(folder.name)")
+                        }
+                    }
+                }
+            }
+        }
+        Button {
+            appModel.toggleHiddenApp(app.path)
+        } label: {
+            Label(appModel.isAppHidden(app.path) ? "Show App" : "Hide App", systemImage: appModel.isAppHidden(app.path) ? "eye" : "eye.slash")
+        }
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(app.path, forType: .string)
+        } label: {
+            Label("Copy Path", systemImage: "doc.on.doc")
         }
     }
 
@@ -1128,6 +1210,7 @@ struct ToolbarButtons: View {
         }
         .buttonStyle(FocusableButtonStyle(cornerRadius: AppMetrics.settingsButtonSize / 2))
         .accessibilityLabel("Create new folder")
+        .disabled(appModel.currentFolderId != nil)
 
         Button(action: {
             SettingsWindowManager.shared.show()

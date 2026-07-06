@@ -264,8 +264,7 @@ final class BackupManager {
                 id: folder.id,
                 name: folder.name,
                 appPaths: cleanedPaths,
-                customIcon: folder.customIcon,
-                parentFolderId: folder.parentFolderId
+                customIcon: folder.customIcon
             )
             FolderStore.shared.folders.append(cleanedFolder)
         }

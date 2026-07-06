@@ -95,13 +95,13 @@ final class FolderTests: XCTestCase {
 
     func testCreateFolderWithMultipleApps() {
         let folder = appModel.createFolder(name: "Tools", appPaths: ["/Applications/Xcode.app", "/Applications/VSCode.app", "/Applications/Sublime.app"])
-        XCTAssertEqual(folder.appPaths.count, 3)
+        XCTAssertEqual(folder!.appPaths.count, 3)
         XCTAssertEqual(appModel.folders[0].appPaths.count, 3)
     }
 
     func testDeleteFolderRemovesFromList() {
         let folder = appModel.createFolder(name: "Temp", appPaths: ["/Applications/Test.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         appModel.deleteFolder(folderId: folderId)
         XCTAssertEqual(appModel.folders.count, 0)
         XCTAssertFalse(appModel.folders.contains(where: { $0.id == folderId }))
@@ -114,7 +114,7 @@ final class FolderTests: XCTestCase {
 
     func testRenameFolderUpdatesName() {
         let folder = appModel.createFolder(name: "OldName", appPaths: ["/Applications/App1.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         appModel.renameFolder(folderId: folderId, newName: "NewName")
         XCTAssertEqual(appModel.folders[0].name, "NewName")
     }
@@ -126,7 +126,7 @@ final class FolderTests: XCTestCase {
 
     func testRenameFolderUpdatesModifiedAt() {
         let folder = appModel.createFolder(name: "Test", appPaths: ["/Applications/App1.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         let originalModifiedAt = appModel.folders[0].modifiedAt
         appModel.renameFolder(folderId: folderId, newName: "Updated")
         XCTAssertGreaterThanOrEqual(appModel.folders[0].modifiedAt, originalModifiedAt)
@@ -134,14 +134,14 @@ final class FolderTests: XCTestCase {
 
     func testAddAppToFolderAddsPathToList() {
         let folder = appModel.createFolder(name: "Tools", appPaths: ["/Applications/Xcode.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         appModel.addAppToFolder("/Applications/VSCode.app", folderId: folderId)
         XCTAssertEqual(appModel.folders[0].appPaths, ["/Applications/Xcode.app", "/Applications/VSCode.app"])
     }
 
     func testAddAppToFolderDoesNotDuplicate() {
         let folder = appModel.createFolder(name: "Tools", appPaths: ["/Applications/Xcode.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         appModel.addAppToFolder("/Applications/Xcode.app", folderId: folderId)
         XCTAssertEqual(appModel.folders[0].appPaths.count, 1)
     }
@@ -153,7 +153,7 @@ final class FolderTests: XCTestCase {
 
     func testAddAppToFolderUpdatesModifiedAt() {
         let folder = appModel.createFolder(name: "Test", appPaths: ["/Applications/App1.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         let originalModifiedAt = appModel.folders[0].modifiedAt
         appModel.addAppToFolder("/Applications/App2.app", folderId: folderId)
         XCTAssertGreaterThanOrEqual(appModel.folders[0].modifiedAt, originalModifiedAt)
@@ -161,14 +161,14 @@ final class FolderTests: XCTestCase {
 
     func testRemoveAppFromFolderRemovesPath() {
         let folder = appModel.createFolder(name: "Tools", appPaths: ["/Applications/Xcode.app", "/Applications/VSCode.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         appModel.removeAppFromFolder("/Applications/VSCode.app", folderId: folderId)
         XCTAssertEqual(appModel.folders[0].appPaths, ["/Applications/Xcode.app"])
     }
 
     func testRemoveNonExistentAppFromFolderDoesNothing() {
         let folder = appModel.createFolder(name: "Tools", appPaths: ["/Applications/Xcode.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         appModel.removeAppFromFolder("/Applications/NonExistent.app", folderId: folderId)
         XCTAssertEqual(appModel.folders[0].appPaths, ["/Applications/Xcode.app"])
     }
@@ -180,7 +180,7 @@ final class FolderTests: XCTestCase {
 
     func testRemoveAppFromFolderUpdatesModifiedAt() {
         let folder = appModel.createFolder(name: "Test", appPaths: ["/Applications/App1.app", "/Applications/App2.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         let originalModifiedAt = appModel.folders[0].modifiedAt
         appModel.removeAppFromFolder("/Applications/App2.app", folderId: folderId)
         XCTAssertGreaterThanOrEqual(appModel.folders[0].modifiedAt, originalModifiedAt)
@@ -189,8 +189,8 @@ final class FolderTests: XCTestCase {
     func testMoveAppInFolderAddsToTargetAndRemovesFromSource() {
         let folder1 = appModel.createFolder(name: "Source", appPaths: ["/Applications/Xcode.app"])
         let folder2 = appModel.createFolder(name: "Target", appPaths: ["/Applications/VSCode.app"])
-        let sourceId = folder1.id
-        let targetId = folder2.id
+        let sourceId = folder1!.id
+        let targetId = folder2!.id
 
         appModel.moveAppInFolder("/Applications/Xcode.app", from: sourceId, to: targetId)
 
@@ -200,7 +200,7 @@ final class FolderTests: XCTestCase {
 
     func testMoveAppInFolderSameFolderDoesNothing() {
         let folder = appModel.createFolder(name: "Tools", appPaths: ["/Applications/Xcode.app", "/Applications/VSCode.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
 
         appModel.moveAppInFolder("/Applications/Xcode.app", from: folderId, to: folderId)
 
@@ -211,14 +211,14 @@ final class FolderTests: XCTestCase {
 
     func testOpenFolderSetsCurrentFolderId() {
         let folder = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         appModel.openFolder(folderId)
         XCTAssertEqual(appModel.currentFolderId, folderId)
     }
 
     func testCloseFolderResetsCurrentFolderId() {
         let folder = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
-        let folderId = folder.id
+        let folderId = folder!.id
         appModel.openFolder(folderId)
         appModel.closeFolder()
         XCTAssertNil(appModel.currentFolderId)
@@ -227,9 +227,9 @@ final class FolderTests: XCTestCase {
     func testCurrentFolderReturnsMatchingFolder() {
         let folder1 = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app"])
         _ = appModel.createFolder(name: "Tools", appPaths: ["/Applications/VSCode.app"])
-        appModel.openFolder(folder1.id)
+        appModel.openFolder(folder1!.id)
         XCTAssertEqual(appModel.currentFolder?.name, "Development")
-        XCTAssertEqual(appModel.currentFolder?.id, folder1.id)
+        XCTAssertEqual(appModel.currentFolder?.id, folder1!.id)
     }
 
     func testCurrentFolderReturnsNilWhenNoFolderOpen() {
@@ -348,7 +348,7 @@ final class FolderTests: XCTestCase {
         let apps = [Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)]
         appModel.setApplications(apps)
         let folder = appModel.createFolder(name: "Temp", appPaths: ["/Applications/Test.app"])
-        appModel.deleteFolder(folderId: folder.id)
+        appModel.deleteFolder(folderId: folder!.id)
         XCTAssertEqual(appModel.folders.count, 0)
     }
 
@@ -412,7 +412,7 @@ final class FolderTests: XCTestCase {
             makeApp("/Applications/Other.app"),
         ])
         let folder = appModel.createFolder(name: "Dev", appPaths: ["/Applications/Xcode.app", "/Applications/VSCode.app"])
-        appModel.openFolder(folder.id)
+        appModel.openFolder(folder!.id)
 
         let displayed = appModel.getDisplayedApps()
         XCTAssertEqual(Set(displayed.map(\.path)), Set(["/Applications/Xcode.app", "/Applications/VSCode.app"]))
@@ -445,19 +445,76 @@ final class FolderTests: XCTestCase {
         XCTAssertTrue(displayed.first?.isFolder == true)
     }
 
-    func testChildFolderRecursionIncludesNestedFolderApps() {
+    func testNoNestedFoldersSupported() {
         appModel.setApplications([
             makeApp("/Applications/ParentOnly.app"),
             makeApp("/Applications/ChildOnly.app"),
         ])
         let parent = AppFolder(name: "Parent", appPaths: ["/Applications/ParentOnly.app"])
-        // Explicit parent/child relationship via parentFolderId — the only supported nesting mechanism.
-        let child = AppFolder(name: "Child", appPaths: ["/Applications/ChildOnly.app"], parentFolderId: parent.id)
+        let child = AppFolder(name: "Child", appPaths: ["/Applications/ChildOnly.app"])
+
         appModel.folders = [parent, child]
 
         appModel.openFolder(parent.id)
         let paths = Set(appModel.getDisplayedApps().map(\.path))
         XCTAssertTrue(paths.contains("/Applications/ParentOnly.app"))
-        XCTAssertTrue(paths.contains("/Applications/ChildOnly.app"))
+        XCTAssertFalse(paths.contains("/Applications/ChildOnly.app")) // Child folder apps are not included — no nesting supported
+    }
+
+    func testRealAppInsideFolderCarriesFolderId() {
+        appModel.setApplications([makeApp("/Applications/Xcode.app")])
+        let folder = appModel.createFolder(name: "Dev", appPaths: ["/Applications/Xcode.app"])
+        appModel.openFolder(folder!.id)
+
+        let displayed = appModel.getDisplayedApps()
+        XCTAssertTrue(displayed.contains { $0.path == "/Applications/Xcode.app" })
+        XCTAssertEqual(displayed.first(where: { $0.path == "/Applications/Xcode.app" })!.folderId, folder!.id) // Real app carries parent folder identity (allows context menu to show Move to Root)
+    }
+
+    func testCreateFolderReturnsNilWhenInsideAnotherFolder() {
+        let folder = appModel.createFolder(name: "Dev", appPaths: ["/Applications/Xcode.app"])
+        appModel.openFolder(folder!.id)
+
+        let result = appModel.createFolder(name: "SubDev", appPaths: ["/Applications/VSCode.app"])
+        XCTAssertNil(result) // Cannot create nested folders — returns nil
+        XCTAssertEqual(appModel.folders.count, 1) // Only the original folder exists
+    }
+
+    func testMoveAppToRootRemovesAppFromFolder() {
+        let apps = [makeApp("/Applications/Xcode.app"), makeApp("/Applications/VSCode.app")]
+        appModel.setApplications(apps)
+        let folder = appModel.createFolder(name: "Dev", appPaths: ["/Applications/Xcode.app", "/Applications/VSCode.app"])
+        let folderId = folder!.id
+
+        appModel.moveAppToRoot("/Applications/Xcode.app", folderId: folderId)
+
+        XCTAssertEqual(appModel.folders[0].appPaths, ["/Applications/VSCode.app"]) // Xcode removed from folder
+    }
+
+    func testMoveAppToRootWhenInsideFolderResetsCurrentFolderId() {
+        let apps = [makeApp("/Applications/Xcode.app")]
+        appModel.setApplications(apps)
+        let folder = appModel.createFolder(name: "Dev", appPaths: ["/Applications/Xcode.app"])
+        let folderId = folder!.id
+
+        appModel.openFolder(folderId)
+        appModel.moveAppToRoot("/Applications/Xcode.app", folderId: folderId)
+
+        XCTAssertNil(appModel.currentFolderId) // Folder emptied after moving last app to root — currentFolderId resets
+    }
+
+    func testMoveAppToRootNonExistentPathDoesNothing() {
+        let folder = appModel.createFolder(name: "Dev", appPaths: ["/Applications/Xcode.app"])
+        let folderId = folder!.id
+
+        appModel.moveAppToRoot("/Applications/NonExistent.app", folderId: folderId)
+
+        XCTAssertEqual(appModel.folders[0].appPaths, ["/Applications/Xcode.app"]) // Nothing removed — path not in folder
+    }
+
+    func testMoveAppToRootNonExistentFolderDoesNothing() {
+        appModel.moveAppToRoot("/Applications/Test.app", folderId: "non-existent-id")
+
+        XCTAssertEqual(appModel.folders.count, 0) // No folders exist — operation does nothing
     }
 }

@@ -10,6 +10,10 @@ APP_DIR="${APP_NAME}.app"
 BUNDLE_ID="com.macmuster.app"
 ENTITLEMENTS="entitlements.plist"
 
+# Read version from single source of truth
+VERSION=$(cat version.txt 2>/dev/null || echo "1.0.0")
+BUILD_NUM=$(git rev-list --count HEAD 2>/dev/null || echo "1")
+
 # Build release binary (debug builds can mask performance issues)
 echo "Building ${APP_NAME}..."
 swift build -c release
@@ -50,9 +54,9 @@ cat > "$APP_DIR/Contents/Info.plist" << PLIST_EOF
     <key>CFBundleExecutable</key>
     <string>MacMuster</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${BUILD_NUM}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>${VERSION}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>NSHighResolutionCapable</key>

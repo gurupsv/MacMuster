@@ -101,8 +101,10 @@ if [ "${BUILD_UNIVERSAL:-0}" = "1" ]; then
     echo "Universal binary includes both arm64 and x86_64 architectures"
 fi
 
-# Get version
-VERSION=$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "1.0.0")
+# Get version from single source of truth
+BASE_VERSION=$(cat version.txt 2>/dev/null || echo "1.0.0")
+VERSION=$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "${BASE_VERSION}")
+BUILD_NUM=$(git rev-list --count HEAD 2>/dev/null || echo "1")
 BUNDLE_ID="com.macmuster.app"
 APP_BUNDLE="${APP_NAME}.app"
 
@@ -137,7 +139,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST_EOF
     <key>CFBundleExecutable</key>
     <string>MacMuster</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${BUILD_NUM}</string>
     <key>CFBundleShortVersionString</key>
     <string>${VERSION}</string>
     <key>CFBundlePackageType</key>

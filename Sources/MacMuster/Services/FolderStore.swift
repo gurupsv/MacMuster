@@ -62,26 +62,8 @@ final class FolderStore {
     ) -> [Application] {
         guard folders.first(where: { $0.id == folderId }) != nil else { return [] }
 
-        var result: [Application] = []
-        var visitedFolders: Set<String> = []
-
-        func collectApps(from currentFolderId: String) {
-            guard !visitedFolders.contains(currentFolderId),
-                  let currentFolder = folders.first(where: { $0.id == currentFolderId })
-            else { return }
-            visitedFolders.insert(currentFolderId)
-
-            let containedApps = currentFolder.appPaths.compactMap { appPathIndex[$0] }
-            result.append(contentsOf: containedApps)
-
-            // Recursively collect apps from explicit child folders (parentFolderId == currentFolderId)
-            for childFolder in folders where childFolder.parentFolderId == currentFolderId && !visitedFolders.contains(childFolder.id) {
-                collectApps(from: childFolder.id)
-            }
-        }
-
-        collectApps(from: folderId)
-        result = result.filter { !hiddenAppPaths.contains($0.path) }
+        let containedApps = folders.first(where: { $0.id == folderId })!.appPaths.compactMap { appPathIndex[$0] }
+        var result: [Application] = containedApps.filter { !hiddenAppPaths.contains($0.path) }
         
         if !customOrder.isEmpty {
             result.sort {

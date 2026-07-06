@@ -337,20 +337,38 @@ class LibraryScanState {
     func getDisplayedApps(searchTerm: String, showFoldersFirst: Bool, customOrder: [String: Int], sortOption: ApplicationSorter.SortOption, selectedCategory: AppCategory, columnCount: Int) -> [Application] {
         if let cached = cachedDisplayedApps, cached.version == dataVersion { return cached.apps }
         let baseApps = getBaseAppsForCurrentContext()
-        let filtered = applySearchFilter(to: baseApps, searchTerm: searchTerm)
+        let appsWithFolderId = populateFolderIds(for: baseApps)
+        let filtered = applySearchFilter(to: appsWithFolderId, searchTerm: searchTerm)
         let result = applyOrdering(to: filtered, searchTerm: searchTerm, showFoldersFirst: showFoldersFirst, customOrder: customOrder, sortOption: sortOption, selectedCategory: selectedCategory)
         cachedDisplayedApps = (dataVersion, result)
         return result
     }
 
+    private func populateFolderIds(for apps: [Application]) -> [Application] {
+        guard !folders.isEmpty else { return apps }
+        let folderPathMap: [String: String] = folders.reduce(into: [String: String]()) { (map, folder) in for path in folder.appPaths { map[path] = folder.id } }
+        var result: [Application] = []
+        for app in apps {
+            if !app.isFolder {
+                let id = folderPathMap[app.path] ?? nil
+                var a = app; a.folderId = id; result.append(a)
+            } else {
+                // Folder icon already has folderId set — pass through unchanged.
+                result.append(app)
+            }
+        }
+        return result
+    }
+
     private func getBaseAppsForCurrentContext() -> [Application] {
+        if let folderId = currentFolderId { return getAllAppsIncludingChildFolders(for: folderId) }
+
         let appsInAnyFolder: Set<String> = {
             if let cached = cachedAppsInAnyFolder { return cached }
             let set = folders.reduce(into: Set<String>()) { $0.formUnion($1.appPaths) }
             cachedAppsInAnyFolder = set
             return set
         }()
-        if let folderId = currentFolderId { return getAllAppsIncludingChildFolders(for: folderId) }
         let looseApps = visibleApplications.filter { !appsInAnyFolder.contains($0.path) }
         let folderIcons: [Application] = folders.compactMap { folder in
             let hasVisible = folder.appPaths.contains { path in
@@ -423,7 +441,8 @@ class LibraryScanState {
     static var defaultScanDirectories: [String] { ApplicationScanner.defaultScanDirectories }
 
     @discardableResult
-    func createFolder(name: String, appPaths: [String]) -> AppFolder {
+    func createFolder(name: String, appPaths: [String]) -> AppFolder? {
+        guard currentFolderId == nil else { return nil }
         let folder = FolderStore.shared.createFolder(name: name, appPaths: appPaths)
         folders = FolderStore.shared.folders
         rebuildAppPathIndex()
@@ -456,6 +475,9 @@ class LibraryScanState {
     func moveAppInFolder(_ appPath: String, from folderId: String, to toFolderId: String) {
         FolderStore.shared.moveAppInFolder(appPath, from: folderId, to: toFolderId)
         folders = FolderStore.shared.folders
+    }
+    func moveAppToRoot(_ appPath: String, folderId: String) {
+        removeAppFromFolder(appPath, folderId: folderId)
     }
     func openFolder(_ folderId: String) {
         currentFolderId = folderId

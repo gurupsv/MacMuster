@@ -159,20 +159,17 @@ struct AppFolder: Codable, Identifiable, Hashable {
     var name: String
     var appPaths: [String]
     var customIcon: String?
-    var parentFolderId: String? = nil
     let createdAt: Date
     var modifiedAt: Date
 
     init(id: String = UUID().uuidString,
-         name: String,
-         appPaths: [String],
-         customIcon: String? = nil,
-         parentFolderId: String? = nil) {
+          name: String,
+          appPaths: [String],
+          customIcon: String? = nil) {
         self.id = id
         self.name = name
         self.appPaths = appPaths
         self.customIcon = customIcon
-        self.parentFolderId = parentFolderId
         self.createdAt = Date()
         self.modifiedAt = Date()
     }

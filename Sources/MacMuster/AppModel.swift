@@ -196,12 +196,13 @@ class AppModel {
     func addCustomDirectory(_ path: String, bookmarkData: Data? = nil) { library.addCustomDirectory(path, bookmarkData: bookmarkData) }
     func getDisplayedApps() -> [Application] { library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: showFoldersFirst, customOrder: customOrder, sortOption: sortOption, selectedCategory: selectedCategory, columnCount: columnCount) }
     func getFolderApplication(_ folder: AppFolder) -> Application { library.getFolderApplication(folder) }
-    func createFolder(name: String, appPaths: [String]) -> AppFolder { library.createFolder(name: name, appPaths: appPaths) }
+    func createFolder(name: String, appPaths: [String]) -> AppFolder? { library.createFolder(name: name, appPaths: appPaths) }
     func deleteFolder(folderId: String) { library.deleteFolder(folderId: folderId) }
     func renameFolder(folderId: String, newName: String) { library.renameFolder(folderId: folderId, newName: newName) }
     func addAppToFolder(_ appPath: String, folderId: String) { library.addAppToFolder(appPath, folderId: folderId) }
     func removeAppFromFolder(_ appPath: String, folderId: String) { library.removeAppFromFolder(appPath, folderId: folderId) }
     func moveAppInFolder(_ appPath: String, from folderId: String, to toFolderId: String) { library.moveAppInFolder(appPath, from: folderId, to: toFolderId) }
+    func moveAppToRoot(_ appPath: String, folderId: String) { library.moveAppToRoot(appPath, folderId: folderId) }
     func openFolder(_ folderId: String) { library.openFolder(folderId) }
     func closeFolder() { library.closeFolder() }
     var currentFolder: AppFolder? { library.currentFolder }
