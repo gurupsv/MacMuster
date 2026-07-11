@@ -497,10 +497,13 @@ struct LaunchWrapperView: View {
                 .scaleEffect(scale)
         }
         .onAppear {
-            guard !appModel.hasShownLauncher else { return }
-            // Set the starting scale *before* the next render tick so SwiftUI
-            // picks up the initial value, then animate back to 1.0.
-            scale = AppMetrics.launchZoomOutStartScale
+            let shouldAnimate = !appModel.hasShownLauncher || appModel.launchAnimationEnabled
+            guard shouldAnimate else { return }
+            let startScale: CGFloat = switch appModel.launchAnimationDirection {
+                case .zoomOut: AppMetrics.launchZoomOutStartScale
+                case .zoomIn: AppMetrics.launchZoomInEndScale
+            }
+            scale = startScale
             DispatchQueue.main.async {
                 withAnimation(.easeInOut(duration: AppMetrics.launchZoomOutDuration)) {
                     scale = 1.0

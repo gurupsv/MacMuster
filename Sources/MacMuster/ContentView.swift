@@ -44,8 +44,11 @@ struct ContentView: View {
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    // Tap on background outside app grid - hide launcher
-                    StatusBarManager.shared.hideWindow()
+                    if appModel.currentFolderId != nil {
+                        appModel.closeFolder()
+                    } else {
+                        StatusBarManager.shared.hideWindow()
+                    }
                 }
 
             if appModel.isLoading {
@@ -69,6 +72,7 @@ struct ContentView: View {
                     // Top padding
                     Spacer()
                         .frame(height: 20)
+                        .allowsHitTesting(false)
                     
                     // Keyboard hints pill (shown on first launch, or when Help button is clicked)
                     if !visibleApps.isEmpty && (!appModel.hasShownLauncher || showKeyboardHint) {
@@ -299,38 +303,8 @@ spacing: AppMetrics.gridSpacing
                                     let selectedPath: String? = (hasUsedKeyboard && displayedApps.indices.contains(appModel.selectedAppIndex))
                                         ? displayedApps[appModel.selectedAppIndex].path
                                         : nil
-                                    // D-1: group folders and apps under section headers when both are
-                                    // present and the user isn't searching (search results stay flat
-                                    // so ranking order is obvious). Selection/keyboard-nav math is
-                                    // unaffected — it still walks `displayedApps` by index; this only
-                                    // changes how the same items are visually grouped, the same way the
-                                    // separate "Recent" grid above already does.
-                                    //
-                                    // Single-pass partition instead of two full filter passes — halves
-                                    // the array allocation work per body evaluation.
-                                    var partitionedApps = displayedApps
-                                    let folderBoundary = partitionedApps.partition(by: { !$0.isFolder })
-                                    let folderItems = Array(partitionedApps[..<folderBoundary])
-                                    let nonFolderItems = Array(partitionedApps[folderBoundary...])
-                                    if appModel.searchTerm.isEmpty && !folderItems.isEmpty && !nonFolderItems.isEmpty {
-                                        Section {
-                                            ForEach(folderItems) { app in
-                                                gridItemView(app: app, isSelected: app.path == selectedPath)
-                                            }
-                                        } header: {
-                                            sectionHeaderLabel("Folders")
-                                        }
-                                        Section {
-                                            ForEach(nonFolderItems) { app in
-                                                gridItemView(app: app, isSelected: app.path == selectedPath)
-                                            }
-                                        } header: {
-                                            sectionHeaderLabel("Applications")
-                                        }
-                                    } else {
-                                        ForEach(displayedApps) { app in
-                                            gridItemView(app: app, isSelected: app.path == selectedPath)
-                                        }
+                                    ForEach(displayedApps) { app in
+                                        gridItemView(app: app, isSelected: app.path == selectedPath)
                                     }
                                 }
                                 .contentShape(Rectangle())
@@ -357,6 +331,15 @@ spacing: AppMetrics.gridSpacing
                     // Bottom padding (moved inside VStack for symmetry)
                     Spacer()
                         .frame(height: 30)
+                        .allowsHitTesting(false)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if appModel.currentFolderId != nil {
+                        appModel.closeFolder()
+                    } else {
+                        StatusBarManager.shared.hideWindow()
+                    }
                 }
                 .frame(minWidth: AppMetrics.windowMinWidth, minHeight: AppMetrics.windowMinHeight)
                 .padding(.horizontal)
@@ -539,17 +522,6 @@ spacing: AppMetrics.gridSpacing
         .accessibilityLabel("Search applications")
     }
 
-    // A `Section` header inside `LazyVGrid` automatically spans all columns.
-    private func sectionHeaderLabel(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .padding(.top, AppMetrics.labelSpacingVertical)
-    }
-
     private func getCategoryCount(for category: AppCategory) -> Int {
         appModel.categoryCounts[category, default: 0]
     }
@@ -565,7 +537,6 @@ spacing: AppMetrics.gridSpacing
             appModel: appModel,
             app: app,
             isHovered: hoveredAppPath == app.path || isDropTarget,
-            hoveredAppInfo: hoveredAppPath == app.path ? app : nil,
             isSelected: isSelected,
             isPressed: (isDropTarget || isPressed) && appModel.pressFeedbackEnabled,
             feedbackEnabled: appModel.pressFeedbackEnabled
@@ -898,7 +869,7 @@ struct SectionView: View {
                 spacing: 16
             ) {
                 ForEach(apps) { app in
-                    AppIconView(appModel: appModel, app: app, isHovered: hoveredAppPath == app.path, hoveredAppInfo: nil)
+                    AppIconView(appModel: appModel, app: app, isHovered: hoveredAppPath == app.path)
                         .accessibilityLabel(app.provenanceWarning.map { "\(app.name), application. \($0)" } ?? "\(app.name), application")
                         .accessibilityAddTraits(.isButton)
                         .help(app.provenanceWarning.map { "\(app.name) — \($0)" } ?? app.name)
@@ -964,7 +935,6 @@ struct AppIconView: View {
     @Bindable var appModel: AppModel
     let app: Application
     var isHovered: Bool = false
-    var hoveredAppInfo: Application?
     var isSelected: Bool = false
     var isPressed: Bool = false
     var feedbackEnabled: Bool = true
@@ -976,12 +946,22 @@ struct AppIconView: View {
         baseView
             .padding(AppMetrics.sectionViewPadding)
             .background(
-                RoundedRectangle(cornerRadius: AppMetrics.appIconCornerRadius)
-                    .fill(isSelected ? Color.accentColor.opacity(0.18) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
+                GeometryReader { geo in
+                    let side = max(geo.size.width, geo.size.height)
+                    RoundedRectangle(cornerRadius: AppMetrics.appIconCornerRadius)
+                        .fill(isSelected ? Color.accentColor.opacity(0.18) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
+                        .frame(width: side, height: side)
+                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                }
             )
             .overlay(
-                RoundedRectangle(cornerRadius: AppMetrics.appIconCornerRadius)
-                    .stroke(isSelected ? Color.accentColor.opacity(0.7) : Color.clear, lineWidth: 1.5)
+                GeometryReader { geo in
+                    let side = max(geo.size.width, geo.size.height)
+                    RoundedRectangle(cornerRadius: AppMetrics.appIconCornerRadius)
+                        .stroke(isSelected ? Color.accentColor.opacity(0.7) : Color.clear, lineWidth: 1.5)
+                        .frame(width: side, height: side)
+                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                }
             )
             // Non-color selection cue (G-2): a checkmark badge so selection is legible without
             // relying on the accent-color tint/border alone (helps colorblind/low-contrast users).
@@ -1016,7 +996,6 @@ struct AppIconView: View {
         VStack(alignment: .center, spacing: 8) {
             iconView
             appNameView
-            if isHovered { hoverInfoView }
         }
     }
     
@@ -1028,13 +1007,16 @@ struct AppIconView: View {
                 Image(nsImage: icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .frame(width: iconContentSize, height: iconContentSize)
                     .frame(width: iconSize, height: iconSize)
+                    .background(folderTileBackdrop)
                     .padding(AppMetrics.appIconPadding)
             } else {
                 Image(systemName: "app.fill")
                     .font(.system(size: 48))
                     .foregroundStyle(.secondary)
                     .frame(width: iconSize, height: iconSize)
+                    .background(folderTileBackdrop)
                     .padding(AppMetrics.appIconPadding)
             }
 
@@ -1059,7 +1041,7 @@ struct AppIconView: View {
             .fontWeight(getFontWeight())
             .multilineTextAlignment(.center)
             .lineLimit(2)
-            .frame(maxWidth: .infinity)
+            .frame(width: iconSize + 2 * AppMetrics.appIconPadding)
             .foregroundStyle(.primary)
     }
 
@@ -1078,21 +1060,6 @@ struct AppIconView: View {
         appModel.fontWeight == "bold" ? .bold : appModel.fontWeight == "light" ? .light : .regular
     }
     
-    private var hoverInfoView: some View {
-        VStack(spacing: 2) {
-            if app.isFolder, let contained = app.containedApps, !contained.isEmpty {
-                Text("\(contained.count) app\(contained.count == 1 ? "" : "s")")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            if let category = getCategoryDisplay(app) {
-                Text(category)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-    
     // Safely resolve icon size without relying on a missing `.value` property
     private var iconSize: CGFloat {
         switch appModel.iconSize {
@@ -1101,17 +1068,30 @@ struct AppIconView: View {
         case .large: return AppMetrics.iconSizeLarge
         }
     }
-    
-    private func getCategoryDisplay(_ app: Application) -> String? {
-        switch appModel.getCategory(for: app) {
-        case .system:
-            return "System"
-        case .utilities:
-            return "Utilities"
-        case .user, .mostUsed, .recentlyLaunched, .newlyInstalled, .all:
-            return nil
+
+    // Folders inset their composited mini-grid so it sits inside the backdrop;
+    // regular apps fill the full icon frame.
+    private var iconContentSize: CGFloat {
+        app.isFolder ? iconSize * (1 - 2 * AppMetrics.folderTileInsetRatio) : iconSize
+    }
+
+    // Launchpad-style containment for folder tiles: translucent rounded fill + faint
+    // stroke. A flat Color (not a Material) keeps LazyVGrid scrolling cheap — a
+    // backdrop-blur layer per tile would be paid across every visible tile.
+    @ViewBuilder
+    private var folderTileBackdrop: some View {
+        if app.isFolder {
+            let radius = iconSize * AppMetrics.folderTileCornerRadiusRatio
+            RoundedRectangle(cornerRadius: radius)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: radius)
+                        .stroke(colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.12),
+                                lineWidth: AppMetrics.folderTileStrokeWidth)
+                )
         }
     }
+
 }
 
 // MARK: - Press Tracking via NSViewRepresentable

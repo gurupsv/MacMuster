@@ -58,6 +58,24 @@ class SettingsAppearance {
     var hasShownLauncher: Bool = false {
         didSet { PreferencesStore.shared.saveHasShownLauncher(hasShownLauncher) }
     }
+    enum LaunchAnimationDirection: String, CaseIterable {
+        case zoomOut = "zoomOut"
+        case zoomIn = "zoomIn"
+
+        var displayName: String {
+            switch self {
+            case .zoomOut: "Zoom Out (starts expanded, shrinks to normal)"
+            case .zoomIn: "Zoom In (starts small, grows to normal)"
+            }
+        }
+    }
+
+    var launchAnimationDirection: LaunchAnimationDirection = .zoomOut {
+        didSet { PreferencesStore.shared.saveLaunchAnimationDirection(launchAnimationDirection.rawValue) }
+    }
+    var launchAnimationEnabled: Bool = true {
+        didSet { PreferencesStore.shared.saveLaunchAnimationEnabled(launchAnimationEnabled) }
+    }
     var showFoldersFirst: Bool = false {
         didSet { PreferencesStore.shared.saveShowFoldersFirst(showFoldersFirst) }
     }
@@ -72,6 +90,10 @@ class SettingsAppearance {
         if let opacityRaw = PreferencesStore.shared.loadOverlayOpacity() {
             overlayOpacity = max(AppMetrics.overlayOpacityMin, min(AppMetrics.overlayOpacityMax, opacityRaw))
         }
+        if let dirRaw = PreferencesStore.shared.loadLaunchAnimationDirection() {
+            launchAnimationDirection = LaunchAnimationDirection(rawValue: dirRaw) ?? .zoomOut
+        }
+        launchAnimationEnabled = PreferencesStore.shared.loadLaunchAnimationEnabled()
     }
 
     private func loadPersistedPreferences() {

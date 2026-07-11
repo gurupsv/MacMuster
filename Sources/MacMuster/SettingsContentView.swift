@@ -268,6 +268,50 @@ struct GeneralSettingsPanel: View {
                 startAtLogin = SMAppService.mainApp.status == .enabled
             }
             
+            // Launch Animation section
+            settingsSection(title: "Launch Animation") {
+                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                            Text("Animation Enabled")
+                                .font(.system(size: 14, weight: .medium))
+                            Text("Plays a zoom animation when the launcher appears. Always plays on first launch.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $appModel.launchAnimationEnabled)
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                    }
+                    .padding(AppMetrics.sectionContentPadding)
+                    
+                    Divider()
+                    
+                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                            Text("Animation Direction")
+                                .font(.system(size: 14, weight: .medium))
+                            Text("Choose how the launcher animates when it appears")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Picker("", selection: $appModel.launchAnimationDirection) {
+                            ForEach(SettingsAppearance.LaunchAnimationDirection.allCases, id: \.self) { dir in
+                                Text(dir.displayName).tag(dir)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .frame(width: 240)
+                    }
+                    .padding(AppMetrics.sectionContentPadding)
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+                .cornerRadius(AppMetrics.sectionContentCornerRadius)
+            }
+            
             // Folders section
             settingsSection(title: "Folders") {
                 VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {

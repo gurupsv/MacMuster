@@ -35,8 +35,9 @@ enum AppMetrics {
 
     // MARK: - Launch Animation Metrics
 
-    static let launchZoomOutStartScale: CGFloat = 1.25
-    static let launchZoomOutDuration: TimeInterval = 0.8
+    static let launchZoomOutStartScale: CGFloat = 2.0
+    static let launchZoomInEndScale: CGFloat = 0.5
+    static let launchZoomOutDuration: TimeInterval = 0.5
 
     // MARK: - Settings Window Metrics
 
@@ -66,11 +67,16 @@ enum AppMetrics {
     // MARK: - ContentView Layout Metrics
 
     static let gridSpacing: CGFloat = 20
-    static let appIconPadding: CGFloat = 8
+    static let appIconPadding: CGFloat = 1
     static let appIconCornerRadius: CGFloat = 10
-    static let appIconHoverScale: CGFloat = 1.08
-    static let sectionViewPadding: CGFloat = 10
-    static let searchPadding: CGFloat = 10
+    static let appIconHoverScale: CGFloat = 1.2
+    // Folder tile backdrop: ratios of the icon size so the backdrop scales with the
+    // small/medium/large icon setting instead of using a fixed point value.
+    static let folderTileCornerRadiusRatio: CGFloat = 0.22
+    static let folderTileInsetRatio: CGFloat = 0.10
+    static let folderTileStrokeWidth: CGFloat = 1
+    static let sectionViewPadding: CGFloat = 1
+    static let searchPadding: CGFloat = 1
     static let searchCornerRadius: CGFloat = 8
     static let categoryTabPaddingHorizontal: CGFloat = 10
     static let categoryTabPaddingVertical: CGFloat = 5

@@ -32,6 +32,8 @@ final class PreferencesStore {
         case recentAppsEnabled = "recentAppsEnabled"
         case overlayOpacity = "overlayOpacity"
         case showInDock = "showInDock"
+        case launchAnimationDirection = "launchAnimationDirection"
+        case launchAnimationEnabled = "launchAnimationEnabled"
     }
 
     /// Current schema version. Increment when adding/removing/changing preference keys.
@@ -59,6 +61,12 @@ final class PreferencesStore {
         }
         if defaults.object(forKey: Keys.overlayOpacity.rawValue) == nil {
             defaults.set(AppMetrics.overlayOpacityDefault, forKey: Keys.overlayOpacity.rawValue)
+        }
+        if defaults.object(forKey: Keys.launchAnimationDirection.rawValue) == nil {
+            defaults.set("zoomOut", forKey: Keys.launchAnimationDirection.rawValue)
+        }
+        if defaults.object(forKey: Keys.launchAnimationEnabled.rawValue) == nil {
+            defaults.set(true, forKey: Keys.launchAnimationEnabled.rawValue)
         }
     }
 
@@ -274,6 +282,25 @@ final class PreferencesStore {
     
     func loadOverlayOpacity() -> Double? {
         defaults.value(forKey: Keys.overlayOpacity.rawValue) as? Double
+    }
+    
+    func loadLaunchAnimationDirection() -> String? {
+        defaults.string(forKey: Keys.launchAnimationDirection.rawValue)
+    }
+    
+    func saveLaunchAnimationDirection(_ direction: String) {
+        defaults.set(direction, forKey: Keys.launchAnimationDirection.rawValue)
+    }
+
+    func loadLaunchAnimationEnabled() -> Bool {
+        if defaults.object(forKey: Keys.launchAnimationEnabled.rawValue) == nil {
+            return true
+        }
+        return defaults.bool(forKey: Keys.launchAnimationEnabled.rawValue)
+    }
+    
+    func saveLaunchAnimationEnabled(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Keys.launchAnimationEnabled.rawValue)
     }
     
     func loadShowInDock() -> Bool {

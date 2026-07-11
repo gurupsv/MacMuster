@@ -155,13 +155,21 @@ class AppModel {
     var shouldReduceMotion: Bool {
         get { settings.shouldReduceMotion }
     }
+    var launchAnimationDirection: SettingsAppearance.LaunchAnimationDirection {
+        get { settings.launchAnimationDirection }
+        set { settings.launchAnimationDirection = newValue }
+    }
+    var launchAnimationEnabled: Bool {
+        get { settings.launchAnimationEnabled }
+        set { settings.launchAnimationEnabled = newValue }
+    }
     var hasShownLauncher: Bool {
         get { settings.hasShownLauncher }
         set { settings.hasShownLauncher = newValue }
     }
     var showFoldersFirst: Bool {
         get { settings.showFoldersFirst }
-        set { settings.showFoldersFirst = newValue }
+        set { settings.showFoldersFirst = newValue; library.dataVersion += 1 }
     }
 
     // MARK: - Delegated Methods

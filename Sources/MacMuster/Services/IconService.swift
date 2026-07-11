@@ -44,8 +44,17 @@ final class IconService {
         }
 
         let iconSize: CGFloat = 120
-        let cellSize = iconSize / CGFloat(gridSize)
         let size = NSSize(width: iconSize, height: iconSize)
+
+        // Adapt the grid to the member count so sparse folders draw fewer, larger cells
+        // (2 apps get 2×2 cells, not tiny 3×3 ones), and center the block of rows so the
+        // mini-grid fills the tile evenly instead of hugging the top-left. Keeps every
+        // folder tile visually the same size regardless of how many apps it contains.
+        let drawnCount = min(apps.count, gridSize * gridSize)
+        let effectiveGrid = min(gridSize, Int(ceil(Double(drawnCount).squareRoot())))
+        let cellSize = iconSize / CGFloat(effectiveGrid)
+        let rowCount = Int(ceil(Double(drawnCount) / Double(effectiveGrid)))
+        let rowBlockOffsetY = (iconSize - CGFloat(rowCount) * cellSize) / 2
 
         // Use NSImage(size:flipped:drawingHandler:) instead of lockFocus/unlockFocus — safer and more modern.
         let image = NSImage(size: size, flipped: false) { rect -> Bool in
@@ -53,12 +62,15 @@ final class IconService {
             clipPath.addClip()
 
             let workspace = NSWorkspace.shared
-            for index in 0..<min(apps.count, gridSize * gridSize) {
-                let row = index / gridSize
-                let col = index % gridSize
+            for index in 0..<drawnCount {
+                let row = index / effectiveGrid
+                let col = index % effectiveGrid
+                // Center a trailing partial row horizontally; full rows span the width.
+                let itemsInRow = row == rowCount - 1 ? drawnCount - row * effectiveGrid : effectiveGrid
+                let rowOffsetX = (iconSize - CGFloat(itemsInRow) * cellSize) / 2
                 let icon = apps[index].icon ?? workspace.icon(forFile: apps[index].path)
-                let cellRect = NSRect(x: CGFloat(col) * cellSize,
-                                      y: CGFloat(gridSize - 1 - row) * cellSize,
+                let cellRect = NSRect(x: rowOffsetX + CGFloat(col) * cellSize,
+                                      y: rowBlockOffsetY + CGFloat(rowCount - 1 - row) * cellSize,
                                       width: cellSize, height: cellSize)
                 icon.draw(in: cellRect, from: NSRect.zero, operation: .copy, fraction: 1.0)
             }

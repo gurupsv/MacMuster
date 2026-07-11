@@ -302,6 +302,100 @@ final class FolderTests: XCTestCase {
         // Grid size 3 can show 9 apps (3*3), so only first 9 should be used
     }
 
+    // MARK: - Folder Icon Layout Tests
+    //
+    // The mini-grid adapts its cell count to the member count and centers the drawn
+    // block, so every folder tile fills the same square footprint regardless of how
+    // many apps it contains. These use fully opaque synthetic icons so the opaque
+    // bounding box of the composited image is deterministic.
+
+    private func makeSolidIconApp(_ index: Int) -> Application {
+        let icon = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
+            NSColor.red.setFill()
+            rect.fill()
+            return true
+        }
+        return Application(id: "/Applications/Solid\(index).app", name: "Solid\(index)",
+                           path: "/Applications/Solid\(index).app", icon: icon,
+                           installationDate: Date(), isFolder: false)
+    }
+
+    /// Opaque bounding box of the image as fractions of the canvas (x/y from the top-left).
+    private func opaqueBounds(of image: NSImage) -> (minX: Double, minY: Double, maxX: Double, maxY: Double)? {
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        let width = rep.pixelsWide, height = rep.pixelsHigh
+        var minX = width, minY = height, maxX = -1, maxY = -1
+        for y in 0..<height {
+            for x in 0..<width where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 {
+                minX = min(minX, x); maxX = max(maxX, x)
+                minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= 0 else { return nil }
+        return (Double(minX) / Double(width), Double(minY) / Double(height),
+                Double(maxX + 1) / Double(width), Double(maxY + 1) / Double(height))
+    }
+
+    func testGenerateFolderIconTwoAppsUsesLargeCellsCenteredVertically() throws {
+        let icon = try XCTUnwrap(IconService.shared.generateFolderIcon([makeSolidIconApp(1), makeSolidIconApp(2)]))
+        let bounds = try XCTUnwrap(opaqueBounds(of: icon))
+        // 2 apps → 2×2 grid → one row of half-height cells, centered: y spans 0.25–0.75.
+        XCTAssertEqual(bounds.minY, 0.25, accuracy: 0.03)
+        XCTAssertEqual(bounds.maxY, 0.75, accuracy: 0.03)
+        XCTAssertEqual(bounds.minX, 0.0, accuracy: 0.03)
+        XCTAssertEqual(bounds.maxX, 1.0, accuracy: 0.03)
+    }
+
+    func testGenerateFolderIconSixAppsCentersRowBlockVertically() throws {
+        let apps = (1...6).map { makeSolidIconApp($0) }
+        let icon = try XCTUnwrap(IconService.shared.generateFolderIcon(apps))
+        let bounds = try XCTUnwrap(opaqueBounds(of: icon))
+        // 6 apps → 3×3 grid → two rows of third-height cells, centered: y spans 1/6–5/6.
+        XCTAssertEqual(bounds.minY, 1.0 / 6.0, accuracy: 0.03)
+        XCTAssertEqual(bounds.maxY, 5.0 / 6.0, accuracy: 0.03)
+        XCTAssertEqual(bounds.minX, 0.0, accuracy: 0.03)
+        XCTAssertEqual(bounds.maxX, 1.0, accuracy: 0.03)
+    }
+
+    func testGenerateFolderIconFullGridFillsCanvas() throws {
+        let apps = (1...9).map { makeSolidIconApp($0) }
+        let icon = try XCTUnwrap(IconService.shared.generateFolderIcon(apps))
+        let bounds = try XCTUnwrap(opaqueBounds(of: icon))
+        XCTAssertEqual(bounds.minY, 0.0, accuracy: 0.03)
+        XCTAssertEqual(bounds.maxY, 1.0, accuracy: 0.03)
+        XCTAssertEqual(bounds.minX, 0.0, accuracy: 0.03)
+        XCTAssertEqual(bounds.maxX, 1.0, accuracy: 0.03)
+    }
+
+    func testGenerateFolderIconSingleAppFillsCanvas() throws {
+        let icon = try XCTUnwrap(IconService.shared.generateFolderIcon([makeSolidIconApp(1)]))
+        let bounds = try XCTUnwrap(opaqueBounds(of: icon))
+        // 1 app → 1×1 grid → the single icon fills the whole tile.
+        XCTAssertEqual(bounds.minY, 0.0, accuracy: 0.03)
+        XCTAssertEqual(bounds.maxY, 1.0, accuracy: 0.03)
+        XCTAssertEqual(bounds.minX, 0.0, accuracy: 0.03)
+        XCTAssertEqual(bounds.maxX, 1.0, accuracy: 0.03)
+    }
+
+    func testGenerateFolderIconThreeAppsCentersPartialBottomRow() throws {
+        let apps = (1...3).map { makeSolidIconApp($0) }
+        let icon = try XCTUnwrap(IconService.shared.generateFolderIcon(apps))
+        guard let tiff = icon.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else {
+            return XCTFail("could not rasterize folder icon")
+        }
+        let width = rep.pixelsWide, height = rep.pixelsHigh
+        func alpha(atXFraction fx: Double, yFraction fy: Double) -> CGFloat {
+            rep.colorAt(x: Int(Double(width) * fx), y: Int(Double(height) * fy))?.alphaComponent ?? 0
+        }
+        // 3 apps → 2×2 grid: top row full (2 icons), bottom row 1 icon centered — the
+        // bottom corners stay empty while the bottom center is drawn.
+        XCTAssertGreaterThan(alpha(atXFraction: 0.5, yFraction: 0.75), 0.5, "bottom-center cell should be drawn")
+        XCTAssertLessThan(alpha(atXFraction: 0.1, yFraction: 0.75), 0.5, "bottom-left should be empty")
+        XCTAssertLessThan(alpha(atXFraction: 0.9, yFraction: 0.75), 0.5, "bottom-right should be empty")
+        XCTAssertGreaterThan(alpha(atXFraction: 0.1, yFraction: 0.25), 0.5, "top row should span the width")
+        XCTAssertGreaterThan(alpha(atXFraction: 0.9, yFraction: 0.25), 0.5, "top row should span the width")
+    }
+
     // MARK: - Folder Persistence Tests
 
     func testSaveFoldersWritesToUserDefaults() {
