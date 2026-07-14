@@ -29,7 +29,7 @@ struct ContentView: View {
         if gridColumnCache?.count == count {
             return gridColumnCache!.columns
         }
-        let columns = Array(repeating: GridItem(.flexible(), spacing: AppMetrics.gridSpacing), count: count)
+        let columns = Array(repeating: GridItem(.flexible(), spacing: LayoutMetrics.gridSpacing), count: count)
         gridColumnCache = (count, columns)
         return columns
     }
@@ -140,14 +140,14 @@ struct ContentView: View {
                                 Image(systemName: "questionmark.circle")
                                     .font(.body)
                                     .foregroundStyle(showKeyboardHint ? Color.primary : Color.secondary)
-                                    .frame(width: AppMetrics.settingsButtonSize, height: AppMetrics.settingsButtonSize)
+                                    .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
                                     .background(
                                         Circle()
                                             .fill(showKeyboardHint ? Color.primary.opacity(0.15) : Color.clear)
                                     )
                                     .background(.ultraThinMaterial, in: Circle())
                             }
-                            .buttonStyle(FocusableButtonStyle(cornerRadius: AppMetrics.settingsButtonSize / 2))
+                            .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
                             .help("Keyboard shortcuts")
                             .accessibilityLabel("Show keyboard shortcuts")
 
@@ -189,14 +189,14 @@ struct ContentView: View {
                                 Image(systemName: "questionmark.circle")
                                     .font(.body)
                                     .foregroundStyle(showKeyboardHint ? Color.primary : Color.secondary)
-                                    .frame(width: AppMetrics.settingsButtonSize, height: AppMetrics.settingsButtonSize)
+                                    .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
                                     .background(
                                         Circle()
                                             .fill(showKeyboardHint ? Color.primary.opacity(0.15) : Color.clear)
                                     )
                                     .background(.ultraThinMaterial, in: Circle())
                             }
-                            .buttonStyle(FocusableButtonStyle(cornerRadius: AppMetrics.settingsButtonSize / 2))
+                            .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
                             .help("Keyboard shortcuts")
                             .accessibilityLabel("Show keyboard shortcuts")
 
@@ -217,7 +217,7 @@ struct ContentView: View {
                                 Image(systemName: "arrow.up.arrow.down")
                                     .font(.body)
                                     .foregroundStyle(.secondary)
-                                    .frame(width: AppMetrics.settingsButtonSize, height: AppMetrics.settingsButtonSize)
+                                    .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
                             .menuStyle(.borderlessButton)
@@ -296,7 +296,7 @@ struct ContentView: View {
                             ScrollView {
 LazyVGrid(
 columns: gridColumns,
-spacing: AppMetrics.gridSpacing
+spacing: LayoutMetrics.gridSpacing
 ) {
                                     // Resolve the selected index to a path once, rather than materializing
                                     // Array(displayedApps.enumerated()) on every body evaluation.
@@ -341,7 +341,7 @@ spacing: AppMetrics.gridSpacing
                         StatusBarManager.shared.hideWindow()
                     }
                 }
-                .frame(minWidth: AppMetrics.windowMinWidth, minHeight: AppMetrics.windowMinHeight)
+                .frame(minWidth: WindowMetrics.windowMinWidth, minHeight: WindowMetrics.windowMinHeight)
                 .padding(.horizontal)
             }
         }
@@ -485,10 +485,10 @@ spacing: AppMetrics.gridSpacing
                 .buttonStyle(.plain)
             }
         }
-        .padding(AppMetrics.searchPadding)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius))
+        .padding(LayoutMetrics.searchPadding)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: LayoutMetrics.searchCornerRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius)
+            RoundedRectangle(cornerRadius: LayoutMetrics.searchCornerRadius)
                 .stroke(Color.white.opacity(0.1), lineWidth: 1)
         )
         .frame(maxWidth: 400, alignment: .center)
@@ -508,7 +508,7 @@ spacing: AppMetrics.gridSpacing
             Image(systemName: "magnifyingglass")
                 .font(.body)
                 .foregroundStyle(isSearchExpanded || !appModel.searchTerm.isEmpty ? Color.primary : Color.secondary)
-                .frame(width: AppMetrics.settingsButtonSize, height: AppMetrics.settingsButtonSize)
+                .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
                 .background(
                     Circle()
                         .fill(isSearchExpanded || !appModel.searchTerm.isEmpty
@@ -517,7 +517,7 @@ spacing: AppMetrics.gridSpacing
                 )
                 .background(.ultraThinMaterial, in: Circle())
         }
-        .buttonStyle(FocusableButtonStyle(cornerRadius: AppMetrics.settingsButtonSize / 2))
+        .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
         .help("Search (/)")
         .accessibilityLabel("Search applications")
     }
@@ -593,7 +593,7 @@ spacing: AppMetrics.gridSpacing
     }
 
     private func handleAppTap(_ app: Application) {
-        if let folderId = app.folderId {
+        if app.isFolder, let folderId = app.folderId {
             if appModel.currentFolderId != folderId {
                 appModel.openFolder(folderId)
             }
@@ -830,8 +830,8 @@ spacing: AppMetrics.gridSpacing
                                      ? Color(nsColor: .windowBackgroundColor).opacity(0.7)
                                      : Color.secondary)
             }
-            .padding(.horizontal, AppMetrics.categoryTabPaddingHorizontal)
-            .padding(.vertical, AppMetrics.categoryTabPaddingVertical)
+            .padding(.horizontal, LayoutMetrics.categoryTabPaddingHorizontal)
+            .padding(.vertical, LayoutMetrics.categoryTabPaddingVertical)
             .background(
                 Capsule()
                     .fill(isSelected ? Color.primary.opacity(0.9) : Color.clear)
@@ -916,17 +916,54 @@ struct FocusableButtonStyle: ButtonStyle {
 
 // MARK: - Visual Effect Background
 
-/// NSVisualEffectView wrapper for a translucent, blurred background (like Launchpad)
+/// NSVisualEffectView wrapper for a translucent, blurred background (like Launchpad).
+/// Switches to solid opaque background when presentationMode is Sheet.
 struct VisualEffectBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .fullScreenUI
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
-    }
+    let appModel: AppModel
     
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+    func makeNSView(context: Context) -> NSView {
+        buildView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        nsView.subviews.forEach { $0.removeFromSuperview() }
+        let replacement = buildView()
+        replacement.frame = nsView.bounds
+        replacement.autoresizingMask = [.width, .height]
+        nsView.addSubview(replacement)
+    }
+
+    private func buildView() -> NSView {
+        switch appModel.presentationMode {
+        case .glass:
+            let parent = NSView(frame: .zero)
+            parent.wantsLayer = true
+            
+            let visualEffect = NSVisualEffectView()
+            visualEffect.material = .fullScreenUI
+            visualEffect.blendingMode = .behindWindow
+            visualEffect.state = .active
+            visualEffect.autoresizingMask = [.width, .height]
+            parent.addSubview(visualEffect)
+            
+            if appModel.tintStrength > 0 {
+                let tintColor = appModel.settings.tintedBackgroundColor()
+                let tintLayer = CALayer()
+                tintLayer.backgroundColor = tintColor.cgColor
+                tintLayer.frame = parent.bounds
+                tintLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+                parent.layer?.addSublayer(tintLayer)
+            }
+            
+            return parent
+        case .sheet:
+            let view = NSView(frame: .zero)
+            let bgColor = appModel.settings.tintedBackgroundColor()
+            view.wantsLayer = true
+            view.layer?.backgroundColor = bgColor.cgColor
+            return view
+        }
+    }
 }
 
 // MARK: - App Icon View
@@ -944,11 +981,11 @@ struct AppIconView: View {
     
     var body: some View {
         baseView
-            .padding(AppMetrics.sectionViewPadding)
+            .padding(LayoutMetrics.sectionViewPadding)
             .background(
                 GeometryReader { geo in
                     let side = max(geo.size.width, geo.size.height)
-                    RoundedRectangle(cornerRadius: AppMetrics.appIconCornerRadius)
+                    RoundedRectangle(cornerRadius: LayoutMetrics.appIconCornerRadius)
                         .fill(isSelected ? Color.accentColor.opacity(0.18) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
                         .frame(width: side, height: side)
                         .position(x: geo.size.width / 2, y: geo.size.height / 2)
@@ -957,7 +994,7 @@ struct AppIconView: View {
             .overlay(
                 GeometryReader { geo in
                     let side = max(geo.size.width, geo.size.height)
-                    RoundedRectangle(cornerRadius: AppMetrics.appIconCornerRadius)
+                    RoundedRectangle(cornerRadius: LayoutMetrics.appIconCornerRadius)
                         .stroke(isSelected ? Color.accentColor.opacity(0.7) : Color.clear, lineWidth: 1.5)
                         .frame(width: side, height: side)
                         .position(x: geo.size.width / 2, y: geo.size.height / 2)
@@ -987,7 +1024,7 @@ struct AppIconView: View {
                         .accessibilityHidden(true)
                 }
             }
-            .scaleEffect(isSelected || (isPressed && feedbackEnabled) ? AppMetrics.appIconHoverScale : 1.0)
+            .scaleEffect(isSelected || (isPressed && feedbackEnabled) ? LayoutMetrics.appIconHoverScale : 1.0)
             .contentShape(Rectangle())
     }
     
@@ -1010,14 +1047,14 @@ struct AppIconView: View {
                     .frame(width: iconContentSize, height: iconContentSize)
                     .frame(width: iconSize, height: iconSize)
                     .background(folderTileBackdrop)
-                    .padding(AppMetrics.appIconPadding)
+                    .padding(LayoutMetrics.appIconPadding)
             } else {
                 Image(systemName: "app.fill")
                     .font(.system(size: 48))
                     .foregroundStyle(.secondary)
                     .frame(width: iconSize, height: iconSize)
                     .background(folderTileBackdrop)
-                    .padding(AppMetrics.appIconPadding)
+                    .padding(LayoutMetrics.appIconPadding)
             }
 
             // D-3: live badge count on folder icons, so the contained-app count is visible at a
@@ -1041,7 +1078,7 @@ struct AppIconView: View {
             .fontWeight(getFontWeight())
             .multilineTextAlignment(.center)
             .lineLimit(2)
-            .frame(width: iconSize + 2 * AppMetrics.appIconPadding)
+            .frame(width: iconSize + 2 * LayoutMetrics.appIconPadding)
             .foregroundStyle(.primary)
     }
 
@@ -1063,16 +1100,17 @@ struct AppIconView: View {
     // Safely resolve icon size without relying on a missing `.value` property
     private var iconSize: CGFloat {
         switch appModel.iconSize {
-        case .small: return AppMetrics.iconSizeSmall
-        case .medium: return AppMetrics.iconSizeMedium
-        case .large: return AppMetrics.iconSizeLarge
+        case .small: return IconMetrics.iconSizeSmall
+        case .medium: return IconMetrics.iconSizeMedium
+        case .large: return IconMetrics.iconSizeLarge
+        case .extraLarge: return IconMetrics.iconSizeExtraLarge
         }
     }
 
     // Folders inset their composited mini-grid so it sits inside the backdrop;
     // regular apps fill the full icon frame.
     private var iconContentSize: CGFloat {
-        app.isFolder ? iconSize * (1 - 2 * AppMetrics.folderTileInsetRatio) : iconSize
+        app.isFolder ? iconSize * (1 - 2 * LayoutMetrics.folderTileInsetRatio) : iconSize
     }
 
     // Launchpad-style containment for folder tiles: translucent rounded fill + faint
@@ -1081,13 +1119,13 @@ struct AppIconView: View {
     @ViewBuilder
     private var folderTileBackdrop: some View {
         if app.isFolder {
-            let radius = iconSize * AppMetrics.folderTileCornerRadiusRatio
+            let radius = iconSize * LayoutMetrics.folderTileCornerRadiusRatio
             RoundedRectangle(cornerRadius: radius)
                 .fill(colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.08))
                 .overlay(
                     RoundedRectangle(cornerRadius: radius)
                         .stroke(colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.12),
-                                lineWidth: AppMetrics.folderTileStrokeWidth)
+                                lineWidth: LayoutMetrics.folderTileStrokeWidth)
                 )
         }
     }
@@ -1170,10 +1208,10 @@ struct ToolbarButtons: View {
             Image(systemName: "questionmark.circle")
                 .font(.body)
                 .foregroundStyle(.secondary)
-                .frame(width: AppMetrics.settingsButtonSize, height: AppMetrics.settingsButtonSize)
+                .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
                 .background(.ultraThinMaterial, in: Circle())
         }
-        .buttonStyle(FocusableButtonStyle(cornerRadius: AppMetrics.settingsButtonSize / 2))
+        .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
         .help("Keyboard shortcuts")
         .accessibilityLabel("Show keyboard shortcuts")
 
@@ -1185,10 +1223,10 @@ struct ToolbarButtons: View {
             Image(systemName: "folder.badge.plus")
                 .font(.body)
                 .foregroundStyle(.secondary)
-                .frame(width: AppMetrics.settingsButtonSize, height: AppMetrics.settingsButtonSize)
+                .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
                 .background(.ultraThinMaterial, in: Circle())
         }
-        .buttonStyle(FocusableButtonStyle(cornerRadius: AppMetrics.settingsButtonSize / 2))
+        .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
         .accessibilityLabel("Create new folder")
         .disabled(appModel.currentFolderId != nil)
 
@@ -1198,10 +1236,10 @@ struct ToolbarButtons: View {
             Image(systemName: "gearshape")
                 .font(.body)
                 .foregroundStyle(.secondary)
-                .frame(width: AppMetrics.settingsButtonSize, height: AppMetrics.settingsButtonSize)
+                .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
                 .background(.ultraThinMaterial, in: Circle())
         }
-        .buttonStyle(FocusableButtonStyle(cornerRadius: AppMetrics.settingsButtonSize / 2))
+        .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
         .accessibilityLabel("Open settings")
     }
 }

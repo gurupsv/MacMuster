@@ -284,14 +284,14 @@ final class PersistenceTests: XCTestCase {
         UserDefaults.standard.set("InvalidSize", forKey: "iconSize")
 
         let newAppModel = AppModel()
-        XCTAssertEqual(newAppModel.iconSize, .small)
+        XCTAssertEqual(newAppModel.iconSize, .medium)
     }
 
     func testLoadIconSizeWithNoDataUsesDefault() {
         UserDefaults.standard.removeObject(forKey: "iconSize")
 
         let newAppModel = AppModel()
-        XCTAssertEqual(newAppModel.iconSize, .small)
+        XCTAssertEqual(newAppModel.iconSize, .medium)
     }
 
     // MARK: - Refresh Interval Persistence Tests
@@ -588,7 +588,7 @@ final class PersistenceTests: XCTestCase {
 
     func testSetOverlayOpacityClampsToRange() {
         appModel.overlayOpacity = 99.0
-        XCTAssertLessThanOrEqual(appModel.overlayOpacity, AppMetrics.overlayOpacityMax)
+        XCTAssertLessThanOrEqual(appModel.overlayOpacity, GlowMetrics.overlayOpacityMax)
     }
 
     func testLoadOverlayOpacityReadsFromUserDefaults() {
@@ -613,5 +613,73 @@ final class PersistenceTests: XCTestCase {
         let newAppModel = AppModel()
         XCTAssertEqual(newAppModel.folders.count, 1)
         XCTAssertEqual(newAppModel.folders.first?.name, "Dev Tools")
+    }
+
+    // MARK: - Presentation Mode Persistence
+
+    func testSetPresentationModeSavesToUserDefaults() {
+        appModel.presentationMode = .sheet
+        let saved = UserDefaults.standard.string(forKey: "presentationMode")
+        XCTAssertEqual(saved, "Sheet")
+    }
+
+    func testLoadPresentationModeReadsFromUserDefaults() {
+        UserDefaults.standard.set("Sheet", forKey: "presentationMode")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.presentationMode, .sheet)
+    }
+
+    func testLoadPresentationModeWithNoDataDefaultsToGlass() {
+        UserDefaults.standard.removeObject(forKey: "presentationMode")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.presentationMode, .glass)
+    }
+
+    // MARK: - Tint Color Persistence
+
+    func testSetTintColorSavesToUserDefaults() {
+        appModel.tintColor = .red
+        let saved = UserDefaults.standard.string(forKey: "tintColor")
+        XCTAssertNotNil(saved)
+    }
+
+    func testLoadTintColorReadsFromUserDefaults() {
+        UserDefaults.standard.set("#ff0000", forKey: "tintColor")
+        let newAppModel = AppModel()
+        XCTAssertNotEqual(newAppModel.tintColor, .blue)
+    }
+
+    // MARK: - Tint Strength Persistence
+
+    func testSetTintStrengthSavesToUserDefaults() {
+        appModel.tintStrength = 0.75
+        let saved = UserDefaults.standard.value(forKey: "tintStrength") as? Double
+        XCTAssertEqual(saved, 0.75)
+    }
+
+    func testLoadTintStrengthReadsFromUserDefaults() {
+        UserDefaults.standard.set(0.5, forKey: "tintStrength")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.tintStrength, 0.5)
+    }
+
+    func testLoadTintStrengthWithNoDataDefaultsToZero() {
+        UserDefaults.standard.removeObject(forKey: "tintStrength")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.tintStrength, 0.0)
+    }
+
+    // MARK: - Extra Large Icon Size Persistence
+
+    func testSetIconSizeExtraLargeSavesToUserDefaults() {
+        appModel.setIconSize(.extraLarge)
+        let saved = UserDefaults.standard.string(forKey: "iconSize")
+        XCTAssertEqual(saved, "Extra Large")
+    }
+
+    func testLoadIconSizeExtraLargeReadsFromUserDefaults() {
+        UserDefaults.standard.set("Extra Large", forKey: "iconSize")
+        let newAppModel = AppModel()
+        XCTAssertEqual(newAppModel.iconSize, .extraLarge)
     }
 }

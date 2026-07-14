@@ -21,7 +21,11 @@ class LibraryScanState {
         didSet { dataVersion += 1; PreferencesStore.shared.saveHiddenApps(hiddenAppPaths); updateFilteredApps() }
     }
     var customDirectories: [String] = [] {
-        didSet { allScanDirectories = Self.defaultScanDirectories + customDirectories; PreferencesStore.shared.saveCustomDirectories(customDirectories) }
+        didSet {
+            let validated = customDirectories.filter { ApplicationScanner.isValidCustomDirectory($0) }
+            allScanDirectories = Self.defaultScanDirectories + validated
+            PreferencesStore.shared.saveCustomDirectories(customDirectories)
+        }
     }
     var allScanDirectories: [String] = [] {
         didSet { dataVersion += 1 }
@@ -137,14 +141,14 @@ class LibraryScanState {
     }
 
     func loadMissingIcons() async {
-        let priorityApps = Array(displayOrder.prefix(AppMetrics.priorityIconLoadCount))
+        let priorityApps = Array(displayOrder.prefix(ScanMetrics.priorityIconLoadCount))
         let priorityIcons = await IconService.shared.loadMissingIcons(for: priorityApps)
         if !priorityIcons.isEmpty { applyLoadedIcons(priorityIcons) }
-        let remainingApps = Array(displayOrder.dropFirst(AppMetrics.priorityIconLoadCount))
+        let remainingApps = Array(displayOrder.dropFirst(ScanMetrics.priorityIconLoadCount))
         guard !remainingApps.isEmpty else { return }
         var remainingIcons: [(String, NSImage)] = []
-        for start in stride(from: 0, to: remainingApps.count, by: AppMetrics.priorityIconLoadCount) {
-            let end = min(start + AppMetrics.priorityIconLoadCount, remainingApps.count)
+        for start in stride(from: 0, to: remainingApps.count, by: ScanMetrics.priorityIconLoadCount) {
+            let end = min(start + ScanMetrics.priorityIconLoadCount, remainingApps.count)
             let chunkIcons = await IconService.shared.loadMissingIcons(for: Array(remainingApps[start..<end]))
             remainingIcons.append(contentsOf: chunkIcons)
         }
@@ -193,7 +197,7 @@ class LibraryScanState {
         cachedDisplayedApps = nil
 
         // Reset selectedAppIndex when display list becomes empty
-        let displayedApps = getDisplayedApps(searchTerm: navigation?.searchTerm ?? "", showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: customOrder, sortOption: sortOption, selectedCategory: .all, columnCount: settings?.columnCount ?? 4)
+        let displayedApps = getDisplayedApps(searchTerm: navigation?.searchTerm ?? "", showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: customOrder, sortOption: sortOption, selectedCategory: navigation?.selectedCategory ?? .all, columnCount: settings?.columnCount ?? 4)
         if displayedApps.isEmpty { navigation?.selectedAppIndex = -1 }
 
         var counts: [AppCategory: Int] = [:]
@@ -267,16 +271,24 @@ class LibraryScanState {
         updateMostUsedApps()
     }
     private func updateMostUsedApps() {
-        let mostUsedPaths = RecentAppsTracker.shared.getMostUsedPaths(limit: AppMetrics.maxRecentApps)
+        let mostUsedPaths = RecentAppsTracker.shared.getMostUsedPaths(limit: ScanMetrics.maxRecentApps)
         _mostUsedApps = mostUsedPaths.compactMap { appPathIndex[$0] }
     }
 
+    private static let permanentlyHiddenAppPaths: Set<String> = [
+        "/System/Applications/App Store.app",
+        "/System/Applications/Launchpad.app"
+    ]
+
     func toggleHiddenApp(_ path: String) {
+        guard !Self.permanentlyHiddenAppPaths.contains(path) else { return }
         if hiddenAppPaths.contains(path) { hiddenAppPaths.remove(path) } else { hiddenAppPaths.insert(path) }
         cachedDisplayedApps = nil
     }
     func toggleHiddenApp(_ app: Application) { toggleHiddenApp(app.path) }
-    func isAppHidden(_ path: String) -> Bool { return hiddenAppPaths.contains(path) }
+    func isAppHidden(_ path: String) -> Bool {
+        return hiddenAppPaths.contains(path) || Self.permanentlyHiddenAppPaths.contains(path)
+    }
 
     func setSortOption(_ option: ApplicationSorter.SortOption) {
         sortOption = option
@@ -304,7 +316,7 @@ class LibraryScanState {
     }
     func isMostUsed(_ app: Application) -> Bool { return _mostUsedApps.contains { $0.path == app.path } }
     func isRecentlyLaunched(_ app: Application) -> Bool { return _recentApps.contains { $0.path == app.path } }
-    func isNewlyInstalled(_ app: Application) -> Bool { Date().timeIntervalSince(app.installationDate) < AppMetrics.newlyInstalledWindowSeconds }
+    func isNewlyInstalled(_ app: Application) -> Bool { Date().timeIntervalSince(app.installationDate) < ScanMetrics.newlyInstalledWindowSeconds }
     func matchesSelectedCategory(_ app: Application, selectedCategory: AppCategory) -> Bool {
         switch selectedCategory {
         case .all: return true
@@ -416,6 +428,11 @@ class LibraryScanState {
             }
         }
         if folderFirstApplied { return ordered }
+        switch selectedCategory {
+        case .system, .utilities, .user:
+            ordered = ordered.filter { matchesSelectedCategory($0, selectedCategory: selectedCategory) }
+        default: break
+        }
         if selectedCategory == .recentlyLaunched {
             return ordered.sorted {
                 let a = RecentAppsTracker.shared.recentAppLaunchTimes[$0.path], b = RecentAppsTracker.shared.recentAppLaunchTimes[$1.path]

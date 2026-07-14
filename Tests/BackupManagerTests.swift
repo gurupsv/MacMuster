@@ -26,7 +26,7 @@ final class BackupManagerTests: XCTestCase {
             fontWeight: "Regular",
             pressFeedbackEnabled: true,
             recentAppsEnabled: false,
-            overlayOpacity: AppMetrics.overlayOpacityDefault,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
             showInDock: true,
             icons: BackupManager.IconPack(entries: [:])
         )
@@ -53,7 +53,7 @@ final class BackupManagerTests: XCTestCase {
             fontWeight: "Regular",
             pressFeedbackEnabled: true,
             recentAppsEnabled: false,
-            overlayOpacity: AppMetrics.overlayOpacityDefault,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
             showInDock: true,
             icons: BackupManager.IconPack(entries: [:])
         )
@@ -84,7 +84,7 @@ final class BackupManagerTests: XCTestCase {
             fontWeight: "Regular",
             pressFeedbackEnabled: true,
             recentAppsEnabled: false,
-            overlayOpacity: AppMetrics.overlayOpacityDefault,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
             showInDock: true,
             icons: BackupManager.IconPack(entries: [:])
         )
@@ -137,7 +137,7 @@ final class BackupManagerTests: XCTestCase {
             fontWeight: "Regular",
             pressFeedbackEnabled: true,
             recentAppsEnabled: false,
-            overlayOpacity: AppMetrics.overlayOpacityDefault,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
             showInDock: true,
             icons: BackupManager.IconPack(entries: [:])
         )
@@ -190,7 +190,7 @@ final class BackupManagerTests: XCTestCase {
             fontWeight: "Regular",
             pressFeedbackEnabled: true,
             recentAppsEnabled: false,
-            overlayOpacity: AppMetrics.overlayOpacityDefault,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
             showInDock: true,
             icons: BackupManager.IconPack(entries: [:])
         )
@@ -257,7 +257,7 @@ final class BackupManagerTests: XCTestCase {
             fontWeight: "Regular",
             pressFeedbackEnabled: true,
             recentAppsEnabled: false,
-            overlayOpacity: AppMetrics.overlayOpacityDefault,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
             showInDock: true,
             icons: BackupManager.IconPack(entries: [:])
         )
@@ -295,7 +295,7 @@ final class BackupManagerTests: XCTestCase {
             fontWeight: "Regular",
             pressFeedbackEnabled: true,
             recentAppsEnabled: false,
-            overlayOpacity: AppMetrics.overlayOpacityDefault,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
             showInDock: true,
             icons: BackupManager.IconPack(entries: [:])
         )

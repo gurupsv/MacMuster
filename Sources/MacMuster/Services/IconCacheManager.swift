@@ -28,12 +28,14 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     // two apps sharing an 8-character path prefix (e.g. everything under /System/Applications/
     // or /Applications/) collided on the same cache file. Using a new directory name abandons
     // those corrupted entries rather than risk ever reading one back.
-    private let cacheDir = {
+    private let cacheDir: URL = IconCacheManager.calculateCacheDirectory()
+
+    private static func calculateCacheDirectory() -> URL {
         guard let first = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
             return URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Caches/MacMuster/icons-v3", isDirectory: true)
         }
         return first.appendingPathComponent("MacMuster/icons-v3", isDirectory: true)
-    }()
+    }
 
     private struct CacheEntry: Codable {
         let appPath: String

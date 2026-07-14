@@ -18,7 +18,7 @@ class SettingsAppearance {
     var columnCount: Int = 4 {
         didSet { PreferencesStore.shared.saveColumnCount(columnCount) }
     }
-    var iconSize: IconSize = .small {
+    var iconSize: IconSize = .medium {
         didSet { PreferencesStore.shared.saveIconSize(iconSize.rawValue) }
     }
     var glowEnabled: Bool = true {
@@ -41,10 +41,10 @@ class SettingsAppearance {
             PreferencesStore.shared.saveGlowWidth(glowWidth)
         }
     }
-    var overlayOpacity: Double = AppMetrics.overlayOpacityDefault {
+    var overlayOpacity: Double = GlowMetrics.overlayOpacityDefault {
         didSet {
-            if overlayOpacity < AppMetrics.overlayOpacityMin { overlayOpacity = AppMetrics.overlayOpacityMin }
-            if overlayOpacity > AppMetrics.overlayOpacityMax { overlayOpacity = AppMetrics.overlayOpacityMax }
+            if overlayOpacity < GlowMetrics.overlayOpacityMin { overlayOpacity = GlowMetrics.overlayOpacityMin }
+            if overlayOpacity > GlowMetrics.overlayOpacityMax { overlayOpacity = GlowMetrics.overlayOpacityMax }
             PreferencesStore.shared.saveOverlayOpacity(overlayOpacity)
         }
     }
@@ -83,12 +83,40 @@ class SettingsAppearance {
         didSet { PreferencesStore.shared.saveRefreshInterval(refreshInterval) }
     }
 
+    enum PresentationMode: String, CaseIterable {
+        case glass = "Glass"
+        case sheet = "Sheet"
+
+        var displayName: String {
+            switch self {
+            case .glass: "Glass (frosted translucent blur)"
+            case .sheet: "Sheet (opaque solid background)"
+            }
+        }
+    }
+
+    var presentationMode: PresentationMode = .glass {
+        didSet { PreferencesStore.shared.savePresentationMode(presentationMode.rawValue) }
+    }
+
+    var tintColor: Color = .blue {
+        didSet { PreferencesStore.shared.saveTintColor(getHexColorValue()) }
+    }
+
+    var tintStrength: Double = 0.0 {
+        didSet {
+            if tintStrength < 0 { tintStrength = 0 }
+            if tintStrength > 1 { tintStrength = 1 }
+            PreferencesStore.shared.saveTintStrength(tintStrength)
+        }
+    }
+
     init() {
         loadPersistedPreferences()
         showRecentApps = PreferencesStore.shared.loadRecentAppsEnabled()
         pressFeedbackEnabled = PreferencesStore.shared.loadPressFeedbackEnabled()
         if let opacityRaw = PreferencesStore.shared.loadOverlayOpacity() {
-            overlayOpacity = max(AppMetrics.overlayOpacityMin, min(AppMetrics.overlayOpacityMax, opacityRaw))
+            overlayOpacity = max(GlowMetrics.overlayOpacityMin, min(GlowMetrics.overlayOpacityMax, opacityRaw))
         }
         if let dirRaw = PreferencesStore.shared.loadLaunchAnimationDirection() {
             launchAnimationDirection = LaunchAnimationDirection(rawValue: dirRaw) ?? .zoomOut
@@ -104,14 +132,17 @@ class SettingsAppearance {
             fontSize = validSizes.contains(size) ? size : 14.0
         }
         if let weight = PreferencesStore.shared.loadFontWeight() { fontWeight = weight }
-        if let iconRaw = PreferencesStore.shared.loadIconSize() { iconSize = IconSize(rawValue: iconRaw) ?? .small }
+        if let iconRaw = PreferencesStore.shared.loadIconSize() { iconSize = IconSize(rawValue: iconRaw) ?? .medium }
         if let interval = PreferencesStore.shared.loadRefreshInterval() { refreshInterval = interval }
         showFoldersFirst = PreferencesStore.shared.loadShowFoldersFirst()
         hasShownLauncher = PreferencesStore.shared.loadHasShownLauncher()
         glowEnabled = PreferencesStore.shared.loadGlowEnabled()
         if let glowColorHex = PreferencesStore.shared.loadGlowColor() { glowColor = parseColor(from: glowColorHex) }
         if let glowIntensityRaw = PreferencesStore.shared.loadGlowIntensity() { glowIntensity = max(0, min(1, glowIntensityRaw)) }
-        if let glowWidthRaw = PreferencesStore.shared.loadGlowWidth() { glowWidth = max(AppMetrics.glowWidthMin, min(AppMetrics.glowWidthMax, glowWidthRaw)) }
+        if let glowWidthRaw = PreferencesStore.shared.loadGlowWidth() { glowWidth = max(GlowMetrics.glowWidthMin, min(GlowMetrics.glowWidthMax, glowWidthRaw)) }
+        if let modeRaw = PreferencesStore.shared.loadPresentationMode() { presentationMode = PresentationMode(rawValue: modeRaw) ?? .glass }
+        if let tintHex = PreferencesStore.shared.loadTintColor() { tintColor = parseColor(from: tintHex) }
+        if let strengthRaw = PreferencesStore.shared.loadTintStrength() { tintStrength = max(0, min(1, strengthRaw)) }
     }
 
     private func parseColor(from hexString: String) -> Color {
@@ -143,6 +174,15 @@ class SettingsAppearance {
     func setColumnCount(_ count: Int) { columnCount = count }
     func setIconSize(_ size: IconSize) { iconSize = size }
     func setRefreshInterval(_ interval: TimeInterval) { refreshInterval = interval }
+
+    func tintedBackgroundColor() -> NSColor {
+        guard tintStrength > 0 else { return NSColor.black.withAlphaComponent(overlayOpacity) }
+        let nsTint = NSColor(tintColor)
+        guard let rgb = nsTint.usingColorSpace(.sRGB) else { return NSColor.black.withAlphaComponent(overlayOpacity) }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        rgb.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return NSColor(red: r * tintStrength, green: g * tintStrength, blue: b * tintStrength, alpha: a * tintStrength)
+    }
 
     private func getHexColorValue() -> String {
         let nsColor = NSColor(glowColor)

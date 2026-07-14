@@ -142,6 +142,7 @@ enum IconSize: String, CaseIterable {
     case small = "Small"
     case medium = "Medium"
     case large = "Large"
+    case extraLarge = "Extra Large"
 }
 
 // MARK: - ScrollAnchor
@@ -181,6 +182,22 @@ struct AppFolder: Codable, Identifiable, Hashable {
     static func == (lhs: AppFolder, rhs: AppFolder) -> Bool {
         return lhs.id == rhs.id
     }
+}
+
+// MARK: - Application helpers
+
+extension Application {
+    /// Strips trailing `.app` suffix from a path component to derive the display name.
+    static func stripAppSuffix(_ item: String) -> String {
+        item.hasSuffix(".app") ? String(item.dropLast(4)) : item
+    }
+}
+
+// MARK: - Presentation Mode
+
+enum PresentationMode {
+    case glass
+    case sheet
 }
 
 

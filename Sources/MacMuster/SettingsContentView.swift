@@ -18,7 +18,7 @@ struct SettingsContentView: View {
         HStack(spacing: 0) {
             // Sidebar
             settingsSidebar
-                .frame(width: AppMetrics.sidebarWidth)
+                .frame(width: SettingsLayoutMetrics.sidebarWidth)
             
             // Divider
             Rectangle()
@@ -65,12 +65,12 @@ struct SettingsContentView: View {
             // Header
             Text("Settings")
                 .font(.system(size: 18, weight: .bold))
-                .padding(.horizontal, AppMetrics.sidebarHeaderPaddingHorizontal)
-                .padding(.vertical, AppMetrics.sidebarHeaderPaddingVertical)
+                .padding(.horizontal, SettingsLayoutMetrics.sidebarHeaderPaddingHorizontal)
+                .padding(.vertical, SettingsLayoutMetrics.sidebarHeaderPaddingVertical)
             
             // Section list - only show enabled sections
             ScrollView {
-                VStack(alignment: .leading, spacing: AppMetrics.sidebarSectionSpacing) {
+                VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sidebarSectionSpacing) {
                     ForEach(getVisibleSections()) { section in
                         settingsSectionButton(section)
                     }
@@ -89,8 +89,8 @@ struct SettingsContentView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, AppMetrics.sidebarVersionPaddingHorizontal)
-            .padding(.bottom, AppMetrics.sidebarVersionPaddingBottom)
+            .padding(.horizontal, SettingsLayoutMetrics.sidebarVersionPaddingHorizontal)
+            .padding(.bottom, SettingsLayoutMetrics.sidebarVersionPaddingBottom)
         }
         .background(Color(nsColor: .controlBackgroundColor))
     }
@@ -110,10 +110,10 @@ struct SettingsContentView: View {
         }
         .foregroundStyle(selectedSection == section ? .white : Color(nsColor: .labelColor))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, AppMetrics.sidebarSectionPaddingHorizontal)
-        .padding(.vertical, AppMetrics.sidebarSectionPaddingVertical)
+        .padding(.horizontal, SettingsLayoutMetrics.sidebarSectionPaddingHorizontal)
+        .padding(.vertical, SettingsLayoutMetrics.sidebarSectionPaddingVertical)
         .background(
-            RoundedRectangle(cornerRadius: AppMetrics.sidebarSectionCornerRadius)
+            RoundedRectangle(cornerRadius: SettingsLayoutMetrics.sidebarSectionCornerRadius)
                 .fill(selectedSection == section ? Color.blue : Color.clear)
         )
         .onTapGesture {
@@ -143,15 +143,15 @@ struct SettingsContentView: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, AppMetrics.headerPaddingHorizontal)
-        .padding(.vertical, AppMetrics.headerPaddingVertical)
+        .padding(.horizontal, SettingsLayoutMetrics.headerPaddingHorizontal)
+        .padding(.vertical, SettingsLayoutMetrics.headerPaddingVertical)
     }
     
     // MARK: - Content
     
     private var settingsContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
+            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sectionSpacing) {
                 switch selectedSection {
                 case .general:
                     GeneralSettingsPanel(appModel: appModel, showRefreshComplete: $showRefreshComplete)
@@ -167,8 +167,8 @@ case .appDirectories:
                       FoldersSettingsPanel(appModel: appModel)
                  }
             }
-            .padding(.horizontal, AppMetrics.contentPaddingHorizontal)
-            .padding(.vertical, AppMetrics.contentPaddingVertical)
+            .padding(.horizontal, SettingsLayoutMetrics.contentPaddingHorizontal)
+            .padding(.vertical, SettingsLayoutMetrics.contentPaddingVertical)
         }
     }
     
@@ -183,8 +183,8 @@ case .appDirectories:
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
         }
-        .padding(.horizontal, AppMetrics.footerPaddingHorizontal)
-        .padding(.vertical, AppMetrics.footerPaddingVertical)
+        .padding(.horizontal, SettingsLayoutMetrics.footerPaddingHorizontal)
+        .padding(.vertical, SettingsLayoutMetrics.footerPaddingVertical)
     }
 }
 
@@ -231,12 +231,12 @@ struct GeneralSettingsPanel: View {
     @State private var isRefreshing = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
+        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sectionSpacing) {
             // Startup section
             settingsSection(title: "Startup") {
-                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
-                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                             Text("Start at Login")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Automatically launch MacMuster when you log in")
@@ -251,18 +251,18 @@ struct GeneralSettingsPanel: View {
                                 updateStartAtLogin(newValue)
                             }
                     }
-                    .padding(AppMetrics.sectionContentPadding)
+                    .padding(SettingsLayoutMetrics.sectionContentPadding)
                     
                     if let startAtLoginError {
                         Text(startAtLoginError)
                             .font(.system(size: 12))
                             .foregroundStyle(.red)
-                            .padding(.horizontal, AppMetrics.errorPaddingHorizontal)
-                            .padding(.bottom, AppMetrics.errorPaddingBottom)
+                            .padding(.horizontal, SettingsLayoutMetrics.errorPaddingHorizontal)
+                            .padding(.bottom, SettingsLayoutMetrics.errorPaddingBottom)
                     }
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(AppMetrics.sectionContentCornerRadius)
+                .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
             }
             .onAppear {
                 startAtLogin = SMAppService.mainApp.status == .enabled
@@ -270,9 +270,9 @@ struct GeneralSettingsPanel: View {
             
             // Launch Animation section
             settingsSection(title: "Launch Animation") {
-                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
-                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                             Text("Animation Enabled")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Plays a zoom animation when the launcher appears. Always plays on first launch.")
@@ -284,12 +284,12 @@ struct GeneralSettingsPanel: View {
                             .toggleStyle(.switch)
                             .labelsHidden()
                     }
-                    .padding(AppMetrics.sectionContentPadding)
+                    .padding(SettingsLayoutMetrics.sectionContentPadding)
                     
                     Divider()
                     
-                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                    HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                             Text("Animation Direction")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Choose how the launcher animates when it appears")
@@ -306,17 +306,17 @@ struct GeneralSettingsPanel: View {
                         .labelsHidden()
                         .frame(width: 240)
                     }
-                    .padding(AppMetrics.sectionContentPadding)
+                    .padding(SettingsLayoutMetrics.sectionContentPadding)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(AppMetrics.sectionContentCornerRadius)
+                .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
             }
             
             // Folders section
             settingsSection(title: "Folders") {
-                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
-                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                             Text("Show Folders First")
                                 .font(.system(size: 14, weight: .medium))
                             Text("When enabled, folder icons appear at the top of the app list")
@@ -328,17 +328,17 @@ struct GeneralSettingsPanel: View {
                             .toggleStyle(.switch)
                             .labelsHidden()
                     }
-                    .padding(AppMetrics.sectionContentPadding)
+                    .padding(SettingsLayoutMetrics.sectionContentPadding)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(AppMetrics.sectionContentCornerRadius)
+                .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
               }
               
               // Press Feedback section
               settingsSection(title: "Press Feedback") {
-                  VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
-                      HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
-                          VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                  VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
+                      HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                          VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                               Text("Press Feedback")
                                   .font(.system(size: 14, weight: .medium))
                               Text("When enabled, app icons animate when pressed")
@@ -351,16 +351,16 @@ struct GeneralSettingsPanel: View {
                               .labelsHidden()
                       }
                   }
-                  .padding(AppMetrics.sectionContentPadding)
+                  .padding(SettingsLayoutMetrics.sectionContentPadding)
                   .background(Color(nsColor: .textBackgroundColor))
-                  .cornerRadius(AppMetrics.sectionContentCornerRadius)
+                  .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
               }
               
               // Recent Apps section
              settingsSection(title: "Recent Apps") {
-                 VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
-                     HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
-                         VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                 VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
+                     HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                         VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                              Text("Show Recent Apps")
                                  .font(.system(size: 14, weight: .medium))
                              Text("When enabled, recent applications are displayed in the launcher")
@@ -373,16 +373,16 @@ struct GeneralSettingsPanel: View {
                              .labelsHidden()
                      }
                  }
-                 .padding(AppMetrics.sectionContentPadding)
+                 .padding(SettingsLayoutMetrics.sectionContentPadding)
                  .background(Color(nsColor: .textBackgroundColor))
-                 .cornerRadius(AppMetrics.sectionContentCornerRadius)
+                 .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
              }
              
              // App Management section
             settingsSection(title: "App Management") {
-                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
+                VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
                     HStack {
-                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                             Text("Refresh Apps")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Scan for newly installed or removed applications")
@@ -405,7 +405,7 @@ struct GeneralSettingsPanel: View {
                                 }
                             }
                         } label: {
-                            HStack(spacing: AppMetrics.buttonSpacing) {
+                            HStack(spacing: SettingsLayoutMetrics.buttonSpacing) {
                                 if isRefreshing {
                                     ProgressView()
                                         .scaleEffect(0.8)
@@ -423,7 +423,7 @@ struct GeneralSettingsPanel: View {
                     Divider()
                     
                     HStack {
-                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                             Text("Auto Refresh")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Automatically scan for new apps at regular intervals")
@@ -444,9 +444,9 @@ struct GeneralSettingsPanel: View {
                         }
                     }
                 }
-                .padding(AppMetrics.sectionContentPadding)
+                .padding(SettingsLayoutMetrics.sectionContentPadding)
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(AppMetrics.sectionContentCornerRadius)
+                .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
             }
             
 
@@ -457,7 +457,7 @@ struct GeneralSettingsPanel: View {
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: AppMetrics.sectionContentSpacing) {
+        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sectionContentSpacing) {
             Text(title)
                 .font(.system(size: 15, weight: .semibold))
             content()
@@ -500,12 +500,12 @@ struct GlowSettingsPanel: View {
     ]
     
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
+        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sectionSpacing) {
             // Glow effect toggle
             settingsSection(title: "Glow Effect") {
-                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
-                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                             Text("Enable Glow")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Show glowing edges around the overlay window")
@@ -517,17 +517,17 @@ struct GlowSettingsPanel: View {
                             .toggleStyle(.switch)
                             .labelsHidden()
                     }
-                    .padding(AppMetrics.sectionContentPadding)
+                    .padding(SettingsLayoutMetrics.sectionContentPadding)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(AppMetrics.sectionContentCornerRadius)
+                .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
             }
             
             // Color selection
             settingsSection(title: "Glow Color") {
-                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
-                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                             Text("Select Glow Color")
                                 .font(.system(size: 14, weight: .medium))
                             Text("Choose the color for the overlay window edges")
@@ -575,17 +575,17 @@ struct GlowSettingsPanel: View {
                                 .accessibilityLabel("Custom glow color")
                         }
                     }
-                    .padding(AppMetrics.sectionContentPadding)
+                    .padding(SettingsLayoutMetrics.sectionContentPadding)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(AppMetrics.sectionContentCornerRadius)
+                .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
             }
             
             // Intensity slider
             settingsSection(title: "Glow Intensity") {
-                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
-                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                             Text("Intensity")
                                 .font(.system(size: 14, weight: .medium))
                             HStack(spacing: 4) {
@@ -603,17 +603,17 @@ struct GlowSettingsPanel: View {
                             // Intensity is clamped in AppModel
                         }
                     }
-                    .padding(AppMetrics.sectionContentPadding)
+                    .padding(SettingsLayoutMetrics.sectionContentPadding)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(AppMetrics.sectionContentCornerRadius)
+                .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
             }
             
             // Width slider
             settingsSection(title: "Glow Width") {
-                VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
-                    HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
-                        VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+                VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
+                    HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                             Text("Width")
                                 .font(.system(size: 14, weight: .medium))
                             HStack(spacing: 4) {
@@ -632,10 +632,10 @@ struct GlowSettingsPanel: View {
                         }
                         .frame(width: 180)
                     }
-                    .padding(AppMetrics.sectionContentPadding)
+                    .padding(SettingsLayoutMetrics.sectionContentPadding)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(AppMetrics.sectionContentCornerRadius)
+                .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
             }
         }
     }
@@ -644,7 +644,7 @@ struct GlowSettingsPanel: View {
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: AppMetrics.sectionContentSpacing) {
+        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sectionContentSpacing) {
             Text(title)
                 .font(.system(size: 15, weight: .semibold))
             content()
@@ -671,7 +671,7 @@ struct FoldersSettingsPanel: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.sectionSpacing) {
+        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sectionSpacing) {
             // Header
             HStack {
                 Text("Folder Management")
@@ -687,7 +687,7 @@ struct FoldersSettingsPanel: View {
                 .foregroundStyle(.secondary)
             
             // Search bar
-            HStack(spacing: AppMetrics.searchPadding) {
+            HStack(spacing: LayoutMetrics.searchPadding) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                     .font(.body)
@@ -704,11 +704,11 @@ struct FoldersSettingsPanel: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, AppMetrics.searchPadding)
-            .padding(.vertical, AppMetrics.searchPadding)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius))
+            .padding(.horizontal, LayoutMetrics.searchPadding)
+            .padding(.vertical, LayoutMetrics.searchPadding)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: LayoutMetrics.searchCornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius)
+                RoundedRectangle(cornerRadius: LayoutMetrics.searchCornerRadius)
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
             )
             
@@ -716,7 +716,7 @@ struct FoldersSettingsPanel: View {
                 Text("No folders created yet.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, AppMetrics.hiddenAppsListPaddingVertical)
+                    .padding(.vertical, SettingsLayoutMetrics.hiddenAppsListPaddingVertical)
             } else {
                 // Folders list
                 ScrollView {
@@ -960,9 +960,9 @@ struct AppearanceSettingsPanel: View {
                         .pickerStyle(.menu)
                     }
                 }
-                .padding(AppMetrics.sectionContentPadding)
+                .padding(SettingsLayoutMetrics.sectionContentPadding)
                 .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(AppMetrics.sectionContentCornerRadius)
+                .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
             }
             
             // Layout section
@@ -987,7 +987,7 @@ struct AppearanceSettingsPanel: View {
                             set: { newValue in
                                 appModel.setColumnCount(Int(newValue.rounded()))
                             }
-                        ), in: Double(AppMetrics.minColumnCount)...Double(AppMetrics.maxColumnCount), step: 1)
+                        ), in: Double(LayoutMetrics.minColumnCount)...Double(LayoutMetrics.maxColumnCount), step: 1)
                     }
                     
                     Divider()
@@ -1032,23 +1032,94 @@ struct AppearanceSettingsPanel: View {
                              .font(.system(size: 12))
                              .foregroundStyle(.secondary)
                          
-                         Slider(value: $appModel.overlayOpacity, in: AppMetrics.overlayOpacityMin...AppMetrics.overlayOpacityMax, step: AppMetrics.overlayOpacityStep) { _ in
-                             // Opacity is clamped in AppModel
-                         }
-                     }
-                 }
-                .padding(AppMetrics.sectionContentPadding)
-                .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(AppMetrics.sectionContentCornerRadius)
-            }
-        }
+                          Slider(value: $appModel.overlayOpacity, in: GlowMetrics.overlayOpacityMin...GlowMetrics.overlayOpacityMax, step: GlowMetrics.overlayOpacityStep) { _ in
+                              // Opacity is clamped in AppModel
+                          }
+                      }
+                      
+                      Divider()
+                      
+                      // Presentation Mode section
+                      VStack(alignment: .leading, spacing: 4) {
+                          HStack {
+                              Text("Presentation Mode")
+                                  .font(.system(size: 14, weight: .medium))
+                              Spacer()
+                              Text(appModel.presentationMode.rawValue.capitalized)
+                                  .font(.system(size: 12, weight: .semibold))
+                                  .foregroundStyle(.blue)
+                          }
+                          Text("Window background style")
+                              .font(.system(size: 12))
+                              .foregroundStyle(.secondary)
+                          
+                          Picker(selection: $appModel.presentationMode) {
+                              ForEach(SettingsAppearance.PresentationMode.allCases, id: \.self) { mode in
+                                  Text(mode.displayName)
+                                      .tag(mode)
+                              }
+                          } label: {
+                              EmptyView()
+                          }
+                          .pickerStyle(.segmented)
+                          .onChange(of: appModel.presentationMode) { _, _ in
+                              appModel.settings.presentationMode = appModel.presentationMode
+                          }
+                      }
+                      
+                      Divider()
+                      
+                      // Tint section
+                      VStack(alignment: .leading, spacing: 4) {
+                          HStack {
+                              Text("Tint Color")
+                                  .font(.system(size: 14, weight: .medium))
+                              Spacer()
+                          }
+                          Text("Window tint color")
+                              .font(.system(size: 12))
+                              .foregroundStyle(.secondary)
+                          
+                          ColorPicker("", selection: $appModel.tintColor)
+                              .labelsHidden()
+                              .onChange(of: appModel.tintColor) { _, _ in
+                              }
+                      }
+                      
+                      Divider()
+                      
+                      // Tint Strength section
+                      VStack(alignment: .leading, spacing: 4) {
+                          HStack {
+                              Text("Tint Strength")
+                                  .font(.system(size: 14, weight: .medium))
+                              Spacer()
+                              Text("\(Int(appModel.tintStrength * 100))%")
+                                  .font(.system(size: 12, weight: .semibold))
+                                  .foregroundStyle(.blue)
+                          }
+                          Text("Intensity of tint overlay (0 = no tint, 1 = full tint)")
+                              .font(.system(size: 12))
+                              .foregroundStyle(.secondary)
+                          
+                          Slider(value: $appModel.tintStrength, in: 0.0...1.0, step: 0.05) { _ in
+                              // Tint strength is clamped in AppModel
+                          }
+                      }
+                  }
+                 .padding(SettingsLayoutMetrics.sectionContentPadding)
+                 .background(Color(nsColor: .textBackgroundColor))
+                 .clipShape(RoundedRectangle(cornerRadius: SettingsLayoutMetrics.sectionContentCornerRadius))
+             }
+         }
+
     }
     
     private func settingsSection<Content: View>(
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: AppMetrics.sectionContentSpacing) {
+        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sectionContentSpacing) {
             Text(title)
                 .font(.system(size: 15, weight: .semibold))
             content()
@@ -1120,10 +1191,10 @@ struct HiddenAppsSettingsPanel: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(AppMetrics.searchPadding)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius))
+            .padding(LayoutMetrics.searchPadding)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: LayoutMetrics.searchCornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius)
+                RoundedRectangle(cornerRadius: LayoutMetrics.searchCornerRadius)
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
             )
             
@@ -1131,7 +1202,7 @@ struct HiddenAppsSettingsPanel: View {
                 Text("No applications found.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, AppMetrics.hiddenAppsListPaddingVertical)
+                    .padding(.vertical, SettingsLayoutMetrics.hiddenAppsListPaddingVertical)
             } else {
                 // All apps list with checkboxes
                 ScrollView {
@@ -1324,12 +1395,12 @@ struct AppDirectoriesSettingsPanel: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, AppMetrics.searchPadding)
+                .padding(.horizontal, LayoutMetrics.searchPadding)
                 .padding(.vertical, 10)
                 .background(searchBG)
-                .cornerRadius(AppMetrics.searchCornerRadius)
+                .cornerRadius(LayoutMetrics.searchCornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: AppMetrics.searchCornerRadius)
+                    RoundedRectangle(cornerRadius: LayoutMetrics.searchCornerRadius)
                         .stroke(searchFilter.isEmpty ? searchBorder : searchBorderFocused, lineWidth: 1)
                 )
                 
@@ -1498,12 +1569,12 @@ struct DockSettingsPanel: View {
     @Binding var showInDock: Bool
     
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.sectionContentSpacing) {
+        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sectionContentSpacing) {
             Text("Dock")
                 .font(.system(size: 15, weight: .semibold))
-            VStack(alignment: .leading, spacing: AppMetrics.labelSpacing) {
-                HStack(alignment: .top, spacing: AppMetrics.labelSpacingVertical) {
-                    VStack(alignment: .leading, spacing: AppMetrics.labelSpacingVertical) {
+            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
+                HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                    VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                         Text("Show in Dock")
                             .font(.system(size: 14, weight: .medium))
                         Text("Display the MacMuster icon in the Dock when running")
@@ -1519,10 +1590,10 @@ struct DockSettingsPanel: View {
                             NSApp.setActivationPolicy(newValue ? .regular : .accessory)
                         }
                 }
-                .padding(AppMetrics.sectionContentPadding)
+                .padding(SettingsLayoutMetrics.sectionContentPadding)
             }
             .background(Color(nsColor: .textBackgroundColor))
-            .cornerRadius(AppMetrics.sectionContentCornerRadius)
+            .clipShape(RoundedRectangle(cornerRadius: SettingsLayoutMetrics.sectionContentCornerRadius))
         }
     }
 }

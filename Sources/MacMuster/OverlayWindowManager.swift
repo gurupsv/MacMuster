@@ -152,12 +152,18 @@ class OverlayWindowManager {
         window?.level = .floating
         window?.isMovableByWindowBackground = false
         window?.isOpaque = false
-        let backgroundColor = NSColor.black.withAlphaComponent(appModel.overlayOpacity)
+        let backgroundColor: NSColor = switch appModel.presentationMode {
+            case .glass:
+                NSColor.black.withAlphaComponent(appModel.overlayOpacity)
+            case .sheet:
+                appModel.settings.tintedBackgroundColor()
+        }
+
         window?.backgroundColor = backgroundColor
         window?.hasShadow = false
         
         // Set minimum size for content
-        window?.minSize = NSSize(width: AppMetrics.windowMinWidth, height: AppMetrics.windowMinHeight)
+        window?.minSize = NSSize(width: WindowMetrics.windowMinWidth, height: WindowMetrics.windowMinHeight)
         
         // Hide title bar buttons (should already be hidden with borderless)
         window?.standardWindowButton(.closeButton)?.isHidden = true
@@ -202,7 +208,7 @@ window.makeKeyAndOrderFront(nil)
         // Observe display configuration changes (monitor plugged in/out, resolution change, etc.)
         installDisplayChangeObserver()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + AppMetrics.windowAnimationDelay) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + WindowMetrics.windowAnimationDelay) {
             NotificationCenter.default.post(name: .launcherDidShow, object: window)
         }
     }
@@ -487,7 +493,7 @@ struct LaunchWrapperView: View {
     var body: some View {
         ZStack {
             // Background and glow remain at full screen size (not scaled)
-            VisualEffectBackground()
+            VisualEffectBackground(appModel: appModel)
                 .ignoresSafeArea()
                 .opacity(appModel.overlayOpacity)
             GlowEffectView(appModel: appModel)
@@ -500,12 +506,12 @@ struct LaunchWrapperView: View {
             let shouldAnimate = !appModel.hasShownLauncher || appModel.launchAnimationEnabled
             guard shouldAnimate else { return }
             let startScale: CGFloat = switch appModel.launchAnimationDirection {
-                case .zoomOut: AppMetrics.launchZoomOutStartScale
-                case .zoomIn: AppMetrics.launchZoomInEndScale
+                case .zoomOut: WindowMetrics.launchZoomOutStartScale
+                case .zoomIn: WindowMetrics.launchZoomInEndScale
             }
             scale = startScale
             DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: AppMetrics.launchZoomOutDuration)) {
+                withAnimation(.easeInOut(duration: WindowMetrics.launchZoomOutDuration)) {
                     scale = 1.0
                 }
             }
@@ -518,7 +524,8 @@ private struct SecondaryOverlayBackground: View {
     let appModel: AppModel
     
     var body: some View {
-        VisualEffectBackground()
+            VisualEffectBackground(appModel: appModel)
+
             .ignoresSafeArea()
             .opacity(appModel.overlayOpacity)
             .contentShape(Rectangle())

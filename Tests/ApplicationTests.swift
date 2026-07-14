@@ -72,4 +72,22 @@ final class ApplicationTests: XCTestCase {
             "Installed in /Users/test/Downloads, not /Applications or /System/Applications — verify this app's source."
         )
     }
+
+    // MARK: - stripAppSuffix
+
+    func testStripAppSuffixRemovesTrailingDotApp() {
+        XCTAssertEqual(Application.stripAppSuffix("Safari.app"), "Safari")
+    }
+
+    func testStripAppSuffixOnlyRemovesTrailingSuffix() {
+        XCTAssertEqual(Application.stripAppSuffix("My.app.Tool.app"), "My.app.Tool")
+    }
+
+    func testStripAppSuffixLeavesNonAppUnchanged() {
+        XCTAssertEqual(Application.stripAppSuffix("MyFolder"), "MyFolder")
+    }
+
+    func testStripAppSuffixLeavesShortNameUnchanged() {
+        XCTAssertEqual(Application.stripAppSuffix("X.app"), "X")
+    }
 }

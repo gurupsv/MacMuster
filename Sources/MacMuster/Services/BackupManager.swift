@@ -139,8 +139,8 @@ final class BackupManager {
         // Glow settings
         let glowEnabled = PreferencesStore.shared.loadGlowEnabled()
         let glowColor = PreferencesStore.shared.loadGlowColor() ?? "#ffffff"
-        let glowIntensity = PreferencesStore.shared.loadGlowIntensity() ?? AppMetrics.glowIntensityDefault
-        let glowWidth = PreferencesStore.shared.loadGlowWidth() ?? AppMetrics.glowWidthDefault
+        let glowIntensity = PreferencesStore.shared.loadGlowIntensity() ?? GlowMetrics.glowIntensityDefault
+        let glowWidth = PreferencesStore.shared.loadGlowWidth() ?? GlowMetrics.glowWidthDefault
 
         // Font settings
         let fontFamily = PreferencesStore.shared.loadFontFamily() ?? "System"
@@ -150,7 +150,7 @@ final class BackupManager {
         // Other settings
         let pressFeedbackEnabled = PreferencesStore.shared.loadPressFeedbackEnabled()
         let recentAppsEnabled = PreferencesStore.shared.loadRecentAppsEnabled()
-        let overlayOpacity = PreferencesStore.shared.loadOverlayOpacity() ?? AppMetrics.overlayOpacityDefault
+        let overlayOpacity = PreferencesStore.shared.loadOverlayOpacity() ?? GlowMetrics.overlayOpacityDefault
         let showInDock = PreferencesStore.shared.loadShowInDock()
 
         // Icon pack — read PNGs from disk cache and encode as base64 Data

@@ -56,11 +56,11 @@ final class RecentAppsTracker {
         // F-3: always enforce the retention window (previously only ran once the dict exceeded
         // 500 entries, which in practice almost never happened — so launch history was kept
         // indefinitely for most users, far beyond the 8 entries the UI ever displays).
-        let cutoff = Date().addingTimeInterval(-AppMetrics.recentAppsRetentionSeconds)
+        let cutoff = Date().addingTimeInterval(-ScanMetrics.recentAppsRetentionSeconds)
         recentAppLaunchTimes = recentAppLaunchTimes.filter { $0.value > cutoff }
 
-        if recentAppLaunchTimes.count > AppMetrics.maxStoredRecentApps {
-            let kept = recentAppLaunchTimes.sorted { $0.value > $1.value }.prefix(AppMetrics.maxStoredRecentApps)
+        if recentAppLaunchTimes.count > ScanMetrics.maxStoredRecentApps {
+            let kept = recentAppLaunchTimes.sorted { $0.value > $1.value }.prefix(ScanMetrics.maxStoredRecentApps)
             recentAppLaunchTimes = Dictionary(uniqueKeysWithValues: kept.map { ($0.key, $0.value) })
         }
 

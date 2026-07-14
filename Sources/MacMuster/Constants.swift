@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - App Version
-// Single source of truth. Update version.txt and tag with v<version> on release.
+
 enum AppVersion {
     static let current = "1.0.0"
     static let build: Int = {
@@ -10,68 +10,76 @@ enum AppVersion {
     }()
 }
 
-// MARK: - App Metrics Constants
+// MARK: - Scan Metrics
 
-enum AppMetrics {
-    // F-3: the Recent/Most Used UI never shows more than 8 entries, so retaining
-    // up to 50 launch records for 14 days was far more launch history than the app ever needed —
-    // trimmed to a small multiple of the display limit (room for ranking to stay stable as apps cycle
-    // in/out) and a shorter retention window.
+enum ScanMetrics {
     static let maxRecentApps = 8
     static let maxStoredRecentApps = 50
     static let recentAppsRetentionSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
     static let searchDebounceNanoseconds: UInt64 = 150_000_000 // 150ms
-
-    // Roughly covers the largest first screenful (kMaxColumnCount=10 × ~6 visible rows) so the
-    // initial icon batch finishes fast; the rest backfills afterward without blocking the grid.
     static let priorityIconLoadCount = 60
     static let newlyInstalledWindowSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
+}
 
-    // MARK: - Overlay Window Metrics
+// MARK: - Window Metrics
 
+enum WindowMetrics {
+    // Overlay window
     static let windowAnimationDelay: TimeInterval = 0.1
     static let windowMinWidth: CGFloat = 900
     static let windowMinHeight: CGFloat = 700
-
-    // MARK: - Launch Animation Metrics
-
+    
+    // Launch animation
     static let launchZoomOutStartScale: CGFloat = 2.0
     static let launchZoomInEndScale: CGFloat = 0.5
     static let launchZoomOutDuration: TimeInterval = 0.5
-
-    // MARK: - Settings Window Metrics
-
+    
+    // Settings window
     static let settingsWindowWidth: CGFloat = 820
     static let settingsWindowHeight: CGFloat = 560
     static let settingsWindowMinWidth: CGFloat = 700
     static let settingsWindowMinHeight: CGFloat = 480
     static let settingsWindowMaxWidth: CGFloat = 1400
     static let settingsWindowMaxHeight: CGFloat = 1000
+}
 
-    // MARK: - Glow Metrics
+// MARK: - Glow Metrics
 
+enum GlowMetrics {
     static let glowEnabledDefault: Bool = true
     static let glowColorDefault: String = "#ffffff"
     static let glowIntensityDefault: Double = 0.3
     static let glowWidthDefault: Double = 40.0
     static let glowWidthMin: Double = 5.0
     static let glowWidthMax: Double = 40.0
-
-    // MARK: - Opacity Metrics
-
+    
     static let overlayOpacityDefault: Double = 0.95
     static let overlayOpacityMin: Double = 0.1
     static let overlayOpacityMax: Double = 1.0
     static let overlayOpacityStep: Double = 0.05
+}
 
-    // MARK: - ContentView Layout Metrics
+// MARK: - Icon Metrics
 
+enum IconMetrics {
+    static let iconSizeSmall: CGFloat = 48
+    static let iconSizeMedium: CGFloat = 64
+    static let iconSizeLarge: CGFloat = 80
+    static let iconSizeExtraLarge: CGFloat = 100
+    static let iconRasterPixelSizePx = 160
+}
+
+// MARK: - Layout Metrics
+
+enum LayoutMetrics {
+    static let minColumnCount = 4
+    static let maxColumnCount = 10
+    
+    // ContentView layout
     static let gridSpacing: CGFloat = 20
     static let appIconPadding: CGFloat = 1
     static let appIconCornerRadius: CGFloat = 10
     static let appIconHoverScale: CGFloat = 1.2
-    // Folder tile backdrop: ratios of the icon size so the backdrop scales with the
-    // small/medium/large icon setting instead of using a fixed point value.
     static let folderTileCornerRadiusRatio: CGFloat = 0.22
     static let folderTileInsetRatio: CGFloat = 0.10
     static let folderTileStrokeWidth: CGFloat = 1
@@ -82,18 +90,11 @@ enum AppMetrics {
     static let categoryTabPaddingVertical: CGFloat = 5
     static let categoryTabCornerRadius: CGFloat = 6
     static let settingsButtonSize: CGFloat = 28
+}
 
-    // MARK: - Layout Metrics
+// MARK: - SettingsContentView Layout Metrics
 
-    static let minColumnCount = 4
-    static let maxColumnCount = 10
-    static let iconSizeSmall: CGFloat = 48
-    static let iconSizeMedium: CGFloat = 64
-    static let iconSizeLarge: CGFloat = 80
-    static let iconRasterPixelSizePx = 160
-
-    // MARK: - SettingsContentView Layout Metrics
-
+enum SettingsLayoutMetrics {
     static let sidebarWidth: CGFloat = 200
     static let sidebarHeaderPaddingHorizontal: CGFloat = 20
     static let sidebarHeaderPaddingVertical: CGFloat = 16

@@ -50,6 +50,12 @@ class StatusBarManager: NSObject {
 
         menu.addItem(NSMenuItem.separator())
 
+        let settingsItem = NSMenuItem(title: "Settings", action: #selector(showSettings), keyEquivalent: "")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let quitItem = NSMenuItem(title: "Quit MacMuster", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -130,6 +136,10 @@ class StatusBarManager: NSObject {
             BackupManager.shared.apply(preview: preview)
             NSAlert.showInfo("Restore Complete", "Data restored. \(skippedCount) app(s) skipped (no longer on disk).")
         }
+    }
+
+    @objc func showSettings() {
+        SettingsWindowManager.shared.show()
     }
 
     @objc func quitApp() {

@@ -113,7 +113,7 @@ final class IconService {
             return cached
         }
 
-        let icon = Self.rasterize(path, pixelSize: AppMetrics.iconRasterPixelSizePx)
+        let icon = Self.rasterize(path, pixelSize: IconMetrics.iconRasterPixelSizePx)
         IconCacheManager.shared.cacheIcon(icon, for: path)
         return icon
     }

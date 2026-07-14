@@ -43,6 +43,9 @@ final class AppModelTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "pressFeedbackEnabled")
         UserDefaults.standard.removeObject(forKey: "recentAppLaunchTimes")
         UserDefaults.standard.removeObject(forKey: "appLaunchCounts")
+        UserDefaults.standard.removeObject(forKey: "presentationMode")
+        UserDefaults.standard.removeObject(forKey: "tintColor")
+        UserDefaults.standard.removeObject(forKey: "tintStrength")
     }
     
     // MARK: - Application Identity Tests
@@ -578,5 +581,124 @@ final class AppModelTests: XCTestCase {
         appModel.selectedAppIndex = 7  // row 1, col 2
         appModel.selectAppUp()
         XCTAssertEqual(appModel.selectedAppIndex, 2)  // row 0, col 2
+    }
+
+    // MARK: - Extra Large Icon Size
+
+    func testIconSizeExtraLargeIsCaseIterable() {
+        let cases = IconSize.allCases
+        XCTAssertEqual(cases.count, 4)
+        XCTAssertTrue(cases.contains(.extraLarge))
+    }
+
+    func testIconSizeExtraLargeRawValue() {
+        XCTAssertEqual(IconSize.extraLarge.rawValue, "Extra Large")
+    }
+
+    func testIconSizeExtraLargeConstant() {
+        XCTAssertEqual(IconMetrics.iconSizeExtraLarge, 100)
+    }
+
+    // MARK: - Presentation Mode
+
+    func testPresentationModeDefaultIsGlass() {
+        XCTAssertEqual(appModel.presentationMode, .glass)
+    }
+
+    func testPresentationModeAllCases() {
+        let cases = SettingsAppearance.PresentationMode.allCases
+        XCTAssertEqual(cases.count, 2)
+        XCTAssertTrue(cases.contains(.glass))
+        XCTAssertTrue(cases.contains(.sheet))
+    }
+
+    func testSetPresentationModeUpdatesProperty() {
+        appModel.presentationMode = .sheet
+        XCTAssertEqual(appModel.presentationMode, .sheet)
+    }
+
+    // MARK: - Tint Color & Strength
+
+    func testTintColorDefaultIsBlue() {
+        XCTAssertEqual(appModel.tintColor, .blue)
+    }
+
+    func testTintStrengthDefaultIsZero() {
+        XCTAssertEqual(appModel.tintStrength, 0.0)
+    }
+
+    func testTintStrengthClampedToZero() {
+        appModel.tintStrength = -0.5
+        XCTAssertEqual(appModel.tintStrength, 0.0)
+    }
+
+    func testTintStrengthClampedToOne() {
+        appModel.tintStrength = 1.5
+        XCTAssertEqual(appModel.tintStrength, 1.0)
+    }
+
+    func testTintedBackgroundColorReturnsBlackWhenStrengthZero() {
+        let color = appModel.settings.tintedBackgroundColor()
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.usingColorSpace(.sRGB)?.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertEqual(r, 0.0, accuracy: 0.01)
+        XCTAssertEqual(g, 0.0, accuracy: 0.01)
+        XCTAssertEqual(b, 0.0, accuracy: 0.01)
+    }
+
+    // MARK: - Permanently Hidden Apps
+
+    func testAppStoreIsAlwaysHidden() {
+        XCTAssertTrue(appModel.isAppHidden("/System/Applications/App Store.app"))
+    }
+
+    func testLaunchpadIsAlwaysHidden() {
+        XCTAssertTrue(appModel.isAppHidden("/System/Applications/Launchpad.app"))
+    }
+
+    func testTogglePermanentlyHiddenAppIsIgnored() {
+        appModel.toggleHiddenApp("/System/Applications/App Store.app")
+        XCTAssertTrue(appModel.isAppHidden("/System/Applications/App Store.app"))
+    }
+
+    func testNormalAppCanBeToggled() {
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        appModel.setApplications([app])
+        XCTAssertFalse(appModel.isAppHidden(app.path))
+        appModel.toggleHiddenApp(app.path)
+        XCTAssertTrue(appModel.isAppHidden(app.path))
+        appModel.toggleHiddenApp(app.path)
+        XCTAssertFalse(appModel.isAppHidden(app.path))
+    }
+
+    // MARK: - Category Filter
+
+    func testSystemCategoryFiltersToSystemAppsOnly() {
+        let systemApp = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let userApp = Application(id: "/Applications/MyApp.app", name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        appModel.setApplications([systemApp, userApp])
+        appModel.selectedCategory = .system
+        let displayed = appModel.getDisplayedApps()
+        XCTAssertEqual(displayed.count, 1)
+        XCTAssertEqual(displayed[0].name, "Safari")
+    }
+
+    func testUserCategoryFiltersToUserAppsOnly() {
+        let systemApp = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let userApp = Application(id: "/Applications/MyApp.app", name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        appModel.setApplications([systemApp, userApp])
+        appModel.selectedCategory = .user
+        let displayed = appModel.getDisplayedApps()
+        XCTAssertEqual(displayed.count, 1)
+        XCTAssertEqual(displayed[0].name, "MyApp")
+    }
+
+    func testAllCategoryShowsAllApps() {
+        let systemApp = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let userApp = Application(id: "/Applications/MyApp.app", name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        appModel.setApplications([systemApp, userApp])
+        appModel.selectedCategory = .all
+        let displayed = appModel.getDisplayedApps()
+        XCTAssertEqual(displayed.count, 2)
     }
 }

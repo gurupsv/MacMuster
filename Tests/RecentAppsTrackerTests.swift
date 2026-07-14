@@ -54,10 +54,10 @@ final class RecentAppsTrackerTests: XCTestCase {
         tracker.isEnabled = true
         tracker.clearHistory()
         
-        // Set one entry within retention window (AppMetrics.recentAppsRetentionSeconds = 86400 / 24 hours)
+        // Set one entry within retention window (ScanMetrics.recentAppsRetentionSeconds = 86400 / 24 hours)
         tracker.recentAppLaunchTimes["/Applications/Safari.app"] = Date()
         // Set one entry outside retention window
-        tracker.recentAppLaunchTimes["/Applications/Old.app"] = Date().addingTimeInterval(-AppMetrics.recentAppsRetentionSeconds - 1)
+        tracker.recentAppLaunchTimes["/Applications/Old.app"] = Date().addingTimeInterval(-ScanMetrics.recentAppsRetentionSeconds - 1)
         
         tracker.pruneRecentLaunchTimes()
         
@@ -70,14 +70,14 @@ final class RecentAppsTrackerTests: XCTestCase {
         tracker.isEnabled = true
         tracker.clearHistory()
         
-        // Set 10 entries (exceeds AppMetrics.maxStoredRecentApps which is 8)
+        // Set 10 entries (exceeds ScanMetrics.maxStoredRecentApps which is 8)
         for i in 0..<10 {
             tracker.recentAppLaunchTimes["/Applications/App\(i).app"] = Date().addingTimeInterval(-Double(i * 60)) // each older by minute
         }
         
         tracker.pruneRecentLaunchTimes()
         
-        XCTAssertLessThanOrEqual(tracker.recentAppLaunchTimes.count, AppMetrics.maxStoredRecentApps, "Pruned count should be within max stored limit")
+        XCTAssertLessThanOrEqual(tracker.recentAppLaunchTimes.count, ScanMetrics.maxStoredRecentApps, "Pruned count should be within max stored limit")
     }
 
     func testPruneKeepsCountsInLockstepWithHistory() {
@@ -90,7 +90,7 @@ final class RecentAppsTrackerTests: XCTestCase {
         tracker.appLaunchCounts["/Applications/Deleted.app"] = 10
         
         // Simulate pruning removes Deleted.app from history
-        tracker.recentAppLaunchTimes["/Applications/Deleted.app"] = Date().addingTimeInterval(-AppMetrics.recentAppsRetentionSeconds - 1)
+        tracker.recentAppLaunchTimes["/Applications/Deleted.app"] = Date().addingTimeInterval(-ScanMetrics.recentAppsRetentionSeconds - 1)
         
         tracker.pruneRecentLaunchTimes()
         

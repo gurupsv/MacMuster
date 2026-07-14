@@ -172,6 +172,21 @@ class AppModel {
         set { settings.showFoldersFirst = newValue; library.dataVersion += 1 }
     }
 
+    var presentationMode: SettingsAppearance.PresentationMode {
+        get { settings.presentationMode }
+        set { settings.presentationMode = newValue }
+    }
+
+    var tintColor: Color {
+        get { settings.tintColor }
+        set { settings.tintColor = newValue }
+    }
+
+    var tintStrength: Double {
+        get { settings.tintStrength }
+        set { settings.tintStrength = newValue }
+    }
+
     // MARK: - Delegated Methods
 
     func startLoading() async { await library.startLoading() }

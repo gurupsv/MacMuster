@@ -34,6 +34,9 @@ final class PreferencesStore {
         case showInDock = "showInDock"
         case launchAnimationDirection = "launchAnimationDirection"
         case launchAnimationEnabled = "launchAnimationEnabled"
+        case presentationMode = "presentationMode"
+        case tintColor = "tintColor"
+        case tintStrength = "tintStrength"
     }
 
     /// Current schema version. Increment when adding/removing/changing preference keys.
@@ -60,7 +63,7 @@ final class PreferencesStore {
             defaults.set(true, forKey: Keys.pressFeedbackEnabled.rawValue)
         }
         if defaults.object(forKey: Keys.overlayOpacity.rawValue) == nil {
-            defaults.set(AppMetrics.overlayOpacityDefault, forKey: Keys.overlayOpacity.rawValue)
+            defaults.set(GlowMetrics.overlayOpacityDefault, forKey: Keys.overlayOpacity.rawValue)
         }
         if defaults.object(forKey: Keys.launchAnimationDirection.rawValue) == nil {
             defaults.set("zoomOut", forKey: Keys.launchAnimationDirection.rawValue)
@@ -156,7 +159,7 @@ final class PreferencesStore {
     }
     
     func loadGlowWidth() -> Double? {
-        if defaults.object(forKey: Keys.glowWidth.rawValue) == nil { return AppMetrics.glowWidthDefault }
+        if defaults.object(forKey: Keys.glowWidth.rawValue) == nil { return GlowMetrics.glowWidthDefault }
         return defaults.value(forKey: Keys.glowWidth.rawValue) as? Double
     }
     
@@ -312,5 +315,31 @@ final class PreferencesStore {
     
     func saveShowInDock(_ enabled: Bool) {
         defaults.set(enabled, forKey: Keys.showInDock.rawValue)
+    }
+
+    // MARK: - Presentation Mode + Tint Settings
+
+    func savePresentationMode(_ mode: String) {
+        defaults.set(mode, forKey: Keys.presentationMode.rawValue)
+    }
+
+    func loadPresentationMode() -> String? {
+        defaults.string(forKey: Keys.presentationMode.rawValue)
+    }
+
+    func saveTintColor(_ hex: String) {
+        defaults.set(hex, forKey: Keys.tintColor.rawValue)
+    }
+
+    func loadTintColor() -> String? {
+        defaults.string(forKey: Keys.tintColor.rawValue)
+    }
+
+    func saveTintStrength(_ strength: Double) {
+        defaults.set(strength, forKey: Keys.tintStrength.rawValue)
+    }
+
+    func loadTintStrength() -> Double? {
+        defaults.value(forKey: Keys.tintStrength.rawValue) as? Double
     }
 }

@@ -146,7 +146,7 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
 
         let bundle = Bundle(path: bundlePath)
         let itemName = (path as NSString).lastPathComponent
-        let name = bundle?.infoDictionary?["CFBundleName"] as? String ?? (itemName.hasSuffix(".app") ? String(itemName.dropLast(4)) : itemName)
+        let name = bundle?.infoDictionary?["CFBundleName"] as? String ?? Application.stripAppSuffix(itemName)
         let attributes = try? FileManager.default.attributesOfItem(atPath: path)
         let date = attributes?[.modificationDate] as? Date ?? Date()
         let size = attributes?[.size] as? Int
