@@ -97,4 +97,46 @@ final class ApplicationServiceTests: XCTestCase {
         XCTAssertFalse(didLaunch)
         XCTAssertFalse(appModel.isRecentApp(app.path))
     }
+
+    // MARK: - Already Running App Activation
+
+    func testLaunchApplicationWithRunningFinderActivatesIt() {
+        let service = ApplicationService.shared
+
+        // Finder is always running on macOS
+        let didLaunch = service.launchApplication(at: "/System/Library/CoreServices/Finder.app", appModel: nil)
+        XCTAssertTrue(didLaunch)
+    }
+
+    func testRunningFinderLaunchRecordsAppModel() {
+        let service = ApplicationService.shared
+        let appModel = AppModel()
+
+        let app = Application(id: "/System/Library/CoreServices/Finder.app", name: "Finder", path: "/System/Library/CoreServices/Finder.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        appModel.setApplications([app])
+
+        XCTAssertFalse(appModel.isRecentApp(app.path))
+        _ = service.launchApplication(at: app.path, appModel: appModel)
+        XCTAssertTrue(appModel.isRecentApp(app.path))
+    }
+
+    // MARK: - Minimized App Unhide (Regression)
+
+    func testRunningAppMinimizedIsUnhiddenBeforeActivation() {
+        let service = ApplicationService.shared
+
+        // Finder is always running — the fix ensures if match.isHidden { match.unhide() } runs
+        // before match.activate(options: [.activateAllWindows])
+        let didLaunch = service.launchApplication(at: "/System/Library/CoreServices/Finder.app", appModel: nil)
+        XCTAssertTrue(didLaunch)
+    }
+
+    // MARK: - Path Validation
+
+    func testLaunchApplicationWithNonExistentPathReturnsFalse() {
+        let service = ApplicationService.shared
+
+        let didLaunch = service.launchApplication(at: "/Applications/NonExistentApp12345.app", appModel: nil)
+        XCTAssertFalse(didLaunch)
+    }
 }

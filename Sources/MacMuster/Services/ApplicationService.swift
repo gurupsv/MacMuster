@@ -43,6 +43,7 @@ class ApplicationService {
             resolvedBundleURLCache[key] = resolved
             return resolved == resolvedURL
         }) {
+            if match.isHidden { match.unhide() }
             match.activate(options: [.activateAllWindows])
             appModel?.recordAppLaunch(at: path)
             return true
