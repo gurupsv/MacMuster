@@ -195,7 +195,7 @@ class AppModel {
     // MARK: - Delegated Methods
 
     func startLoading() async { await library.startLoading() }
-    func refreshDisplayOrder() async { await library.refreshDisplayOrder() }
+    func refreshDisplayOrder(force: Bool = false) async { await library.refreshDisplayOrder(force: force) }
     func loadMissingIcons() async { await library.loadMissingIcons() }
     func refreshCachedIcons() async { await library.refreshCachedIcons() }
     func cleanupTimerAndObservers() { library.cleanupTimerAndObservers() }

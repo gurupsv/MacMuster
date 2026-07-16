@@ -227,13 +227,18 @@ class LibraryScanState {
         return ApplicationSorter.sort(apps, by: sortOption)
     }
 
-    func refreshDisplayOrder() async {
+    /// - Parameter force: when `true`, bypasses the staleness guard (so the scan always runs)
+    ///   and wipes every cached icon — disk and memory — instead of preserving currently-loaded
+    ///   ones, so an icon that's rendering wrong gets re-decoded from scratch rather than being
+    ///   carried forward. Used by the manual "Refresh Now" button; the automatic background
+    ///   refresh always passes `false` to stay cheap and incremental.
+    func refreshDisplayOrder(force: Bool = false) async {
         let allDirs = allScanDirectories
         var currentMtimes: [String: Date] = [:]
         for dir in allDirs {
             if let mtime = try? FileManager.default.attributesOfItem(atPath: dir)[.modificationDate] as? Date { currentMtimes[dir] = mtime }
         }
-        if let cache = scanCache {
+        if !force, let cache = scanCache {
             let hasChanged = allDirs.contains { currentMtimes[$0] != cache.dirMtimes[$0] }
             if !hasChanged && Date().timeIntervalSince(cache.timestamp) < (settings?.refreshInterval ?? 300) * 2 { return }
         }
@@ -241,12 +246,20 @@ class LibraryScanState {
             ApplicationScanner.shared.scanDirectories(directories: allDirs)
         }.value
         scanCache = ScanCache(dirMtimes: currentMtimes, timestamp: Date())
-        let preservedIcons = Dictionary(uniqueKeysWithValues: displayOrder.compactMap { app -> (String, NSImage)? in
-            guard let icon = app.icon else { return nil }
-            return (app.path, icon)
-        })
-        let appsWithPreservedIcons = IconService.shared.applicationsPreservingLoadedIcons(from: result.apps, loadedIconsByPath: preservedIcons)
-        self.displayOrder = self.sortedApplications(appsWithPreservedIcons)
+
+        let freshApps: [Application]
+        if force {
+            IconCacheManager.shared.clearAll()
+            loadedIconsByPath.removeAll()
+            freshApps = result.apps
+        } else {
+            let preservedIcons = Dictionary(uniqueKeysWithValues: displayOrder.compactMap { app -> (String, NSImage)? in
+                guard let icon = app.icon else { return nil }
+                return (app.path, icon)
+            })
+            freshApps = IconService.shared.applicationsPreservingLoadedIcons(from: result.apps, loadedIconsByPath: preservedIcons)
+        }
+        self.displayOrder = self.sortedApplications(freshApps)
         rebuildAppPathIndex()
         dataVersion += 1
         self.updateFilteredApps()

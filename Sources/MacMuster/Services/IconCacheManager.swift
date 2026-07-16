@@ -164,6 +164,16 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         return results
     }
 
+    /// Wipes every cached icon — in-memory and on-disk — regardless of bundle mtime.
+    /// Unlike the mtime-based invalidation everywhere else, this is for the case where the
+    /// decoded icon itself is wrong or corrupted rather than stale: a manual "force refresh"
+    /// escape hatch since mtime never changes for a bundle that hasn't been reinstalled.
+    func clearAll() {
+        memoryCache.removeAllObjects()
+        mtimeCache.removeAllObjects()
+        try? FileManager.default.removeItem(at: cacheDir)
+    }
+
     /// Deletes cache entries for apps that no longer exist on disk.
     func pruneDeletedApps(currentAppPaths: Set<String>) {
         let cachedApps = cachedAppPaths()

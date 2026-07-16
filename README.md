@@ -19,7 +19,7 @@
 
 ## 🌟 Overview
 
-MacMuster is a **native macOS app launcher** that provides a beautiful full-screen overlay interface (similar to Launchpad) with powerful keyboard navigation, real-time search, smart categorization, folder organization, and a convenient menu bar presence.
+MacMuster is a **native macOS app launcher** that provides a beautiful overlay interface — shown as a Window, Full Screen (Launchpad-style), or Maximized, your choice — with powerful keyboard navigation, type-to-search, smart categorization, folder organization, backup/restore, and a convenient menu bar presence.
 
 Built entirely with **Swift 6.2** and **SwiftUI + AppKit**, MacMuster has zero external dependencies and follows modern macOS development best practices.
 
@@ -31,15 +31,17 @@ Built entirely with **Swift 6.2** and **SwiftUI + AppKit**, MacMuster has zero e
 
 | Feature | Description |
 |---------|-------------|
-| **Full-Screen Overlay** | Beautiful blurred backdrop with native macOS materials |
-| **Keyboard Navigation** | Full arrow-key, Enter, Escape, and `/` search support |
+| **Launcher Window** | Window / Full Screen / Maximized presentation — pick how the launcher shows up (see below) |
+| **Type-to-Search** | Just start typing — no need to click or press `/` first, like Spotlight/Alfred/Raycast |
 | **Real-Time Search** | Fuzzy & path matching (catches acronyms, vendor names) |
+| **Keyboard Navigation** | Full arrow-key, Enter, Escape, and `/` search support |
 | **Smart Categories** | All / System / User / Most Used / Recently Launched / Newly Installed |
-| **Folder Organization** | Create, rename, delete folders; drag apps into folders; folder icons show a live app-count badge |
+| **Folder Organization** | Create, rename, delete folders; drag apps into folders; folder icons show a live app-count badge and an adaptive mini-grid of member icons |
 | **Drag & Drop** | Drag apps onto each other to create folders or reorder |
-| **Recent Apps** | Most recently launched apps, max 8 visible (history retained 14 days) |
-| **Menu Bar Access** | Quick toggle from menu bar icon |
-| **Multi-Monitor** | Primary screen overlay + dimmed backgrounds; reacts to display changes |
+| **Recent Apps** | Most recently launched apps, max 8 visible (history retained 14 days); can be hidden from Settings |
+| **Menu Bar Access** | Quick toggle, Export/Restore Backup, and Quit from the menu bar icon |
+| **Backup & Restore** | Export all folders, preferences, and hidden-app state to a JSON file; restore with a preview showing which apps are still installed before applying |
+| **Multi-Monitor** | Launcher opens on the display under your cursor; dimmed backgrounds on other displays; reacts to display changes |
 | **Accessibility** | Keyboard shortcuts help, screen reader support, reduce motion/transparency, non-color selection cues, visible keyboard focus rings |
 | **Provenance Badge** | Apps installed outside `/Applications`/`/System/Applications` (e.g. `~/Applications`) show a warning badge |
 
@@ -53,12 +55,31 @@ Built entirely with **Swift 6.2** and **SwiftUI + AppKit**, MacMuster has zero e
 
 ### 🎨 Customization
 
+- **Launch Mode**: Window / Full Screen / Maximized — how the launcher itself is presented
+- **Presentation Style**: Glass (frosted blur) or Sheet (solid), plus an optional tint color & strength
 - **Grid columns**: 4–10 columns
-- **Icon sizes**: Small / Medium / Large
+- **Icon sizes**: Small / Medium / Large / Extra Large
 - **Sort options**: Name (A–Z) or Installation Date
+- **Show Folders First**: Pin folders ahead of apps in the grid
 - **Font family, size, weight**: Full typography control
 - **Dark/Light mode**: Automatic + manual toggle
 - **Auto-refresh**: Configurable intervals (5 min – 1 hour)
+- **Launch Animation**: Zoom In or Zoom Out on open, or disable entirely
+- **Press Feedback**: Toggle the tap/click visual feedback on app icons
+- **Show Recent Apps**: Toggle the "Recent" section on or off
+
+### 🪟 Launch Mode
+
+Controls how the MacMuster launcher window itself appears when opened — this is
+independent of how the apps you launch behave:
+
+| Mode | Behavior |
+|------|----------|
+| **Window** | A centered, resizable window sized to ~60% of the display, with the Dock and menu bar left visible |
+| **Full Screen** | Covers the entire display (including the notch/menu-bar area) and auto-hides the Dock and menu bar, Launchpad-style |
+| **Maximized** | Fills the display's visible working area, but leaves the Dock and menu bar in place |
+
+Set from **Settings → Appearance → Launch Mode**. Changes apply immediately the next time the launcher opens.
 
 ### ✨ Glow Effect
 
@@ -94,17 +115,19 @@ The glow effect smoothly fades from full opacity at the screen edges to transpar
 
 <div align="center">
 
-| Main Launcher | Search & Filter | Settings |
-|:---:|:---:|:---:|
-| ![Main](Screenshots/main-launcher.png) | ![Search](Screenshots/search-filter.png) | ![Settings](Screenshots/settings.png) |
+| Full Screen | Windowed |
+|:---:|:---:|
+| ![Full Screen](Screenshots/main-launcher.png) | ![Windowed](Screenshots/window-mode.png) |
 
-| Folder View | Recent Apps | Dark Mode |
-|:---:|:---:|:---:|
-| ![Folders](Screenshots/folder-view.png) | ![Recent](Screenshots/recent-apps.png) | ![Dark](Screenshots/dark-mode.png) |
+| Search & Filter | Folder View |
+|:---:|:---:|
+| ![Search](Screenshots/search-filter.png) | ![Folders](Screenshots/folder-view.png) |
+
+| Recent Apps | Settings |
+|:---:|:---:|
+| ![Recent](Screenshots/recent-apps.png) | ![Settings](Screenshots/settings.png) |
 
 </div>
-
-> **Note**: Screenshots are placeholders. Add actual screenshots to `Screenshots/` directory.
 
 ---
 
@@ -158,15 +181,18 @@ swift run MacMuster
 
 | Key | Action |
 |-----|--------|
+| Start typing | Instantly search, no click or `/` needed |
 | `↑ ↓ ← →` | Navigate grid |
 | `Enter` | Launch selected app |
-| `Escape` | Close launcher (or unfocus search) |
+| `Escape` | Close launcher (or unfocus search, or step out of a folder) |
+| `Backspace/Delete` | Step up one level when inside a folder |
 | `/` | Focus search field |
 | `⌘N` | Disabled (single window) |
 
 ### Menu Bar
 
 - **Click** menu bar icon → Show/hide launcher
+- **Export Backup / Restore Backup** → Save or load folders, preferences, and hidden-app state as a JSON file (restore shows a preview of any apps no longer on disk before applying)
 - **Right-click** → Quit MacMuster
 
 ### Folders
@@ -179,8 +205,8 @@ swift run MacMuster
 ### Settings
 
 Open via **Gear icon** in launcher or **Settings** from menu bar:
-- General (start at login, refresh interval)
-- Appearance (font, grid, icons)
+- General (start at login, show in Dock, refresh interval)
+- Appearance (launch mode, presentation style & tint, font, grid, icon size, glow, launch animation, folders-first, recent apps, press feedback)
 - Hidden Apps (toggle visibility)
 - App Directories (custom scan paths)
 
@@ -193,11 +219,14 @@ MacMuster/
 ├── Sources/MacMuster/
 │   ├── AppEntry.swift           # @main entry point
 │   ├── AppDelegate.swift        # App lifecycle, singletons
-│   ├── AppModel.swift           # Core state (@Observable), orchestrates the services below
-│   ├── Types.swift              # Application/AppFolder models + shared constants
+│   ├── AppModel.swift           # Core state (@Observable), orchestrates the pieces below
+│   ├── SettingsAppearance.swift # Appearance/behavior settings (launch mode, glow, tint, animation...)
+│   ├── LibraryScanState.swift   # Scanned app library, hidden-apps, category/search state
+│   ├── NavigationSelection.swift # Keyboard grid navigation + selection state
+│   ├── Types.swift              # Application/AppFolder/LaunchMode models + shared constants
 │   ├── ContentView.swift        # Main launcher UI
-│   ├── OverlayWindowManager.swift   # Full-screen window mgmt + glow effect
-│   ├── StatusBarManager.swift       # Menu bar icon
+│   ├── OverlayWindowManager.swift   # Launcher window mgmt (Window/Full Screen/Maximized) + glow effect
+│   ├── StatusBarManager.swift       # Menu bar icon, Export/Restore Backup, Quit
 │   ├── SettingsWindowManager.swift  # Settings window
 │   ├── SettingsContentView.swift    # Settings UI
 │   ├── Constants.swift              # Magic numbers
@@ -205,9 +234,13 @@ MacMuster/
 │       ├── ApplicationScanner.swift   # Directory scanning, custom-dir validation
 │       ├── ApplicationService.swift   # App launching
 │       ├── ApplicationSorter.swift    # Sorting logic
+│       ├── BackupManager.swift        # Export/import folders + preferences as JSON
+│       ├── RestorePreviewPanel.swift  # Restore preview UI (flags apps no longer on disk)
 │       ├── FolderStore.swift          # Folder CRUD, child-folder traversal
 │       ├── IconService.swift          # Icon loading/caching, folder composite icons
+│       ├── IconCacheManager.swift     # On-disk icon cache, invalidated on bundle updates
 │       ├── PreferencesStore.swift     # UserDefaults persistence (single source of truth)
+│       ├── AlertHelper.swift          # Shared NSAlert presentation helpers
 │       └── RecentAppsTracker.swift    # Recent/most-used launch history
 ├── Resources/                     # Icons, PrivacyInfo.xcprivacy
 ├── Tests/                         # Unit tests

@@ -384,7 +384,7 @@ struct GeneralSettingsPanel: View {
                         VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
                             Text("Refresh Apps")
                                 .font(.system(size: 14, weight: .medium))
-                            Text("Scan for newly installed or removed applications")
+                            Text("Scan for newly installed or removed applications, and rebuild all app icons from scratch")
                                 .font(.system(size: 12))
                                 .foregroundStyle(.secondary)
                         }
@@ -394,7 +394,7 @@ struct GeneralSettingsPanel: View {
                                 await MainActor.run {
                                     isRefreshing = true
                                 }
-                                await appModel.refreshDisplayOrder()
+                                await appModel.refreshDisplayOrder(force: true)
                                 await MainActor.run {
                                     isRefreshing = false
                                     showRefreshComplete = true

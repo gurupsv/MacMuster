@@ -136,4 +136,58 @@ final class IconCacheManagerTests: XCTestCase {
         XCTAssertEqual(cached?.size.height, icon.size.height, "Cached icon height should match")
     }
 
+    // MARK: - clearAll (force refresh)
+
+    func testClearAllRemovesInMemoryCachedIcon() {
+        let path = "/NonExistent/ClearAllTest.app"
+        let icon = NSImage(size: NSSize(width: 32, height: 32), flipped: false) { rect in
+            NSColor.purple.setFill()
+            rect.fill()
+            return true
+        }
+        IconCacheManager.shared.cacheIcon(icon, for: path)
+        XCTAssertNotNil(IconCacheManager.shared.cachedIcon(for: path), "Icon should be cached in memory before clearAll")
+
+        IconCacheManager.shared.clearAll()
+
+        XCTAssertNil(IconCacheManager.shared.cachedIcon(for: path), "clearAll should evict the in-memory cache")
+    }
+
+    func testClearAllRemovesDiskCacheForRealApp() throws {
+        guard FileManager.default.fileExists(atPath: "/System/Applications/Calculator.app") else {
+            throw XCTSkip("Calculator.app not found on this machine")
+        }
+        let path = "/System/Applications/Calculator.app"
+        let icon = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
+            NSColor.orange.setFill()
+            rect.fill()
+            return true
+        }
+        IconCacheManager.shared.cacheIcon(icon, for: path)
+        XCTAssertNotNil(IconCacheManager.shared.cachedIcon(for: path), "Icon should be cached before clearAll")
+
+        IconCacheManager.shared.clearAll()
+
+        XCTAssertNil(IconCacheManager.shared.cachedIcon(for: path), "clearAll should evict both the memory and on-disk cache, forcing a fresh decode")
+        XCTAssertTrue(IconCacheManager.shared.cachedAppPaths().isEmpty, "clearAll should remove the on-disk cache directory entirely")
+    }
+
+    func testClearAllResetsMtimeCache() throws {
+        guard FileManager.default.fileExists(atPath: "/System/Applications/Calculator.app") else {
+            throw XCTSkip("Calculator.app not found on this machine")
+        }
+        let path = "/System/Applications/Calculator.app"
+        let icon = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
+            NSColor.yellow.setFill()
+            rect.fill()
+            return true
+        }
+        IconCacheManager.shared.cacheIcon(icon, for: path)
+        XCTAssertNotNil(IconCacheManager.shared.cachedMtime(for: path), "Mtime should be populated after cacheIcon")
+
+        IconCacheManager.shared.clearAll()
+
+        XCTAssertNil(IconCacheManager.shared.cachedMtime(for: path), "clearAll should reset the mtime cache")
+    }
+
 }
