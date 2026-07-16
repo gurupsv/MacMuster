@@ -9,7 +9,6 @@ struct SettingsContentView: View {
     @State private var showRefreshComplete = false
     @State private var showInDock = true
 
-    /// Read from the running bundle rather than hardcoded, so this never goes stale on a version bump.
     private var appVersionString: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
     }
@@ -1102,10 +1101,31 @@ struct AppearanceSettingsPanel: View {
                               .font(.system(size: 12))
                               .foregroundStyle(.secondary)
                           
-                          Slider(value: $appModel.tintStrength, in: 0.0...1.0, step: 0.05) { _ in
-                              // Tint strength is clamped in AppModel
-                          }
-                      }
+                        Slider(value: $appModel.tintStrength, in: 0.0...1.0, step: 0.05) { _ in
+                            // Tint strength is clamped in AppModel
+                        }
+                    }
+                    
+                    // Launch Mode
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Launch Mode")
+                                .font(.system(size: 14, weight: .medium))
+                            Spacer()
+                            Text(appModel.launchMode.rawValue)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.blue)
+                        }
+                        Text("How the MacMuster launcher window appears when opened")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: $appModel.launchMode) {
+                            ForEach(LaunchMode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
                   }
                  .padding(SettingsLayoutMetrics.sectionContentPadding)
                  .background(Color(nsColor: .textBackgroundColor))

@@ -21,6 +21,12 @@ class SettingsAppearance {
     var iconSize: IconSize = .medium {
         didSet { PreferencesStore.shared.saveIconSize(iconSize.rawValue) }
     }
+    var launchMode: LaunchMode = .window {
+        didSet {
+            PreferencesStore.shared.saveLaunchMode(launchMode)
+            OverlayWindowManager.shared.applyCurrentMode()
+        }
+    }
     var glowEnabled: Bool = true {
         didSet { PreferencesStore.shared.saveGlowEnabled(glowEnabled) }
     }
@@ -143,6 +149,7 @@ class SettingsAppearance {
         if let modeRaw = PreferencesStore.shared.loadPresentationMode() { presentationMode = PresentationMode(rawValue: modeRaw) ?? .glass }
         if let tintHex = PreferencesStore.shared.loadTintColor() { tintColor = parseColor(from: tintHex) }
         if let strengthRaw = PreferencesStore.shared.loadTintStrength() { tintStrength = max(0, min(1, strengthRaw)) }
+        if let launchRaw = PreferencesStore.shared.loadLaunchMode() { launchMode = LaunchMode(rawValue: launchRaw) ?? .window }
     }
 
     private func parseColor(from hexString: String) -> Color {

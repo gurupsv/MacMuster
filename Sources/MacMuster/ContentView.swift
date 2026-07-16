@@ -130,27 +130,6 @@ struct ContentView: View {
 
                             searchIconButton
 
-                            Button(action: {
-                                if appModel.shouldReduceMotion {
-                                    showKeyboardHint.toggle()
-                                } else {
-                                    withAnimation(.easeInOut(duration: 0.2)) { showKeyboardHint.toggle() }
-                                }
-                            }) {
-                                Image(systemName: "questionmark.circle")
-                                    .font(.body)
-                                    .foregroundStyle(showKeyboardHint ? Color.primary : Color.secondary)
-                                    .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
-                                    .background(
-                                        Circle()
-                                            .fill(showKeyboardHint ? Color.primary.opacity(0.15) : Color.clear)
-                                    )
-                                    .background(.ultraThinMaterial, in: Circle())
-                            }
-                            .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
-                            .help("Keyboard shortcuts")
-                            .accessibilityLabel("Show keyboard shortcuts")
-
                             ToolbarButtons(
                 appModel: appModel,
                 showKeyboardHint: $showKeyboardHint,
@@ -178,27 +157,6 @@ struct ContentView: View {
                             Spacer()
 
                             searchIconButton
-
-                            Button(action: {
-                                if appModel.shouldReduceMotion {
-                                    showKeyboardHint.toggle()
-                                } else {
-                                    withAnimation(.easeInOut(duration: 0.2)) { showKeyboardHint.toggle() }
-                                }
-                            }) {
-                                Image(systemName: "questionmark.circle")
-                                    .font(.body)
-                                    .foregroundStyle(showKeyboardHint ? Color.primary : Color.secondary)
-                                    .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
-                                    .background(
-                                        Circle()
-                                            .fill(showKeyboardHint ? Color.primary.opacity(0.15) : Color.clear)
-                                    )
-                                    .background(.ultraThinMaterial, in: Circle())
-                            }
-                            .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
-                            .help("Keyboard shortcuts")
-                            .accessibilityLabel("Show keyboard shortcuts")
 
                             Menu {
                                 ForEach(ApplicationSorter.SortOption.allCases, id: \.self) { option in
@@ -599,19 +557,19 @@ spacing: LayoutMetrics.gridSpacing
             }
         } else {
             // Show launch animation before launching
-            launchingAppPath = app.path
-            appModel.recordAppLaunch(at: app.path)
-            Task {
-                // Wait for animation to show
-                try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
-                let launched = ApplicationService.shared.launchApplication(at: app.path, appModel: appModel)
-                await MainActor.run {
-                    launchingAppPath = nil
-                    if launched {
-                        StatusBarManager.shared.hideWindow()
+                    launchingAppPath = app.path
+                    appModel.recordAppLaunch(at: app.path)
+                    Task {
+                        // Wait for animation to show
+                        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+                        let launched = ApplicationService.shared.launchApplication(at: app.path, appModel: appModel)
+                        await MainActor.run {
+                            launchingAppPath = nil
+                            if launched {
+                                StatusBarManager.shared.hideWindow()
+                            }
+                        }
                     }
-                }
-            }
         }
     }
     

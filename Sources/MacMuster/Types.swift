@@ -2,6 +2,15 @@ import Foundation
 import AppKit
 import SwiftUI
 
+// MARK: - Launch Mode
+
+enum LaunchMode: String, CaseIterable, Identifiable {
+    case window = "Window"
+    case fullscreen = "Full Screen"
+    case maximized = "Maximized"
+    var id: String { rawValue }
+}
+
 // MARK: - Application
 
 struct Application: Identifiable, Hashable {

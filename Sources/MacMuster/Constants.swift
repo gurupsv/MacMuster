@@ -89,7 +89,7 @@ enum LayoutMetrics {
     static let categoryTabPaddingHorizontal: CGFloat = 10
     static let categoryTabPaddingVertical: CGFloat = 5
     static let categoryTabCornerRadius: CGFloat = 6
-    static let settingsButtonSize: CGFloat = 28
+    static let settingsButtonSize: CGFloat = 32
 }
 
 // MARK: - SettingsContentView Layout Metrics

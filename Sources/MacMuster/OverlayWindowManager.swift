@@ -111,6 +111,10 @@ final class OverlayWindow: NSWindow {
         }
         super.keyDown(with: event)
     }
+
+    override func performClose(_ sender: Any?) {
+        OverlayWindowManager.shared.hide()
+    }
 }
 
 @MainActor
@@ -183,33 +187,89 @@ class OverlayWindowManager {
     
     func show() {
         guard let window else { return }
+        guard let targetScreen = preferredScreen(for: window) else { return }
 
-// Make the window visible, screen-sized, and key for input, and hide the dock/menu bar.
-// enterLauncherPresentationMode() restores autoHideDock + autoHideMenuBar — previously
-// commented out during Fix 2, but it is required for full-screen Launchpad-like behavior.
-guard let targetScreen = preferredScreen(for: window) else { return }
-// Use full frame for all screens to cover the entire display including the notch area.
-let screenFrame: NSRect = targetScreen.frame
+        let mode = appModel?.launchMode ?? .window
+        applyWindowMode(mode, on: targetScreen)
 
-window.setFrame(screenFrame, display: true)
-showBackgroundWindows(excluding: targetScreen)
-window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        enterLauncherPresentationMode()
-
-        // Ensure the hosting view resizes to match the new window frame.
-        window.contentView?.frame = CGRect(origin: .zero, size: screenFrame.size)
-
-        // Install a local event monitor to capture arrow keys even when search field is focused.
-        // This is necessary because SwiftUI's TextField intercepts arrow keys before the
-        // window's keyDown handler can see them.
         installCombinedEventMonitor()
-
-        // Observe display configuration changes (monitor plugged in/out, resolution change, etc.)
         installDisplayChangeObserver()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + WindowMetrics.windowAnimationDelay) {
             NotificationCenter.default.post(name: .launcherDidShow, object: window)
+        }
+    }
+
+    func applyCurrentMode() {
+        guard let window, window.isVisible else { return }
+        guard let targetScreen = preferredScreen(for: window) else { return }
+        let mode = appModel?.launchMode ?? .window
+        applyWindowMode(mode, on: targetScreen)
+    }
+
+    func applyWindowMode(_ mode: LaunchMode, on targetScreen: NSScreen) {
+        guard let window else { return }
+
+        switch mode {
+        case .window:
+            let visibleFrame = targetScreen.visibleFrame
+            let width = visibleFrame.width * 0.6
+            let height = visibleFrame.height * 0.6
+            let x = visibleFrame.minX + (visibleFrame.width - width) / 2
+            let y = visibleFrame.minY + (visibleFrame.height - height) / 2
+            let windowFrame = NSRect(x: x, y: y, width: width, height: height)
+
+            exitLauncherPresentationMode()
+            hideBackgroundWindows()
+
+            window.styleMask = [.titled, .resizable, .fullSizeContentView]
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.titlebarSeparatorStyle = .none
+            window.title = "MacMuster"
+            window.level = .normal
+            window.collectionBehavior = [.canJoinAllSpaces]
+            window.hasShadow = true
+            window.isOpaque = true
+            window.standardWindowButton(.closeButton)?.isHidden = true
+            window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+            window.standardWindowButton(.zoomButton)?.isHidden = true
+            window.setFrame(windowFrame, display: true)
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            window.contentView?.frame = CGRect(origin: .zero, size: windowFrame.size)
+
+        case .fullscreen, .maximized:
+            // Full Screen covers the entire display (including the menu-bar/notch area) and hides
+            // the Dock + menu bar (Launchpad-style). Maximized fills only the visible working area,
+            // leaving the menu bar and Dock in place.
+            let screenFrame: NSRect = mode == .fullscreen ? targetScreen.frame : targetScreen.visibleFrame
+
+            window.styleMask = [.borderless]
+            window.level = .floating
+            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+            window.hasShadow = false
+            window.isOpaque = false
+            window.standardWindowButton(.closeButton)?.isHidden = true
+            window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+            window.standardWindowButton(.zoomButton)?.isHidden = true
+            window.setFrame(screenFrame, display: true)
+            showBackgroundWindows(excluding: targetScreen)
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            if mode == .fullscreen {
+                enterLauncherPresentationMode()
+            } else {
+                exitLauncherPresentationMode()
+            }
+            window.contentView?.frame = CGRect(origin: .zero, size: screenFrame.size)
+        }
+
+        // When the user switches launch mode from Settings, applyWindowMode brings the overlay
+        // to front (makeKeyAndOrderFront + NSApp.activate). Re-bring Settings to front so it
+        // stays on top of the overlay during the transition.
+        if SettingsWindowManager.shared.isVisible {
+            SettingsWindowManager.shared.show()
         }
     }
     
@@ -430,13 +490,12 @@ return true
 
     private func handleDisplayChange() {
         guard let window = window, window.isVisible else { return }
+        let mode = appModel?.launchMode ?? .window
+        guard mode == .fullscreen || mode == .maximized else { return }
         guard let targetScreen = preferredScreen(for: window) else { return }
-        let newFrame = targetScreen.frame
-        if window.frame != newFrame {
-            window.setFrame(newFrame, display: true)
-            window.contentView?.frame = CGRect(origin: .zero, size: newFrame.size)
-            showBackgroundWindows(excluding: targetScreen)
-        }
+        // Re-apply the current mode so the frame (full vs. visible) and background windows
+        // stay correct for the new display configuration.
+        applyWindowMode(mode, on: targetScreen)
     }
 
     // MARK: - Search Field Selection Fix
@@ -497,6 +556,7 @@ struct LaunchWrapperView: View {
                 .ignoresSafeArea()
                 .opacity(appModel.overlayOpacity)
             GlowEffectView(appModel: appModel)
+                .ignoresSafeArea()
 
             // Only content scales — zoom-out effect applied to UI grid
             ContentView(appModel: appModel)

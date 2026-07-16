@@ -119,8 +119,13 @@ class AppModel {
     }
     var iconSize: IconSize {
         get { settings.iconSize }
-        set { settings.iconSize = newValue }
+        set { settings.setIconSize(newValue) }
     }
+    var launchMode: LaunchMode {
+        get { settings.launchMode }
+        set { settings.launchMode = newValue }
+    }
+    func setLaunchMode(_ mode: LaunchMode) { settings.launchMode = mode }
     var glowEnabled: Bool {
         get { settings.glowEnabled }
         set { settings.glowEnabled = newValue }

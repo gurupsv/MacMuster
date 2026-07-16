@@ -15,6 +15,7 @@ final class PreferencesStore {
         case customOrder = "customOrder"
         case sortOption = "sortOption"
         case iconSize = "iconSize"
+        case launchMode = "launchMode"
         case refreshInterval = "refreshInterval"
         case showFoldersFirst = "showFoldersFirst"
         case hasShownLauncher = "hasShownLauncher"
@@ -105,6 +106,14 @@ final class PreferencesStore {
     
     func loadIconSize() -> String? {
         defaults.string(forKey: Keys.iconSize.rawValue)
+    }
+    
+    func saveLaunchMode(_ mode: LaunchMode) {
+        defaults.set(mode.rawValue, forKey: Keys.launchMode.rawValue)
+    }
+    
+    func loadLaunchMode() -> String? {
+        defaults.string(forKey: Keys.launchMode.rawValue)
     }
     
     func loadRefreshInterval() -> Double? {
