@@ -5,13 +5,13 @@ final class AlertHelperTests: XCTestCase {
 
     // MARK: - showError Alert Properties
 
-    func testShowErrorCreatesCriticalAlert() {
+@MainActor     func testShowErrorCreatesCriticalAlert() {
         let alert = NSAlert()
         alert.alertStyle = .critical
         XCTAssertEqual(alert.alertStyle, .critical, "showError should create a critical-style alert")
     }
 
-    func testShowErrorSetsMessageText() {
+@MainActor     func testShowErrorSetsMessageText() {
         let alert = NSAlert()
         alert.messageText = "Error Title"
         alert.informativeText = "Error Detail"
@@ -19,7 +19,7 @@ final class AlertHelperTests: XCTestCase {
         XCTAssertEqual(alert.informativeText, "Error Detail", "showError informativeText should match the message argument")
     }
 
-    func testShowErrorAddsOKButton() {
+@MainActor     func testShowErrorAddsOKButton() {
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = "Error Title"
@@ -29,7 +29,7 @@ final class AlertHelperTests: XCTestCase {
         XCTAssertEqual(alert.buttons.first?.title, "OK", "showError button should be labeled OK")
     }
 
-    func testShowErrorWithEmptyTitleAndMessage() {
+@MainActor     func testShowErrorWithEmptyTitleAndMessage() {
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = ""
@@ -40,7 +40,7 @@ final class AlertHelperTests: XCTestCase {
         XCTAssertEqual(alert.buttons.count, 1, "OK button should still be present")
     }
 
-    func testShowErrorWithLongMessage() {
+@MainActor     func testShowErrorWithLongMessage() {
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = "Critical Error"
@@ -52,13 +52,13 @@ final class AlertHelperTests: XCTestCase {
 
     // MARK: - showInfo Alert Properties
 
-    func testShowInfoCreatesInformationalAlert() {
+@MainActor     func testShowInfoCreatesInformationalAlert() {
         let alert = NSAlert()
         alert.alertStyle = .informational
         XCTAssertEqual(alert.alertStyle, .informational, "showInfo should create an informational-style alert")
     }
 
-    func testShowInfoSetsMessageText() {
+@MainActor     func testShowInfoSetsMessageText() {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = "Info Title"
@@ -67,7 +67,7 @@ final class AlertHelperTests: XCTestCase {
         XCTAssertEqual(alert.informativeText, "Info Detail", "showInfo informativeText should match the message argument")
     }
 
-    func testShowInfoAddsOKButton() {
+@MainActor     func testShowInfoAddsOKButton() {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = "Info Title"
@@ -77,7 +77,7 @@ final class AlertHelperTests: XCTestCase {
         XCTAssertEqual(alert.buttons.first?.title, "OK", "showInfo button should be labeled OK")
     }
 
-    func testShowInfoWithEmptyTitleAndMessage() {
+@MainActor     func testShowInfoWithEmptyTitleAndMessage() {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = ""
@@ -90,7 +90,7 @@ final class AlertHelperTests: XCTestCase {
 
     // MARK: - Style Differentiation
 
-    func testShowErrorAndShowInfoUseDifferentStyles() {
+@MainActor     func testShowErrorAndShowInfoUseDifferentStyles() {
         let errorAlert = NSAlert()
         errorAlert.alertStyle = .critical
 
@@ -101,7 +101,7 @@ final class AlertHelperTests: XCTestCase {
             "showError and showInfo should use different alert styles")
     }
 
-    func testShowErrorCriticalStyleHasDistinctIconFromInformational() {
+@MainActor     func testShowErrorCriticalStyleHasDistinctIconFromInformational() {
         // NSAlert critical and informational styles use different system icons.
         // The .critical style uses the stop/caution icon, .informational uses the info icon.
         let errorAlert = NSAlert()
