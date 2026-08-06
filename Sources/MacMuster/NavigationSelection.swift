@@ -8,6 +8,7 @@ class NavigationSelection {
     var selectedAppIndex: Int = -1
     var scrollTargetIndex: Int?
     var scrollTargetAnchor: ScrollAnchor?
+    var launchingAppPath: String?
     var searchTerm: String = "" {
         didSet {
             guard searchTerm != oldValue else { return }

@@ -16,6 +16,7 @@ final class SettingsAppearanceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "launchMode")
         UserDefaults.standard.removeObject(forKey: "recentAppLaunchTimes")
         UserDefaults.standard.removeObject(forKey: "appLaunchCounts")
+        UserDefaults.standard.removeObject(forKey: "showHiddenApps")
     }
 
     func testLaunchModeDefaultIsWindow() {
@@ -89,5 +90,38 @@ final class SettingsAppearanceTests: XCTestCase {
 
         let settings2 = SettingsAppearance()
         XCTAssertEqual(settings2.launchMode, .maximized)
+    }
+
+    // MARK: - Show Hidden Apps Tests
+
+    func testShowHiddenAppsDefaultIsFalse() {
+        let settings = SettingsAppearance()
+        XCTAssertFalse(settings.showHiddenApps)
+    }
+
+    func testSetShowHiddenAppsPersistsToUserDefaults() {
+        let settings = SettingsAppearance()
+        settings.showHiddenApps = true
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: "showHiddenApps"))
+    }
+
+    func testLoadShowHiddenAppsFromUserDefaults() {
+        UserDefaults.standard.set(true, forKey: "showHiddenApps")
+        let settings = SettingsAppearance()
+        XCTAssertTrue(settings.showHiddenApps)
+    }
+
+    func testShowHiddenAppsRoundTrip() {
+        let settings = SettingsAppearance()
+        settings.showHiddenApps = true
+
+        let settings2 = SettingsAppearance()
+        XCTAssertTrue(settings2.showHiddenApps)
+    }
+
+    func testAppModelShowHiddenAppsDelegation() {
+        let appModel = AppModel()
+        appModel.showHiddenApps = true
+        XCTAssertTrue(appModel.settings.showHiddenApps)
     }
 }

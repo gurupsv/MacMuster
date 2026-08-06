@@ -9,9 +9,9 @@ struct ContentView: View {
     @State private var showCreateFolder: Bool = false
     @State private var newFolderName: String = ""
     @State private var selectedAppPathsForFolder: [String] = []
-    
+
     // Dark mode support — SwiftUI .primary/.secondary handle this automatically; colorScheme removed (Code Review Fix 8: unused)
-    
+
     // Cache grid columns to avoid allocation on every body render.
     // Invalidates when columnCount changes.
     @State private var gridColumnCache: (count: Int, columns: [GridItem])?
@@ -21,7 +21,6 @@ struct ContentView: View {
     @State private var isSearchExpanded: Bool = false
     @State private var isDraggingAppPath: String? = nil
     @State private var pressedAppPath: String? = nil
-    @State private var launchingAppPath: String? = nil
     @State private var showKeyboardHint = false
     
     private var gridColumns: [GridItem] {
@@ -217,9 +216,7 @@ struct ContentView: View {
                           if !uniqueRecentApps.isEmpty {
                               let recentAppsToShow = Array(uniqueRecentApps.prefix(appModel.columnCount))
                               SectionView(appModel: appModel, title: "Recent", apps: recentAppsToShow, columns: gridColumns) { app in
-                                  if ApplicationService.shared.launchApplication(at: app.path, appModel: appModel) {
-                                      StatusBarManager.shared.hideWindow()
-                                  }
+                                  appModel.launchAndDismiss(app)
                               }
                           }
                       }
@@ -489,7 +486,7 @@ spacing: LayoutMetrics.gridSpacing
     private func gridItemView(app: Application, isSelected: Bool) -> some View {
         let isDropTarget = isDraggingAppPath == app.path
         let isPressed = pressedAppPath == app.path
-        let isLaunching = launchingAppPath == app.path
+        let isLaunching = appModel.launchingAppPath == app.path
 
         AppIconView(
             appModel: appModel,
@@ -556,20 +553,7 @@ spacing: LayoutMetrics.gridSpacing
                 appModel.openFolder(folderId)
             }
         } else {
-            // Show launch animation before launching
-                    launchingAppPath = app.path
-                    appModel.recordAppLaunch(at: app.path)
-                    Task {
-                        // Wait for animation to show
-                        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
-                        let launched = ApplicationService.shared.launchApplication(at: app.path, appModel: appModel)
-                        await MainActor.run {
-                            launchingAppPath = nil
-                            if launched {
-                                StatusBarManager.shared.hideWindow()
-                            }
-                        }
-                    }
+            appModel.launchAndDismiss(app)
         }
     }
     

@@ -9,7 +9,6 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
     
     struct ScanResult {
         let apps: [Application]
-        let metadata: [String: AppMetadata]
     }
     
     /// Scans the given directories for .app bundles. Hidden apps are still scanned and
@@ -17,7 +16,6 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
     /// again later and un-hidden.
     nonisolated func scanDirectories(directories: [String]) -> ScanResult {
         var apps: [Application] = []
-        var metadata: [String: AppMetadata] = [:]
         var seenPaths: Set<String> = []
 
         // "/Applications/Utilities" (and its /System counterpart) is both a configured scan
@@ -52,10 +50,9 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
                     let bundlePath = (fullPath as NSString).appendingPathComponent("Contents")
                     guard FileManager.default.fileExists(atPath: bundlePath) else { continue }
 
-                    let bundle = Bundle(path: bundlePath)
-                    let name = bundle?.infoDictionary?["CFBundleName"] as? String ?? (item.hasSuffix(".app") ? String(item.dropLast(4)) : item)
+                    // Use filename-derived name (never varies, no syscalls needed)
+                    let name = item.hasSuffix(".app") ? String(item.dropLast(4)) : item
                     let date = attributes?[.modificationDate] as? Date ?? Date()
-                    let size = attributes?[.size] as? Int
                     let containedApps = findContainedApps(in: fullPath)
 
                     apps.append(Application(
@@ -66,19 +63,12 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
                         installationDate: date,
                         isFolder: false,
                         containedApps: containedApps,
-                        appSize: size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
-                        bundleDescription: bundle?.infoDictionary?["CFBundleShortVersionString"] as? String
+                        bundleDescription: nil
                     ))
-
-                    metadata[fullPath] = AppMetadata(
-                        modificationDate: date,
-                        size: size,
-                        bundleIdentifier: bundle?.bundleIdentifier
-                    )
 
                     if let nestedApps = containedApps {
                         for nestedFullPath in nestedApps {
-                            appendDiscoveredApp(at: nestedFullPath, apps: &apps, metadata: &metadata, seenPaths: &seenPaths)
+                            appendDiscoveredApp(at: nestedFullPath, apps: &apps, seenPaths: &seenPaths)
                         }
                     }
                 } else {
@@ -94,7 +84,6 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
                         // Multiple apps grouped under one folder — surface it as a synthetic
                         // in-launcher folder rather than picking one arbitrarily.
                         let date = attributes?[.modificationDate] as? Date ?? Date()
-                        let size = attributes?[.size] as? Int
                         apps.append(Application(
                             id: fullPath,
                             name: item,
@@ -103,37 +92,28 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
                             installationDate: date,
                             isFolder: true,
                             containedApps: containedApps,
-                            appSize: size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
                             bundleDescription: nil
                         ))
-
-                        metadata[fullPath] = AppMetadata(
-                            modificationDate: date,
-                            size: size,
-                            bundleIdentifier: nil
-                        )
                     } else {
                         // Exactly one nested app — the wrapper folder itself isn't launchable, so
                         // surface the real app directly instead of an inert wrapper entry.
                         for nestedFullPath in containedApps {
-                            appendDiscoveredApp(at: nestedFullPath, apps: &apps, metadata: &metadata, seenPaths: &seenPaths)
+                            appendDiscoveredApp(at: nestedFullPath, apps: &apps, seenPaths: &seenPaths)
                         }
                     }
                 }
             }
         }
 
-        return ScanResult(apps: apps, metadata: metadata)
+        return ScanResult(apps: apps)
     }
 
-    /// Adds a single discovered `.app` bundle at `path` to `apps`/`metadata`, deduping against
+    /// Adds a single discovered `.app` bundle at `path` to `apps`, deduping against
     /// `seenPaths`. Shared by the "nested apps inside another bundle" case (e.g. Xcode's embedded
-    /// Simulator.app) and the "single app inside a plain wrapper folder" case, so the same
-    /// bundle-reading logic isn't duplicated for each.
+    /// Simulator.app) and the "single app inside a plain wrapper folder" case.
     nonisolated private func appendDiscoveredApp(
         at path: String,
         apps: inout [Application],
-        metadata: inout [String: AppMetadata],
         seenPaths: inout Set<String>
     ) {
         let resolvedPath = (path as NSString).resolvingSymlinksInPath
@@ -144,12 +124,11 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         let bundlePath = (path as NSString).appendingPathComponent("Contents")
         guard FileManager.default.fileExists(atPath: bundlePath) else { return }
 
-        let bundle = Bundle(path: bundlePath)
+        // Use filename-derived name (never varies, no syscalls needed)
         let itemName = (path as NSString).lastPathComponent
-        let name = bundle?.infoDictionary?["CFBundleName"] as? String ?? Application.stripAppSuffix(itemName)
+        let name = Application.stripAppSuffix(itemName)
         let attributes = try? FileManager.default.attributesOfItem(atPath: path)
         let date = attributes?[.modificationDate] as? Date ?? Date()
-        let size = attributes?[.size] as? Int
 
         apps.append(Application(
             id: path,
@@ -159,15 +138,8 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
             installationDate: date,
             isFolder: false,
             containedApps: nil,
-            appSize: size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
-            bundleDescription: bundle?.infoDictionary?["CFBundleShortVersionString"] as? String
+            bundleDescription: nil
         ))
-
-        metadata[path] = AppMetadata(
-            modificationDate: date,
-            size: size,
-            bundleIdentifier: bundle?.bundleIdentifier
-        )
     }
     
     /// Finds .app bundles inside a directory, including nested locations.

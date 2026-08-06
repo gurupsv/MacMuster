@@ -78,6 +78,8 @@ class LibraryScanState {
 
     func startLoading() async {
         guard isLoading else { return }
+        // Reclaim cache directories from superseded key schemes, which nothing else deletes.
+        IconCacheManager.shared.removeSupersededCaches()
         let allDirs = allScanDirectories
         let result = await Task.detached(priority: .userInitiated) {
             ApplicationScanner.shared.scanDirectories(directories: allDirs)
@@ -140,19 +142,44 @@ class LibraryScanState {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
+    /// Called when the system appearance (light/dark) changes. Re-decodes all cached icons
+    /// under the new appearance so theme-aware icons pick up the correct variant.
+    func handleAppearanceChange() {
+        // Nil all app icons so they re-decode with the new appearance.
+        displayOrder = displayOrder.map { app in
+            var updated = app
+            updated.icon = nil
+            return updated
+        }
+        rebuildAppPathIndex()
+        dataVersion += 1
+
+        // Evict folder icons so they regenerate with the new app icons.
+        IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex, changedAppPaths: [])
+
+        cachedVisibleApps = nil
+        cachedDisplayedApps = nil
+
+        // Re-load and decode all icons under the new appearance.
+        Task { @MainActor in
+            await self.loadMissingIcons()
+        }
+    }
+
     func loadMissingIcons() async {
         let priorityApps = Array(displayOrder.prefix(ScanMetrics.priorityIconLoadCount))
         let priorityIcons = await IconService.shared.loadMissingIcons(for: priorityApps)
         if !priorityIcons.isEmpty { applyLoadedIcons(priorityIcons) }
         let remainingApps = Array(displayOrder.dropFirst(ScanMetrics.priorityIconLoadCount))
         guard !remainingApps.isEmpty else { return }
-        var remainingIcons: [(String, NSImage)] = []
+        // Load remaining apps in chunks, applying each chunk immediately so icons fill progressively
+        // instead of appearing in one late pop. Keeping chunk size at 60 (≈3 applies) balances
+        // UI updates against the cost of `applyLoadedIcons` (index rebuild + folder re-generation).
         for start in stride(from: 0, to: remainingApps.count, by: ScanMetrics.priorityIconLoadCount) {
             let end = min(start + ScanMetrics.priorityIconLoadCount, remainingApps.count)
             let chunkIcons = await IconService.shared.loadMissingIcons(for: Array(remainingApps[start..<end]))
-            remainingIcons.append(contentsOf: chunkIcons)
+            if !chunkIcons.isEmpty { applyLoadedIcons(chunkIcons) }
         }
-        if !remainingIcons.isEmpty { applyLoadedIcons(remainingIcons) }
     }
 
     private func applyLoadedIcons(_ loadedIcons: [(String, NSImage)]) {
@@ -168,20 +195,37 @@ class LibraryScanState {
 
     func refreshCachedIcons() async {
         let currentPaths = Set(displayOrder.map(\.path))
+        let appPathIndex = self.appPathIndex
+        // Resolved here, on the main actor — the detached task below must not read `NSApp`.
+        let appearance = IconAppearance.current
         IconCacheManager.shared.pruneDeletedApps(currentAppPaths: currentPaths)
-        let cachedApps = IconCacheManager.shared.cachedAppPaths()
-        let cachedByPath: [String: Date] = Dictionary(uniqueKeysWithValues: cachedApps.map { ($0.appPath, $0.cachedMtime) })
-        var staleApps: [Application] = []
-        for (appPath, cachedMtime) in cachedByPath {
-            guard currentPaths.contains(appPath), let app = appPathIndex[appPath] else { continue }
-            if let currentMtime = IconCacheManager.shared.cachedMtime(for: appPath) {
-                let cachedSec = Int(cachedMtime.timeIntervalSince1970)
-                let currentSec = Int(currentMtime.timeIntervalSince1970)
-                if cachedSec != currentSec { staleApps.append(app) }
+
+        // Move directory enumeration to a background task to avoid blocking the main thread
+        // (measured at 32 ms warm / 194 ms cold on disk cache scan).
+        let staleApps: [Application] = await Task.detached(priority: .utility) {
+            let cachedApps = IconCacheManager.shared.cachedAppPaths(appearance: appearance)
+            // `uniquingKeysWith` rather than `uniqueKeysWithValues`: this list is built from
+            // whatever .meta files are on disk, and a duplicate path there must degrade to
+            // "refresh it once", never trap the process. Keeping the newer mtime makes a
+            // duplicate look as fresh as its freshest entry, so it isn't refreshed forever.
+            let cachedByPath: [String: Date] = Dictionary(
+                cachedApps.map { ($0.appPath, $0.cachedMtime) },
+                uniquingKeysWith: { max($0, $1) }
+            )
+            var stale: [Application] = []
+            for (appPath, cachedMtime) in cachedByPath {
+                guard currentPaths.contains(appPath), let app = appPathIndex[appPath] else { continue }
+                if let currentMtime = IconCacheManager.shared.cachedMtime(for: appPath) {
+                    let cachedSec = Int(cachedMtime.timeIntervalSince1970)
+                    let currentSec = Int(currentMtime.timeIntervalSince1970)
+                    if cachedSec != currentSec { stale.append(app) }
+                }
             }
-        }
+            return stale
+        }.value
+
         guard !staleApps.isEmpty else { return }
-        let refreshedIcons = await IconService.shared.loadMissingIcons(for: staleApps)
+        let refreshedIcons = await IconService.shared.loadMissingIcons(for: staleApps, force: true)
         if !refreshedIcons.isEmpty { applyLoadedIcons(refreshedIcons) }
     }
 
@@ -253,10 +297,14 @@ class LibraryScanState {
             loadedIconsByPath.removeAll()
             freshApps = result.apps
         } else {
-            let preservedIcons = Dictionary(uniqueKeysWithValues: displayOrder.compactMap { app -> (String, NSImage)? in
-                guard let icon = app.icon else { return nil }
-                return (app.path, icon)
-            })
+            // Two entries for one path would mean the same icon twice, so either wins.
+            let preservedIcons = Dictionary(
+                displayOrder.compactMap { app -> (String, NSImage)? in
+                    guard let icon = app.icon else { return nil }
+                    return (app.path, icon)
+                },
+                uniquingKeysWith: { first, _ in first }
+            )
             freshApps = IconService.shared.applicationsPreservingLoadedIcons(from: result.apps, loadedIconsByPath: preservedIcons)
         }
         self.displayOrder = self.sortedApplications(freshApps)
@@ -289,8 +337,10 @@ class LibraryScanState {
     }
 
     private static let permanentlyHiddenAppPaths: Set<String> = [
-        "/System/Applications/App Store.app",
-        "/System/Applications/Launchpad.app"
+        "/System/Applications/Launchpad.app",
+        "/Applications/MacMuster.app",
+        "/Applications/Launchie.app",
+        "/Applications/Apps.app"
     ]
 
     func toggleHiddenApp(_ path: String) {
@@ -354,7 +404,11 @@ class LibraryScanState {
 
     var visibleApplications: [Application] {
         if let c = cachedVisibleApps, c.version == dataVersion { return c.apps }
-        let apps = displayOrder.filter { !hiddenAppPaths.contains($0.path) }
+        let apps = displayOrder.filter {
+            guard !Self.permanentlyHiddenAppPaths.contains($0.path) else { return false }
+            if settings?.showHiddenApps ?? false { return true }
+            return !hiddenAppPaths.contains($0.path)
+        }
         cachedVisibleApps = (dataVersion, apps)
         return apps
     }
@@ -396,9 +450,11 @@ class LibraryScanState {
         }()
         let looseApps = visibleApplications.filter { !appsInAnyFolder.contains($0.path) }
         let folderIcons: [Application] = folders.compactMap { folder in
+            let showAll = settings?.showHiddenApps ?? false
             let hasVisible = folder.appPaths.contains { path in
-                guard !hiddenAppPaths.contains(path), appPathIndex[path] != nil else { return false }
-                return true
+                guard !Self.permanentlyHiddenAppPaths.contains(path), appPathIndex[path] != nil else { return false }
+                if showAll { return true }
+                return !hiddenAppPaths.contains(path)
             }
             return hasVisible ? getFolderApplication(folder) : nil
         }
@@ -528,6 +584,8 @@ class LibraryScanState {
     }
 
     func getAllAppsIncludingChildFolders(for folderId: String) -> [Application] {
-        FolderStore.shared.getAllAppsIncludingChildFolders(for: folderId, appPathIndex: appPathIndex, hiddenAppPaths: hiddenAppPaths, customOrder: customOrder, sortOption: sortOption)
+        let effectiveHiddenPaths: Set<String> = (settings?.showHiddenApps ?? false) ? [] : hiddenAppPaths
+        let apps = FolderStore.shared.getAllAppsIncludingChildFolders(for: folderId, appPathIndex: appPathIndex, hiddenAppPaths: effectiveHiddenPaths, customOrder: customOrder, sortOption: sortOption)
+        return apps.filter { !Self.permanentlyHiddenAppPaths.contains($0.path) }
     }
 }

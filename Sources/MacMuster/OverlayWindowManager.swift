@@ -377,21 +377,23 @@ return true
                         // Don't hide — user navigated into a folder
                         return true
                     }
-                    ApplicationService.shared.launchApplication(at: first.path, appModel: appModel)
+                    appModel.launchAndDismiss(first)
                 }
             } else {
                 if let appModel = appModel {
                     let displayedApps = appModel.getDisplayedApps()
                     let idx = appModel.selectedAppIndex
-                    if idx >= 0, idx < displayedApps.count, displayedApps[idx].isFolder {
-                        // Folder selected — navigate in, don't hide
-                        _ = appModel.launchSelectedApp()
-                        return true
+                    if idx >= 0, idx < displayedApps.count {
+                        let app = displayedApps[idx]
+                        if app.isFolder {
+                            // Folder selected — navigate in, don't dismiss
+                            _ = appModel.launchSelectedApp()
+                            return true
+                        }
+                        appModel.launchAndDismiss(app)
                     }
                 }
-                _ = appModel?.launchSelectedApp()
             }
-            hide()
             return true
         case KeyCodes.forwardSlash: // Forward slash (/)
             // Focus search field when / is pressed

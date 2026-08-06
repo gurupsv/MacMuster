@@ -147,9 +147,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST_EOF
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>CFBundleIconFile</key>
-    <string>MacAppIcon</string>
+    <string>MacMusterIconDark.icns</string>
     <key>CFBundleIconName</key>
-    <string>MacAppIcon</string>
+    <string>MacMusterIconDark</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSRequiresAquaSystemAppearance</key>

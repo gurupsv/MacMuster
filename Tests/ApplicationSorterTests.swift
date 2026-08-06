@@ -4,7 +4,7 @@ import XCTest
 final class ApplicationSorterTests: XCTestCase {
     
     private func makeApp(name: String, installationDate: Date) -> Application {
-        Application(id: "/Applications/\(name).app", name: name, path: "/Applications/\(name).app", icon: nil, installationDate: installationDate, isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        Application(id: "/Applications/\(name).app", name: name, path: "/Applications/\(name).app", icon: nil, installationDate: installationDate, isFolder: false, containedApps: nil, bundleDescription: nil)
     }
     
     func testSortByNameAscending() {

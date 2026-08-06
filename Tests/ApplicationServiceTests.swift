@@ -27,116 +27,154 @@ final class ApplicationServiceTests: XCTestCase {
 
     // MARK: - App Launch Recording
 
-    func testLaunchApplicationWithoutAppModelDoesNotRecord() {
+    func testLaunchApplicationWithoutAppModelDoesNotRecord() async throws {
         let service = ApplicationService.shared
         let appModel = AppModel()
 
-        let app = Application(id: "/Applications/TestApp.app", name: "TestApp", path: "/Applications/TestApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/TestApp.app", name: "TestApp", path: "/Applications/TestApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         XCTAssertFalse(appModel.isRecentApp(app.path))
 
-        _ = service.launchApplication(at: app.path, appModel: nil)
+        var completed = false
+        service.launchApplication(at: app.path, appModel: nil) { _ in
+            completed = true
+        }
 
+        // Wait for completion handler
+        try await Task.sleep(nanoseconds: 100_000_000)
         // Without appModel, recording should not happen
         XCTAssertFalse(appModel.isRecentApp(app.path))
+        XCTAssertTrue(completed)
     }
 
-    func testLaunchApplicationWithValidAppModelAndValidPathRecordsLaunch() {
+    func testLaunchApplicationWithValidAppModelRecordsLaunchOnSuccess() async throws {
         let service = ApplicationService.shared
         let appModel = AppModel()
 
-        let app = Application(id: "/Applications/FinderTest.app", name: "Finder", path: "/Applications/FinderTest.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        // Finder is always running on macOS
+        let app = Application(id: "/System/Library/CoreServices/Finder.app", name: "Finder", path: "/System/Library/CoreServices/Finder.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         XCTAssertFalse(appModel.isRecentApp(app.path))
 
-        let didLaunch = service.launchApplication(at: app.path, appModel: appModel)
+        var completedSuccessfully = false
+        service.launchApplication(at: app.path, appModel: appModel) { success in
+            completedSuccessfully = success
+        }
 
-        // Fake path doesn't exist, launch should fail and recording should not happen
-        XCTAssertFalse(didLaunch)
-        XCTAssertFalse(appModel.isRecentApp(app.path))
+        // Wait for completion handler
+        try await Task.sleep(nanoseconds: 200_000_000)
+        // Finder should launch successfully and be recorded
+        XCTAssertTrue(completedSuccessfully)
+        XCTAssertTrue(appModel.isRecentApp(app.path))
     }
 
-    func testLaunchApplicationWithMissingPathDoesNotRecord() {
+    func testLaunchApplicationWithMissingPathDoesNotRecord() async throws {
         let service = ApplicationService.shared
         let appModel = AppModel()
 
-        let app = Application(id: "/Applications/NonExistentTest.app", name: "NonExistent", path: "/Applications/NonExistentTest.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/NonExistentTest.app", name: "NonExistent", path: "/Applications/NonExistentTest.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         XCTAssertFalse(appModel.isRecentApp(app.path))
 
-        let didLaunch = service.launchApplication(at: app.path, appModel: appModel)
+        var completedSuccessfully = false
+        service.launchApplication(at: app.path, appModel: appModel) { success in
+            completedSuccessfully = success
+        }
 
+        // Wait for completion handler
+        try await Task.sleep(nanoseconds: 100_000_000)
         // Non-existent path, launch should fail and recording should not happen
-        XCTAssertFalse(didLaunch)
+        XCTAssertFalse(completedSuccessfully)
         XCTAssertFalse(appModel.isRecentApp(app.path))
     }
 
-    func testLaunchApplicationReturnsLaunchResult() {
+    func testLaunchApplicationReturnsResultViaCompletion() async throws {
         let service = ApplicationService.shared
 
-        let didLaunchExisting = service.launchApplication(at: "/Applications/FinderTest.app", appModel: nil)
-        XCTAssertFalse(didLaunchExisting)
+        var nonExistentCompleted = false
+        var nonExistentSuccess = true
+        service.launchApplication(at: "/Applications/NonExistentTest.app", appModel: nil) { success in
+            nonExistentCompleted = true
+            nonExistentSuccess = success
+        }
 
-        let didLaunchMissing = service.launchApplication(at: "/Applications/NonExistentTest.app", appModel: nil)
-        XCTAssertFalse(didLaunchMissing)
+        // Wait for completion handler
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(nonExistentCompleted)
+        XCTAssertFalse(nonExistentSuccess)
     }
 
-    func testLaunchApplicationWithNilAppModelAndValidPathDoesNotRecord() {
+    func testLaunchApplicationWithNilAppModelAndValidPathDoesNotRecord() async throws {
         let service = ApplicationService.shared
         let appModel = AppModel()
 
-        let app = Application(id: "/Applications/FinderTest.app", name: "Finder", path: "/Applications/FinderTest.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/System/Library/CoreServices/Finder.app", name: "Finder", path: "/System/Library/CoreServices/Finder.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
-        let didLaunch = service.launchApplication(at: app.path, appModel: nil)
+        var completedSuccessfully = false
+        service.launchApplication(at: app.path, appModel: nil) { success in
+            completedSuccessfully = success
+        }
 
-        // Fake path doesn't exist, launch fails but no recording without appModel
-        XCTAssertFalse(didLaunch)
+        // Wait for completion handler
+        try await Task.sleep(nanoseconds: 100_000_000)
+        // No recording without appModel, even for Finder
+        XCTAssertTrue(completedSuccessfully)
         XCTAssertFalse(appModel.isRecentApp(app.path))
     }
 
     // MARK: - Already Running App Activation
 
-    func testLaunchApplicationWithRunningFinderActivatesIt() {
+    func testLaunchApplicationWithRunningFinderActivatesIt() async throws {
         let service = ApplicationService.shared
 
+        var finderCompleted = false
+        var finderSuccess = false
         // Finder is always running on macOS
-        let didLaunch = service.launchApplication(at: "/System/Library/CoreServices/Finder.app", appModel: nil)
-        XCTAssertTrue(didLaunch)
-    }
+        service.launchApplication(at: "/System/Library/CoreServices/Finder.app", appModel: nil) { success in
+            finderCompleted = true
+            finderSuccess = success
+        }
 
-    func testRunningFinderLaunchRecordsAppModel() {
-        let service = ApplicationService.shared
-        let appModel = AppModel()
-
-        let app = Application(id: "/System/Library/CoreServices/Finder.app", name: "Finder", path: "/System/Library/CoreServices/Finder.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        appModel.setApplications([app])
-
-        XCTAssertFalse(appModel.isRecentApp(app.path))
-        _ = service.launchApplication(at: app.path, appModel: appModel)
-        XCTAssertTrue(appModel.isRecentApp(app.path))
+        // Wait for completion handler
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(finderCompleted)
+        XCTAssertTrue(finderSuccess)
     }
 
     // MARK: - Minimized App Unhide (Regression)
 
-    func testRunningAppMinimizedIsUnhiddenBeforeActivation() {
+    func testRunningAppIsUnhiddenOnLaunch() async throws {
         let service = ApplicationService.shared
 
-        // Finder is always running — the fix ensures if match.isHidden { match.unhide() } runs
-        // before match.activate(options: [.activateAllWindows])
-        let didLaunch = service.launchApplication(at: "/System/Library/CoreServices/Finder.app", appModel: nil)
-        XCTAssertTrue(didLaunch)
+        // Finder is always running — verify it activates successfully
+        // The unhide happens inside the completion handler
+        var finderSuccess = false
+        service.launchApplication(at: "/System/Library/CoreServices/Finder.app", appModel: nil) { success in
+            finderSuccess = success
+        }
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(finderSuccess)
     }
 
     // MARK: - Path Validation
 
-    func testLaunchApplicationWithNonExistentPathReturnsFalse() {
+    func testLaunchApplicationWithNonExistentPathReturnsFailure() async throws {
         let service = ApplicationService.shared
 
-        let didLaunch = service.launchApplication(at: "/Applications/NonExistentApp12345.app", appModel: nil)
-        XCTAssertFalse(didLaunch)
+        var completed = false
+        var success = true
+        service.launchApplication(at: "/Applications/NonExistentApp12345.app", appModel: nil) { result in
+            completed = true
+            success = result
+        }
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(completed)
+        XCTAssertFalse(success)
     }
 }

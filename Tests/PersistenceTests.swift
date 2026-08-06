@@ -39,12 +39,13 @@ final class PersistenceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "hasShownLauncher")
         UserDefaults.standard.removeObject(forKey: "recentAppsEnabled")
         UserDefaults.standard.removeObject(forKey: "pressFeedbackEnabled")
+        UserDefaults.standard.removeObject(forKey: "showHiddenApps")
     }
 
     // MARK: - Hidden Apps Persistence Tests
 
     func testToggleHiddenAppSavesToUserDefaults() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
         appModel.toggleHiddenApp(app.path)
         let data = UserDefaults.standard.data(forKey: "hiddenAppPaths")
@@ -75,20 +76,20 @@ final class PersistenceTests: XCTestCase {
     }
 
     func testIsAppHiddenReturnsTrueForHiddenPath() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
         appModel.toggleHiddenApp(app.path)
         XCTAssertTrue(appModel.isAppHidden(app.path))
     }
 
     func testIsAppHiddenReturnsFalseForNonHiddenPath() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
         XCTAssertFalse(appModel.isAppHidden(app.path))
     }
 
     func testToggleHiddenAppWithApplicationObject() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
         appModel.toggleHiddenApp(app)
         XCTAssertTrue(appModel.isAppHidden(app.path))
@@ -354,8 +355,8 @@ final class PersistenceTests: XCTestCase {
 
     func testSetCustomOrderSavesToUserDefaults() {
         let apps = [
-            Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
         ]
         appModel.setApplications(apps)
         appModel.customOrder[apps[0].path] = 0
@@ -422,7 +423,7 @@ final class PersistenceTests: XCTestCase {
         appModel.iconSize = .large
         appModel.refreshInterval = 600
         appModel.setFontFamily("Helvetica")
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
         appModel.toggleHiddenApp(app.path)
         appModel.addCustomDirectory("/Users/test/CustomApps")
@@ -576,6 +577,25 @@ final class PersistenceTests: XCTestCase {
         UserDefaults.standard.set(false, forKey: "pressFeedbackEnabled")
         let newAppModel = AppModel()
         XCTAssertFalse(newAppModel.pressFeedbackEnabled)
+    }
+
+    // MARK: - Show Hidden Apps Persistence Tests
+
+    func testSetShowHiddenAppsSavesToUserDefaults() {
+        appModel.showHiddenApps = true
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: "showHiddenApps"))
+    }
+
+    func testLoadShowHiddenAppsReadsFromUserDefaults() {
+        UserDefaults.standard.set(true, forKey: "showHiddenApps")
+        let newAppModel = AppModel()
+        XCTAssertTrue(newAppModel.showHiddenApps)
+    }
+
+    func testShowHiddenAppsDefaultIsFalse() {
+        UserDefaults.standard.removeObject(forKey: "showHiddenApps")
+        let newAppModel = AppModel()
+        XCTAssertFalse(newAppModel.showHiddenApps)
     }
 
     // MARK: - Overlay Opacity Persistence Tests (I-3)

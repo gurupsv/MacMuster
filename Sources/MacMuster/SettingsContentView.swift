@@ -7,6 +7,7 @@ struct SettingsContentView: View {
     @Bindable var appModel: AppModel
     @State private var selectedSection: SettingsSection = .general
     @State private var showRefreshComplete = false
+    @State private var showRefreshConfirmation = false
     @State private var showInDock = true
 
     private var appVersionString: String {
@@ -228,6 +229,7 @@ struct GeneralSettingsPanel: View {
     @State private var startAtLogin = false
     @State private var startAtLoginError: String?
     @State private var isRefreshing = false
+    @State private var showRefreshConfirmation = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sectionSpacing) {
@@ -390,19 +392,7 @@ struct GeneralSettingsPanel: View {
                         }
                         Spacer()
                         Button {
-                            Task {
-                                await MainActor.run {
-                                    isRefreshing = true
-                                }
-                                await appModel.refreshDisplayOrder(force: true)
-                                await MainActor.run {
-                                    isRefreshing = false
-                                    showRefreshComplete = true
-                                }
-                                await MainActor.run {
-                                    showRefreshComplete = false
-                                }
-                            }
+                            showRefreshConfirmation = true
                         } label: {
                             HStack(spacing: SettingsLayoutMetrics.buttonSpacing) {
                                 if isRefreshing {
@@ -447,11 +437,31 @@ struct GeneralSettingsPanel: View {
                 .background(Color(nsColor: .textBackgroundColor))
                 .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
             }
-            
+
 
         }
+        .alert("Refresh All Apps?", isPresented: $showRefreshConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Refresh", role: .destructive) {
+                Task {
+                    await MainActor.run {
+                        isRefreshing = true
+                    }
+                    await appModel.refreshDisplayOrder(force: true)
+                    await MainActor.run {
+                        isRefreshing = false
+                        showRefreshComplete = true
+                    }
+                    await MainActor.run {
+                        showRefreshComplete = false
+                    }
+                }
+            }
+        } message: {
+            Text("This will scan for new/removed applications and rebuild all app icons from scratch. This may take a while.")
+        }
     }
-    
+
     private func settingsSection<Content: View>(
         title: String,
         @ViewBuilder content: () -> Content
@@ -1192,6 +1202,23 @@ struct HiddenAppsSettingsPanel: View {
             Text("Apps hidden from the launcher. Toggle visibility using the checkboxes.")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
+            
+            // Show Hidden Apps toggle
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show Hidden Apps")
+                        .font(.system(size: 13, weight: .medium))
+                    Text("When enabled, hidden apps are displayed in the launcher")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: $appModel.showHiddenApps)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+            .padding(10)
+            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
             
             // Search bar
             HStack(spacing: 8) {

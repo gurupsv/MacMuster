@@ -38,6 +38,7 @@ final class PreferencesStore {
         case presentationMode = "presentationMode"
         case tintColor = "tintColor"
         case tintStrength = "tintStrength"
+        case showHiddenApps = "showHiddenApps"
     }
 
     /// Current schema version. Increment when adding/removing/changing preference keys.
@@ -71,6 +72,9 @@ final class PreferencesStore {
         }
         if defaults.object(forKey: Keys.launchAnimationEnabled.rawValue) == nil {
             defaults.set(true, forKey: Keys.launchAnimationEnabled.rawValue)
+        }
+        if defaults.object(forKey: Keys.showHiddenApps.rawValue) == nil {
+            defaults.set(false, forKey: Keys.showHiddenApps.rawValue)
         }
     }
 
@@ -284,6 +288,17 @@ final class PreferencesStore {
 
     func savePressFeedbackEnabled(_ enabled: Bool) {
         defaults.set(enabled, forKey: Keys.pressFeedbackEnabled.rawValue)
+    }
+
+    func loadShowHiddenApps() -> Bool {
+        if defaults.object(forKey: Keys.showHiddenApps.rawValue) == nil {
+            return false
+        }
+        return defaults.bool(forKey: Keys.showHiddenApps.rawValue)
+    }
+
+    func saveShowHiddenApps(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Keys.showHiddenApps.rawValue)
     }
     
     // MARK: - Opacity Settings

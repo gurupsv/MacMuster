@@ -91,13 +91,11 @@ final class ApplicationScannerTests: XCTestCase {
     func testScanNonExistentDirectoryReturnsEmpty() {
         let result = ApplicationScanner.shared.scanDirectories(directories: ["/NonExistentDirectory"])
         XCTAssertTrue(result.apps.isEmpty, "Non-existent directory should return no apps")
-        XCTAssertTrue(result.metadata.isEmpty, "Non-existent directory should return no metadata")
     }
 
     func testScanEmptyDirectoryListReturnsEmpty() {
         let result = ApplicationScanner.shared.scanDirectories(directories: [])
         XCTAssertTrue(result.apps.isEmpty, "Empty directory list should return no apps")
-        XCTAssertTrue(result.metadata.isEmpty, "Empty directory list should return no metadata")
     }
 
     func testScanMixOfValidAndInvalidDirectories() {

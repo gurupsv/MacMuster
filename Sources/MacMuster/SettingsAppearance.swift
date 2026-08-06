@@ -85,6 +85,9 @@ class SettingsAppearance {
     var showFoldersFirst: Bool = false {
         didSet { PreferencesStore.shared.saveShowFoldersFirst(showFoldersFirst) }
     }
+    var showHiddenApps: Bool = false {
+        didSet { PreferencesStore.shared.saveShowHiddenApps(showHiddenApps) }
+    }
     var refreshInterval: TimeInterval = 300 {
         didSet { PreferencesStore.shared.saveRefreshInterval(refreshInterval) }
     }
@@ -141,6 +144,7 @@ class SettingsAppearance {
         if let iconRaw = PreferencesStore.shared.loadIconSize() { iconSize = IconSize(rawValue: iconRaw) ?? .medium }
         if let interval = PreferencesStore.shared.loadRefreshInterval() { refreshInterval = interval }
         showFoldersFirst = PreferencesStore.shared.loadShowFoldersFirst()
+        showHiddenApps = PreferencesStore.shared.loadShowHiddenApps()
         hasShownLauncher = PreferencesStore.shared.loadHasShownLauncher()
         glowEnabled = PreferencesStore.shared.loadGlowEnabled()
         if let glowColorHex = PreferencesStore.shared.loadGlowColor() { glowColor = parseColor(from: glowColorHex) }

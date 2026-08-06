@@ -26,7 +26,36 @@ final class IconServicePerformanceTests: XCTestCase {
     private func makeApp(path: String, index: Int) -> Application {
         Application(id: "\(path)#\(index)", name: "Bench\(index)", path: path, icon: nil,
                      installationDate: Date(), isFolder: false, containedApps: nil,
-                     appSize: nil, bundleDescription: nil)
+                     bundleDescription: nil)
+    }
+
+    /// Tests that the force parameter bypasses the icon == nil filter, re-decoding icons
+    /// that are already loaded. This is critical for the appearance-change handler and for
+    /// refreshCachedIcons to work correctly — without force: true, apps with already-loaded
+    /// icons are silently skipped.
+    func testLoadMissingIconsWithForceTrueRedecodesLoadedIcons() async throws {
+        let paths = systemAppPaths()
+        try XCTSkipIf(paths.count < 1, "At least 1 stock system app required")
+
+        let path = paths[0]
+        let app = makeApp(path: path, index: 0)
+
+        // Pre-load the icon so icon != nil
+        let preloadedIcons = await IconService.shared.loadMissingIcons(for: [app])
+        XCTAssertFalse(preloadedIcons.isEmpty, "Should load icon on first call")
+
+        var appWithIcon = app
+        if let (_, icon) = preloadedIcons.first {
+            appWithIcon.icon = icon
+        }
+
+        // Call with force: false (default) — should skip the app since it already has an icon
+        let skipped = await IconService.shared.loadMissingIcons(for: [appWithIcon], force: false)
+        XCTAssertTrue(skipped.isEmpty, "force: false should skip apps that already have icons")
+
+        // Call with force: true — should re-decode despite the icon already being loaded
+        let reloaded = await IconService.shared.loadMissingIcons(for: [appWithIcon], force: true)
+        XCTAssertFalse(reloaded.isEmpty, "force: true should re-decode even when icon != nil")
     }
 
     /// Asserts that loading a batch of icons takes far less wall-clock time than doing the

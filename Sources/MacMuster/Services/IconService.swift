@@ -9,7 +9,23 @@ final class IconService {
     
     /// Rasterizes an app icon to a fixed-size bitmap on a background thread.
     /// Forces decode + downscale once, so SwiftUI just blits a small bitmap on the main thread.
-    nonisolated static func rasterize(_ path: String, pixelSize: Int) -> NSImage {
+    ///
+    /// `appearance` pins which light/dark variant gets drawn. Without it the icon resolves
+    /// against whatever appearance the drawing thread happens to inherit, which is the current
+    /// system theme *at draw time* — so a theme toggle mid-batch would bake the new variant
+    /// into a bitmap the caller then files under the old one.
+    nonisolated static func rasterize(_ path: String, pixelSize: Int, appearance: IconAppearance) -> NSImage {
+        guard let nsAppearance = appearance.nsAppearance else {
+            return rasterizeInCurrentAppearance(path, pixelSize: pixelSize)
+        }
+        var result: NSImage!
+        nsAppearance.performAsCurrentDrawingAppearance {
+            result = rasterizeInCurrentAppearance(path, pixelSize: pixelSize)
+        }
+        return result
+    }
+
+    nonisolated private static func rasterizeInCurrentAppearance(_ path: String, pixelSize: Int) -> NSImage {
         let icon = NSWorkspace.shared.icon(forFile: path)
 
         // Fallback 1: Try to draw into a CGContext (works for most icons)
@@ -84,18 +100,22 @@ final class IconService {
         return image
     }
     
-    func loadMissingIcons(for displayOrder: [Application]) async -> [(String, NSImage)] {
+    func loadMissingIcons(for displayOrder: [Application], force: Bool = false) async -> [(String, NSImage)] {
         let missingPaths = displayOrder.compactMap { app in
-            app.icon == nil ? app.path : nil
+            (force || app.icon == nil) ? app.path : nil
         }
         guard !missingPaths.isEmpty else { return [] }
+
+        // Resolve the appearance here, on the main actor, and hand the value to each task.
+        // The decode itself runs on the cooperative pool, which must not touch `NSApp`.
+        let appearance = IconAppearance.current
 
         // Each icon loads from cache (instant) or decodes+downscales (background).
         // Fan the batch out across the cooperative thread pool instead of one at a time.
         return await withTaskGroup(of: (String, NSImage).self) { group in
             for path in missingPaths {
                 group.addTask(priority: .userInitiated) {
-                    (path, Self.loadOrDecodeIcon(path))
+                    (path, Self.loadOrDecodeIcon(path, appearance: appearance))
                 }
             }
             var results: [(String, NSImage)] = []
@@ -108,18 +128,24 @@ final class IconService {
     }
 
     /// Loads icon from cache if fresh, otherwise decodes fresh and caches.
-    nonisolated private static func loadOrDecodeIcon(_ path: String) -> NSImage {
-        if let cached = IconCacheManager.shared.cachedIcon(for: path) {
+    ///
+    /// Runs on the cooperative pool, so the appearance arrives as a parameter rather than being
+    /// read from `NSApp` — and the same value keys the lookup, the draw, and the store.
+    nonisolated private static func loadOrDecodeIcon(_ path: String, appearance: IconAppearance) -> NSImage {
+        if let cached = IconCacheManager.shared.cachedIcon(for: path, appearance: appearance) {
             return cached
         }
 
-        let icon = Self.rasterize(path, pixelSize: IconMetrics.iconRasterPixelSizePx)
-        IconCacheManager.shared.cacheIcon(icon, for: path)
+        let icon = Self.rasterize(path, pixelSize: IconMetrics.iconRasterPixelSizePx, appearance: appearance)
+        IconCacheManager.shared.cacheIcon(icon, for: path, appearance: appearance)
         return icon
     }
     
     func updateIconsInPlace(for displayOrder: [Application], with loadedIcons: [(String, NSImage)]) -> [Application] {
-        let iconsByPath = Dictionary(uniqueKeysWithValues: loadedIcons)
+        // `loadedIcons` mirrors `displayOrder`, which is not guaranteed to hold distinct paths
+        // (the same bundle can be reachable through two scanned directories). Two entries for
+        // one path carry the same decoded icon, so either wins — but trapping is not an option.
+        let iconsByPath = Dictionary(loadedIcons, uniquingKeysWith: { first, _ in first })
         var order = displayOrder
         for i in order.indices where iconsByPath[order[i].path] != nil {
             order[i].icon = iconsByPath[order[i].path]

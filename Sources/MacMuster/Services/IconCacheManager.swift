@@ -3,11 +3,41 @@ import AppKit
 import CryptoKit
 import UniformTypeIdentifiers
 
+/// Which light/dark variant an icon was rendered under.
+///
+/// Resolving the appearance is main-actor work (`NSApp.effectiveAppearance`), but icons are
+/// decoded and cached on the cooperative pool. So callers resolve this once on the main actor
+/// and pass the value down — the cache and the rasterizer never read `NSApp` themselves.
+/// Carrying it explicitly also pins one batch to one appearance: if the user toggles the theme
+/// mid-decode, every icon in flight still gets stored under the key it was rendered for,
+/// instead of writing a dark bitmap into the light slot where nothing would ever correct it.
+enum IconAppearance: String, CaseIterable, Codable, Sendable {
+    case light
+    case dark
+
+    /// The appearance currently in effect.
+    ///
+    /// `NSApp` is an implicitly-unwrapped optional that is nil until the application object
+    /// exists — never the case in the running app, but true in unit tests and headless use.
+    /// Falling back to light beats trapping.
+    @MainActor
+    static var current: IconAppearance {
+        guard let app = NSApp else { return .light }
+        return app.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .dark : .light
+    }
+
+    var nsAppearance: NSAppearance? {
+        NSAppearance(named: self == .dark ? .darkAqua : .aqua)
+    }
+}
+
 /// Manages persistent on-disk caching of decoded app icons.
 /// Caches icons by app bundle path with modification-time tracking for automatic invalidation.
+/// Icon variants for light and dark appearances are cached separately with appearance-aware keys.
 nonisolated final class IconCacheManager: @unchecked Sendable {
     static let shared = IconCacheManager()
     private init() {}
+
 
     /// In-memory layer in front of the disk cache. A cache hit here skips the SHA256 key
     /// derivation, 5 file-existence/stat syscalls, two disk reads (meta + icon), the JSON decode,
@@ -28,18 +58,40 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     // two apps sharing an 8-character path prefix (e.g. everything under /System/Applications/
     // or /Applications/) collided on the same cache file. Using a new directory name abandons
     // those corrupted entries rather than risk ever reading one back.
+    //
+    // "v4": icons are now cached per appearance, so each app has up to two entries (light and
+    // dark). v3 entries recorded only `appPath`, which made the two variants indistinguishable
+    // once read back off disk — every app appeared twice in `cachedAppPaths()` with no way to
+    // tell which was which. A new directory abandons those ambiguous entries; `CacheEntry` now
+    // records the appearance it was rendered under.
     private let cacheDir: URL = IconCacheManager.calculateCacheDirectory()
 
     private static func calculateCacheDirectory() -> URL {
         guard let first = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
-            return URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Caches/MacMuster/icons-v3", isDirectory: true)
+            return URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Caches/MacMuster/icons-v4", isDirectory: true)
         }
-        return first.appendingPathComponent("MacMuster/icons-v3", isDirectory: true)
+        return first.appendingPathComponent("MacMuster/icons-v4", isDirectory: true)
+    }
+
+    /// Cache directories abandoned by earlier key schemes. Each bump orphaned its predecessor
+    /// (v3 alone runs to ~12 MB for a typical library), and nothing ever reclaimed them.
+    private static let supersededCacheDirNames = ["icons", "icons-v2", "icons-v3"]
+
+    /// Removes cache directories left behind by previous key schemes. Safe to call repeatedly;
+    /// each name is a directory this class itself created, so there is nothing else to hit.
+    func removeSupersededCaches() {
+        let parent = cacheDir.deletingLastPathComponent()
+        for name in Self.supersededCacheDirNames {
+            try? FileManager.default.removeItem(at: parent.appendingPathComponent(name, isDirectory: true))
+        }
     }
 
     private struct CacheEntry: Codable {
         let appPath: String
         let bundleMtime: Date
+        /// Appearance this icon was rasterized under. Without it, the two per-appearance
+        /// variants of one app are indistinguishable when enumerated off disk.
+        let appearance: IconAppearance
     }
 
     /// Tries to load a cached icon for the given app path. Returns nil if cache miss or stale.
@@ -47,12 +99,13 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     /// Checks the in-memory cache first (zero I/O on a hit). Only on a memory miss does it fall
     /// through to the on-disk cache (stat + two disk reads + decode). A disk hit is then promoted
     /// into the memory cache so subsequent reads for the same path are free.
-    func cachedIcon(for appPath: String) -> NSImage? {
-        if let memory = memoryCache.object(forKey: appPath as NSString) {
+    func cachedIcon(for appPath: String, appearance: IconAppearance) -> NSImage? {
+        let memKey = memoryCacheKey(appPath, appearance: appearance)
+        if let memory = memoryCache.object(forKey: memKey) {
             return memory
         }
 
-        let cacheKey = cacheKey(for: appPath)
+        let cacheKey = cacheKey(for: appPath, appearance: appearance)
         let iconURL = cacheDir.appendingPathComponent(cacheKey, isDirectory: false)
         let metaURL = cacheDir.appendingPathComponent(cacheKey + ".meta", isDirectory: false)
 
@@ -71,11 +124,11 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
             let entry = try JSONDecoder().decode(CacheEntry.self, from: metaData)
             // If bundle's mtime differs from cached mtime, cache is stale
             if !datesEqualIgnoringSubsecond(bundleMtime, entry.bundleMtime) {
-                deleteCache(for: appPath)
+                deleteCache(for: appPath, appearance: appearance)
                 return nil
             }
         } catch {
-            deleteCache(for: appPath)
+            deleteCache(for: appPath, appearance: appearance)
             return nil
         }
 
@@ -87,13 +140,13 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
                 return nil
             }
             let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
-            memoryCache.setObject(nsImage, forKey: appPath as NSString)
+            memoryCache.setObject(nsImage, forKey: memKey)
             return nsImage
         } catch {
             // If PNG decode fails, delete corrupted cache entry
         }
 
-        deleteCache(for: appPath)
+        deleteCache(for: appPath, appearance: appearance)
         return nil
     }
 
@@ -101,8 +154,9 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     ///
     /// Writes to both the in-memory cache (for instant subsequent reads) and the on-disk cache
     /// (so the icon survives relaunch).
-    func cacheIcon(_ icon: NSImage, for appPath: String) {
-        memoryCache.setObject(icon, forKey: appPath as NSString)
+    func cacheIcon(_ icon: NSImage, for appPath: String, appearance: IconAppearance) {
+        let memKey = memoryCacheKey(appPath, appearance: appearance)
+        memoryCache.setObject(icon, forKey: memKey)
 
         guard let bundleMtime = currentBundleModificationTime(for: appPath) else {
             return
@@ -114,7 +168,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
             return
         }
 
-        let cacheKey = cacheKey(for: appPath)
+        let cacheKey = cacheKey(for: appPath, appearance: appearance)
         let iconURL = cacheDir.appendingPathComponent(cacheKey, isDirectory: false)
         let metaURL = cacheDir.appendingPathComponent(cacheKey + ".meta", isDirectory: false)
 
@@ -129,7 +183,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
             CGImageDestinationAddImage(destination, cgImage, nil)
             CGImageDestinationFinalize(destination)
 
-            let entry = CacheEntry(appPath: appPath, bundleMtime: bundleMtime)
+            let entry = CacheEntry(appPath: appPath, bundleMtime: bundleMtime, appearance: appearance)
             let metaData = try JSONEncoder().encode(entry)
             try metaData.write(to: metaURL)
         } catch {
@@ -137,20 +191,35 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         }
     }
 
-    /// Returns all cached app paths along with their cached mtimes.
-    /// Used for background refresh to detect stale entries.
-    func cachedAppPaths() -> [(appPath: String, cachedMtime: Date)] {
+    /// Returns cached app paths along with their cached mtimes, for the appearance currently
+    /// in effect. Used by the background refresh to detect stale entries.
+    ///
+    /// Filtering by appearance is what keeps each app path appearing **at most once**: an app
+    /// that has been rendered under both light and dark has two cache entries, and returning
+    /// both would hand callers a list with duplicate keys.
+    func cachedAppPaths(appearance: IconAppearance) -> [(appPath: String, cachedMtime: Date)] {
+        allCacheEntries()
+            .filter { $0.appearance == appearance }
+            .map { ($0.appPath, $0.bundleMtime) }
+    }
+
+    /// Every distinct app path in the cache, across all appearances. Used for pruning, which
+    /// must see an app even if its only cached variant belongs to the other appearance.
+    func allCachedAppPaths() -> Set<String> {
+        Set(allCacheEntries().map(\.appPath))
+    }
+
+    private func allCacheEntries() -> [CacheEntry] {
         guard FileManager.default.fileExists(atPath: cacheDir.path) else {
             return []
         }
-
-        var results: [(String, Date)] = []
 
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: cacheDir, includingPropertiesForKeys: nil) else {
             return []
         }
 
+        var results: [CacheEntry] = []
         for fileURL in contents {
             guard fileURL.pathExtension == "meta" else { continue }
             guard let metaData = try? Data(contentsOf: fileURL),
@@ -158,7 +227,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
                 continue
             }
 
-            results.append((entry.appPath, entry.bundleMtime))
+            results.append(entry)
         }
 
         return results
@@ -176,10 +245,11 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
 
     /// Deletes cache entries for apps that no longer exist on disk.
     func pruneDeletedApps(currentAppPaths: Set<String>) {
-        let cachedApps = cachedAppPaths()
-        for (appPath, _) in cachedApps {
+        // Enumerate across *all* appearances, not just the current one — otherwise a deleted
+        // app whose only cached variant belongs to the other appearance is never reclaimed.
+        for appPath in allCachedAppPaths() {
             guard !currentAppPaths.contains(appPath) else { continue }
-            deleteCache(for: appPath)
+            deleteCacheAllAppearances(for: appPath)
             mtimeCache.removeObject(forKey: appPath as NSString)
         }
 
@@ -193,19 +263,37 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
 
     // MARK: - Private
 
-    /// Full SHA256 digest of the path, hex-encoded — fixed-length and collision-free regardless
-    /// of how many paths share a common prefix (unlike a truncated byte-hex encoding, which
-    /// previously collided for every app under the same top-level directory, e.g. all of
-    /// /System/Applications/* hashed to the same key and shared one cache file).
-    func cacheKey(for appPath: String) -> String {
-        let digest = SHA256.hash(data: Data(appPath.utf8))
+    /// The single definition of how a path and an appearance combine into a cache identity.
+    /// Both the memory key and the on-disk filename derive from this, so a variant written
+    /// under one appearance can never be read back under another.
+    private func variantKey(_ appPath: String, appearance: IconAppearance) -> String {
+        "\(appPath)_\(appearance.rawValue)"
+    }
+
+    /// Memory cache key includes appearance so light and dark variants are separate in-memory.
+    private func memoryCacheKey(_ appPath: String, appearance: IconAppearance) -> NSString {
+        variantKey(appPath, appearance: appearance) as NSString
+    }
+
+    /// Full SHA256 digest of the path + appearance, hex-encoded — fixed-length and collision-free.
+    /// Light and dark variants are cached separately on disk, so switching appearance will find
+    /// the variant that was cached for the current appearance.
+    func cacheKey(for appPath: String, appearance: IconAppearance) -> String {
+        let digest = SHA256.hash(data: Data(variantKey(appPath, appearance: appearance).utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    private func deleteCache(for appPath: String) {
-        memoryCache.removeObject(forKey: appPath as NSString)
+    /// Deletes every cached appearance variant for an app — used when the app itself is gone.
+    private func deleteCacheAllAppearances(for appPath: String) {
+        for appearance in IconAppearance.allCases {
+            deleteCache(for: appPath, appearance: appearance)
+        }
+    }
 
-        let cacheKey = cacheKey(for: appPath)
+    private func deleteCache(for appPath: String, appearance: IconAppearance) {
+        memoryCache.removeObject(forKey: variantKey(appPath, appearance: appearance) as NSString)
+
+        let cacheKey = cacheKey(for: appPath, appearance: appearance)
         let iconURL = cacheDir.appendingPathComponent(cacheKey, isDirectory: false)
         let metaURL = cacheDir.appendingPathComponent(cacheKey + ".meta", isDirectory: false)
 

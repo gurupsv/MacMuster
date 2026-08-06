@@ -21,6 +21,14 @@ enum ScanMetrics {
     static let newlyInstalledWindowSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
 }
 
+// MARK: - Launch Metrics
+
+enum LaunchMetrics {
+    /// Duration between press feedback and dismissal. Long enough for the 0.2 s press animation
+    /// to read, short enough to feel instant. Set to 0 when shouldReduceMotion is on.
+    static let dismissFeedbackNanoseconds: UInt64 = 120_000_000 // 120 ms
+}
+
 // MARK: - Window Metrics
 
 enum WindowMetrics {
@@ -28,12 +36,12 @@ enum WindowMetrics {
     static let windowAnimationDelay: TimeInterval = 0.1
     static let windowMinWidth: CGFloat = 900
     static let windowMinHeight: CGFloat = 700
-    
+
     // Launch animation
     static let launchZoomOutStartScale: CGFloat = 2.0
     static let launchZoomInEndScale: CGFloat = 0.5
     static let launchZoomOutDuration: TimeInterval = 0.5
-    
+
     // Settings window
     static let settingsWindowWidth: CGFloat = 820
     static let settingsWindowHeight: CGFloat = 560

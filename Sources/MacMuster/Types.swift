@@ -21,7 +21,6 @@ struct Application: Identifiable, Hashable {
     let installationDate: Date
     let isFolder: Bool
     let containedApps: [String]?
-    let appSize: String?
     let bundleDescription: String?
     /// The underlying `AppFolder.id` when this `Application` is a synthetic folder icon
     /// (`isFolder == true`); `nil` for real apps. Lets callers read the folder identity
@@ -42,7 +41,6 @@ struct Application: Identifiable, Hashable {
          installationDate: Date,
          isFolder: Bool,
          containedApps: [String]? = nil,
-         appSize: String? = nil,
          bundleDescription: String? = nil,
          folderId: String? = nil) {
         self.id = id
@@ -52,7 +50,6 @@ struct Application: Identifiable, Hashable {
         self.installationDate = installationDate
         self.isFolder = isFolder
         self.containedApps = containedApps
-        self.appSize = appSize
         self.bundleDescription = bundleDescription
         self.folderId = folderId
         self.lowercaseName = name.lowercased()
@@ -123,14 +120,6 @@ private extension String {
         }
         return true
     }
-}
-
-// MARK: - AppMetadata
-
-struct AppMetadata {
-    let modificationDate: Date?
-    let size: Int?
-    let bundleIdentifier: String?
 }
 
 // MARK: - AppCategory

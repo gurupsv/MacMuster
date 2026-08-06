@@ -131,6 +131,45 @@ The glow effect smoothly fades from full opacity at the screen edges to transpar
 
 ---
 
+## 🆚 Why MacMuster?
+
+MacMuster takes a different approach from other Mac launchers. Here's how it stands apart:
+
+| | MacMuster | Raycast | Alfred | Spotlight |
+|---|:---:|:---:|:---:|:---:|
+| **Tech stack** | Pure Swift/SwiftUI + AppKit | React/TypeScript (web) | Objective-C (native) | Native (built-in) |
+| **Dependencies** | Zero external deps | Node.js runtime | Self-contained | N/A |
+| **Binary size** | ~668 KB stripped | ~80 MB+ | ~5 MB | Built-in |
+| **UI style** | Visual grid with app icons | Text-based command palette | Text-based command palette | Text list |
+| **Folder organization** | Drag-and-drop folders with live icon grids | Not available | Not available | Not available |
+| **Launch modes** | Window / Full Screen / Maximized | Single overlay | Single overlay | Single overlay |
+| **Glow effect** | Customizable edge glow (8 colors, intensity, width) | Not available | Not available | Not available |
+| **Provenance badge** | Flags apps outside /Applications | Not available | Not available | Not available |
+| **Multi-monitor** | Opens on cursor display, dims other displays | Single display | Single display | Single display |
+| **Network access** | Completely offline | Extensions + AI require internet | Workflows may use internet | Internet for web results |
+| **Pricing** | Free & open source (MIT) | Free + Pro subscription ($8/mo) | Free + Powerpack ($25 one-time) | Free (built-in) |
+| **AI features** | None (by design) | AI Chat, Quick AI, AI Commands | Not built-in | Not built-in |
+| **Extension ecosystem** | Not needed — everything built-in | 1,650+ extensions in Store | Community workflows | Not available |
+| **Backup & restore** | Full JSON export/import with preview | Cloud sync (Pro) | Settings sync | Not available |
+| **Privacy** | No analytics, no tracking, no telemetry | Anonymous analytics by default | Anonymous analytics | Apple analytics |
+
+### MacMuster's philosophy
+
+- **Native first** — Built entirely with Swift and AppKit/SwiftUI. No JavaScript runtime, no web views, no Electron. Just pure macOS performance.
+- **Visual, not textual** — A beautiful grid of app icons you can browse, not a command line you have to type into. See all your apps at a glance.
+- **Folders that feel like folders** — Drag apps onto each other to create folders. Each folder shows a live mini-grid of its contents. No other launcher does this.
+- **Zero distractions** — No AI, no extensions marketplace, no account sign-up, no cloud sync. Just launch your apps and get back to work.
+- **Your data stays yours** — Completely offline. No network calls. No analytics. No tracking. Your app usage history never leaves your Mac.
+- **Free, forever** — MIT licensed. No subscriptions, no paid upgrades, no feature gates.
+
+### Shy MacMuster?
+
+MacMuster is polite — it gets out of your way the moment you launch an app. No lingering overlay, no extra keystroke to dismiss it. Click an app, and MacMuster quietly steps aside so you can focus on what you opened.
+
+Other launchers hang around after launching, forcing you to hit Escape or click away. MacMuster knows its job is done and disappears instantly — no fuss, no extra step.
+
+---
+
 ## 🛠 Requirements
 
 | Requirement | Version |

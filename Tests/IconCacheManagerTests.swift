@@ -5,22 +5,24 @@ final class IconCacheManagerTests: XCTestCase {
 
     // MARK: - Cache Key Generation (SHA256)
 
+    // Appearance-keying of the cache lives in IconAppearanceTests.
+
     func testCacheKeyFullDigestNoTruncation() {
-        let key1 = IconCacheManager.shared.cacheKey(for: "/Applications/Safari.app")
-        let key2 = IconCacheManager.shared.cacheKey(for: "/System/Applications/Calculator.app")
+        let key1 = IconCacheManager.shared.cacheKey(for: "/Applications/Safari.app", appearance: .light)
+        let key2 = IconCacheManager.shared.cacheKey(for: "/System/Applications/Calculator.app", appearance: .light)
         XCTAssertNotEqual(key1, key2, "Two apps in different top-level directories should have distinct cache keys")
     }
 
     func testSamePathProducesSameKey() {
         let path = "/Applications/Xcode.app"
-        let key1 = IconCacheManager.shared.cacheKey(for: path)
-        let key2 = IconCacheManager.shared.cacheKey(for: path)
+        let key1 = IconCacheManager.shared.cacheKey(for: path, appearance: .light)
+        let key2 = IconCacheManager.shared.cacheKey(for: path, appearance: .light)
         XCTAssertEqual(key1, key2, "Same path should produce the same cache key")
     }
 
     func testCacheKeyFullHexLength() {
         // SHA256 produces 32 bytes → 64 hex characters
-        let key = IconCacheManager.shared.cacheKey(for: "/Applications/Safari.app")
+        let key = IconCacheManager.shared.cacheKey(for: "/Applications/Safari.app", appearance: .light)
         XCTAssertEqual(key.count, 64, "SHA256 cache key should be 64 hex characters")
     }
 
@@ -28,28 +30,28 @@ final class IconCacheManagerTests: XCTestCase {
         // Regression: the v2 cache key truncated the SHA256 to 8 bytes, so every app
         // under /System/Applications/* shared the same key. The v3 key uses the full
         // digest. Paths with long shared prefixes must produce different keys.
-        let keyA = IconCacheManager.shared.cacheKey(for: "/System/Applications/Calculator.app")
-        let keyB = IconCacheManager.shared.cacheKey(for: "/System/Applications/Calendar.app")
-        let keyC = IconCacheManager.shared.cacheKey(for: "/System/Applications/Maps.app")
+        let keyA = IconCacheManager.shared.cacheKey(for: "/System/Applications/Calculator.app", appearance: .light)
+        let keyB = IconCacheManager.shared.cacheKey(for: "/System/Applications/Calendar.app", appearance: .light)
+        let keyC = IconCacheManager.shared.cacheKey(for: "/System/Applications/Maps.app", appearance: .light)
         XCTAssertNotEqual(keyA, keyB, "Calculator and Calendar must have distinct cache keys")
         XCTAssertNotEqual(keyB, keyC, "Calendar and Maps must have distinct cache keys")
         XCTAssertNotEqual(keyA, keyC, "Calculator and Maps must have distinct cache keys")
     }
 
     func testCacheKeyForEmptyPath() {
-        let key = IconCacheManager.shared.cacheKey(for: "")
+        let key = IconCacheManager.shared.cacheKey(for: "", appearance: .light)
         XCTAssertEqual(key.count, 64, "Empty path should still produce a 64-char SHA256 key")
     }
 
     func testCacheKeyForPathWithSpecialCharacters() {
         let path = "/Applications/My App (Beta).app"
-        let key = IconCacheManager.shared.cacheKey(for: path)
+        let key = IconCacheManager.shared.cacheKey(for: path, appearance: .light)
         XCTAssertEqual(key.count, 64, "Path with spaces/parens should produce a valid 64-char key")
     }
 
     func testCacheKeyForLongPath() {
         let path = "/Users/test/Very/Long/Path/To/A/Nested/Directory/Containing/An/App.app"
-        let key = IconCacheManager.shared.cacheKey(for: path)
+        let key = IconCacheManager.shared.cacheKey(for: path, appearance: .light)
         XCTAssertEqual(key.count, 64, "Long path should still produce a 64-char key")
     }
 
@@ -80,7 +82,7 @@ final class IconCacheManagerTests: XCTestCase {
             rect.fill()
             return true
         }
-        IconCacheManager.shared.cacheIcon(icon, for: "/System/Applications/Calculator.app")
+        IconCacheManager.shared.cacheIcon(icon, for: "/System/Applications/Calculator.app", appearance: .light)
         let mtime1 = IconCacheManager.shared.cachedMtime(for: "/System/Applications/Calculator.app")
         let mtime2 = IconCacheManager.shared.cachedMtime(for: "/System/Applications/Calculator.app")
         let mtime3 = IconCacheManager.shared.cachedMtime(for: "/System/Applications/Calculator.app")
@@ -91,14 +93,26 @@ final class IconCacheManagerTests: XCTestCase {
 
     // MARK: - Disk Cache Operations
 
-    func testCachedAppPathsReturnsNonEmptyWhenCacheDirExists() {
-        // The cacheDir is a fixed location under ~/Library/Caches/MacMuster/icons-v3.
-        // If it exists on disk (from previous test runs or normal usage), cachedAppPaths
-        // returns all cached entries.
-        let paths = IconCacheManager.shared.cachedAppPaths()
-        // We can't guarantee the cache dir is empty, so we verify it returns the count
-        // of entries on disk (which may be 0 or more).
-        XCTAssertTrue(paths.count >= 0, "cachedAppPaths should return a non-negative count")
+    func testCachedAppPathsReportsWhatWasCached() throws {
+        guard FileManager.default.fileExists(atPath: "/System/Applications/Calculator.app") else {
+            throw XCTSkip("Calculator.app not found on this machine")
+        }
+        let path = "/System/Applications/Calculator.app"
+        IconCacheManager.shared.clearAll()
+        defer { IconCacheManager.shared.clearAll() }
+
+        XCTAssertTrue(IconCacheManager.shared.cachedAppPaths(appearance: .light).isEmpty,
+            "A cleared cache should report no entries")
+
+        let icon = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
+            NSColor.gray.setFill()
+            rect.fill()
+            return true
+        }
+        IconCacheManager.shared.cacheIcon(icon, for: path, appearance: .light)
+
+        XCTAssertEqual(IconCacheManager.shared.cachedAppPaths(appearance: .light).map(\.appPath), [path],
+            "cachedAppPaths should report exactly the app that was cached")
     }
 
     func testCacheIconForNonExistentPathStoresInMemoryCacheOnly() {
@@ -110,14 +124,14 @@ final class IconCacheManagerTests: XCTestCase {
             rect.fill()
             return true
         }
-        IconCacheManager.shared.cacheIcon(icon, for: "/NonExistent/Path.app")
-        let cached = IconCacheManager.shared.cachedIcon(for: "/NonExistent/Path.app")
+        IconCacheManager.shared.cacheIcon(icon, for: "/NonExistent/Path.app", appearance: .light)
+        let cached = IconCacheManager.shared.cachedIcon(for: "/NonExistent/Path.app", appearance: .light)
         XCTAssertNotNil(cached, "Icon should be cached in memory (mtime check only affects disk cache)")
         XCTAssertEqual(cached?.size.width, icon.size.width, "Cached icon size should match")
     }
 
     func testCachedIconForNonExistentPathReturnsNil() {
-        XCTAssertNil(IconCacheManager.shared.cachedIcon(for: "/NonExistent/Path.app"), "Non-existent path should return nil cached icon")
+        XCTAssertNil(IconCacheManager.shared.cachedIcon(for: "/NonExistent/Path.app", appearance: .light), "Non-existent path should return nil cached icon")
     }
 
     func testCacheIconForRealAppStoresInMemoryCache() throws {
@@ -129,8 +143,8 @@ final class IconCacheManagerTests: XCTestCase {
             rect.fill()
             return true
         }
-        IconCacheManager.shared.cacheIcon(icon, for: "/System/Applications/Calculator.app")
-        let cached = IconCacheManager.shared.cachedIcon(for: "/System/Applications/Calculator.app")
+        IconCacheManager.shared.cacheIcon(icon, for: "/System/Applications/Calculator.app", appearance: .light)
+        let cached = IconCacheManager.shared.cachedIcon(for: "/System/Applications/Calculator.app", appearance: .light)
         XCTAssertNotNil(cached, "Cached icon should be retrievable")
         XCTAssertEqual(cached?.size.width, icon.size.width, "Cached icon size should match")
         XCTAssertEqual(cached?.size.height, icon.size.height, "Cached icon height should match")
@@ -145,12 +159,12 @@ final class IconCacheManagerTests: XCTestCase {
             rect.fill()
             return true
         }
-        IconCacheManager.shared.cacheIcon(icon, for: path)
-        XCTAssertNotNil(IconCacheManager.shared.cachedIcon(for: path), "Icon should be cached in memory before clearAll")
+        IconCacheManager.shared.cacheIcon(icon, for: path, appearance: .light)
+        XCTAssertNotNil(IconCacheManager.shared.cachedIcon(for: path, appearance: .light), "Icon should be cached in memory before clearAll")
 
         IconCacheManager.shared.clearAll()
 
-        XCTAssertNil(IconCacheManager.shared.cachedIcon(for: path), "clearAll should evict the in-memory cache")
+        XCTAssertNil(IconCacheManager.shared.cachedIcon(for: path, appearance: .light), "clearAll should evict the in-memory cache")
     }
 
     func testClearAllRemovesDiskCacheForRealApp() throws {
@@ -163,13 +177,13 @@ final class IconCacheManagerTests: XCTestCase {
             rect.fill()
             return true
         }
-        IconCacheManager.shared.cacheIcon(icon, for: path)
-        XCTAssertNotNil(IconCacheManager.shared.cachedIcon(for: path), "Icon should be cached before clearAll")
+        IconCacheManager.shared.cacheIcon(icon, for: path, appearance: .light)
+        XCTAssertNotNil(IconCacheManager.shared.cachedIcon(for: path, appearance: .light), "Icon should be cached before clearAll")
 
         IconCacheManager.shared.clearAll()
 
-        XCTAssertNil(IconCacheManager.shared.cachedIcon(for: path), "clearAll should evict both the memory and on-disk cache, forcing a fresh decode")
-        XCTAssertTrue(IconCacheManager.shared.cachedAppPaths().isEmpty, "clearAll should remove the on-disk cache directory entirely")
+        XCTAssertNil(IconCacheManager.shared.cachedIcon(for: path, appearance: .light), "clearAll should evict both the memory and on-disk cache, forcing a fresh decode")
+        XCTAssertTrue(IconCacheManager.shared.cachedAppPaths(appearance: .light).isEmpty, "clearAll should remove the on-disk cache directory entirely")
     }
 
     func testClearAllResetsMtimeCache() throws {
@@ -182,7 +196,7 @@ final class IconCacheManagerTests: XCTestCase {
             rect.fill()
             return true
         }
-        IconCacheManager.shared.cacheIcon(icon, for: path)
+        IconCacheManager.shared.cacheIcon(icon, for: path, appearance: .light)
         XCTAssertNotNil(IconCacheManager.shared.cachedMtime(for: path), "Mtime should be populated after cacheIcon")
 
         IconCacheManager.shared.clearAll()

@@ -4,7 +4,7 @@ import XCTest
 final class ApplicationTests: XCTestCase {
 
     private func makeApp(path: String, isFolder: Bool = false) -> Application {
-        Application(id: path, name: "Test", path: path, icon: nil, installationDate: Date(), isFolder: isFolder, containedApps: nil, appSize: nil, bundleDescription: nil)
+        Application(id: path, name: "Test", path: path, icon: nil, installationDate: Date(), isFolder: isFolder, containedApps: nil, bundleDescription: nil)
     }
 
     // MARK: - F-1: isFromTrustedLocation

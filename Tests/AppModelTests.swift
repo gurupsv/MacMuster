@@ -46,24 +46,25 @@ final class AppModelTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "presentationMode")
         UserDefaults.standard.removeObject(forKey: "tintColor")
         UserDefaults.standard.removeObject(forKey: "tintStrength")
+        UserDefaults.standard.removeObject(forKey: "showHiddenApps")
     }
     
     // MARK: - Application Identity Tests
     
     func testApplicationUsesPathAsId() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         XCTAssertEqual(app.id, "/Applications/Test.app")
     }
     
     func testApplicationEqualityBasedOnPath() {
-        let app1 = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app2 = Application(id: "/Applications/Test.app", name: "Test (2)", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app1 = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app2 = Application(id: "/Applications/Test.app", name: "Test (2)", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         XCTAssertTrue(app1 == app2)
     }
     
     func testApplicationDifferentPathsAreNotEqual() {
-        let app1 = Application(id: "/Applications/Test1.app", name: "Test1", path: "/Applications/Test1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app2 = Application(id: "/Applications/Test2.app", name: "Test2", path: "/Applications/Test2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app1 = Application(id: "/Applications/Test1.app", name: "Test1", path: "/Applications/Test1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app2 = Application(id: "/Applications/Test2.app", name: "Test2", path: "/Applications/Test2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         XCTAssertNotEqual(app1, app2)
     }
     
@@ -75,16 +76,16 @@ final class AppModelTests: XCTestCase {
     
     func testSetSortOptionChangesSortOrder() {
         let apps = [
-            Application(id: "/Applications/Zulu.app", name: "Zulu", path: "/Applications/Zulu.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/Alpha.app", name: "Alpha", path: "/Applications/Alpha.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/Zulu.app", name: "Zulu", path: "/Applications/Zulu.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/Alpha.app", name: "Alpha", path: "/Applications/Alpha.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
         ]
         appModel.setApplications(apps)
         XCTAssertEqual(appModel.displayOrder.map { $0.name }, ["Alpha", "Zulu"])
     }
     
     func testSetSortOptionClearsCustomOrder() {
-        let app1 = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app2 = Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app1 = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app2 = Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app1, app2])
         appModel.customOrder[app1.path] = 0
         appModel.customOrder[app2.path] = 1
@@ -98,8 +99,8 @@ final class AppModelTests: XCTestCase {
     func testSearchFilterCaseInsensitive() {
         appModel.searchTerm = "test"
         let apps = [
-            Application(id: "/Applications/TestApp.app", name: "TestApp", path: "/Applications/TestApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/other.app", name: "other", path: "/Applications/other.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/TestApp.app", name: "TestApp", path: "/Applications/TestApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/other.app", name: "other", path: "/Applications/other.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
         ]
         appModel.setApplications(apps)
         
@@ -110,8 +111,8 @@ final class AppModelTests: XCTestCase {
     
     func testSearchFilterEmptyReturnsAllApps() {
         let apps = [
-            Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
         ]
         appModel.setApplications(apps)
         appModel.searchTerm = ""
@@ -122,7 +123,7 @@ final class AppModelTests: XCTestCase {
     func testSearchFilterNoResults() {
         appModel.searchTerm = "nonexistent"
         let apps = [
-            Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
         ]
         appModel.setApplications(apps)
         
@@ -130,8 +131,8 @@ final class AppModelTests: XCTestCase {
     }
     
     func testClearSearchStateResetsSearchOnly() {
-        let app1 = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app2 = Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app1 = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app2 = Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app1, app2])
         appModel.searchTerm = "test"
         appModel.customOrder[app1.path] = 0
@@ -154,9 +155,9 @@ final class AppModelTests: XCTestCase {
     // MARK: - Custom Order Tests
     
     func testUpdateCustomOrder() {
-        let app1 = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app2 = Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app3 = Application(id: "/Applications/App3.app", name: "App3", path: "/Applications/App3.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app1 = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app2 = Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app3 = Application(id: "/Applications/App3.app", name: "App3", path: "/Applications/App3.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app1, app2, app3])
         
         // Reverse the order
@@ -170,9 +171,9 @@ final class AppModelTests: XCTestCase {
     
     func testSortedApplicationsByName() {
         let apps = [
-            Application(id: "/Applications/Charlie.app", name: "Charlie", path: "/Applications/Charlie.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/Alice.app", name: "Alice", path: "/Applications/Alice.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/Bob.app", name: "Bob", path: "/Applications/Bob.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/Charlie.app", name: "Charlie", path: "/Applications/Charlie.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/Alice.app", name: "Alice", path: "/Applications/Alice.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/Bob.app", name: "Bob", path: "/Applications/Bob.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
         ]
         
         let sorted = appModel.sortedApplications(apps)
@@ -185,9 +186,9 @@ final class AppModelTests: XCTestCase {
         let date3 = Date(timeIntervalSince1970: 3000)
         
         let apps = [
-            Application(id: "/Applications/Old.app", name: "Old", path: "/Applications/Old.app", icon: nil, installationDate: date1, isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/New.app", name: "New", path: "/Applications/New.app", icon: nil, installationDate: date3, isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/Middle.app", name: "Middle", path: "/Applications/Middle.app", icon: nil, installationDate: date2, isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/Old.app", name: "Old", path: "/Applications/Old.app", icon: nil, installationDate: date1, isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/New.app", name: "New", path: "/Applications/New.app", icon: nil, installationDate: date3, isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/Middle.app", name: "Middle", path: "/Applications/Middle.app", icon: nil, installationDate: date2, isFolder: false, containedApps: nil, bundleDescription: nil),
         ]
         
         appModel.sortOption = .installationDate
@@ -196,9 +197,9 @@ final class AppModelTests: XCTestCase {
     }
     
     func testSortedApplicationsWithCustomOrder() {
-        let app1 = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app2 = Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app3 = Application(id: "/Applications/App3.app", name: "App3", path: "/Applications/App3.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app1 = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app2 = Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app3 = Application(id: "/Applications/App3.app", name: "App3", path: "/Applications/App3.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         
         appModel.customOrder[app3.path] = 0
         appModel.customOrder[app1.path] = 1
@@ -212,17 +213,17 @@ final class AppModelTests: XCTestCase {
     // MARK: - AppCategory Tests
     
     func testSystemCategoryForSystemApps() {
-        let app = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         XCTAssertEqual(appModel.getCategory(for: app), .system)
     }
     
     func testUtilitiesCategoryForUtilityAppsReturnsUser() {
-        let app = Application(id: "/Applications/Utilities/Terminal.app", name: "Terminal", path: "/Applications/Utilities/Terminal.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Utilities/Terminal.app", name: "Terminal", path: "/Applications/Utilities/Terminal.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         XCTAssertEqual(appModel.getCategory(for: app), .user)
     }
     
     func testUserCategoryForUserApps() {
-        let app = Application(id: "/Applications/MyApp.app", name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/MyApp.app", name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         XCTAssertEqual(appModel.getCategory(for: app), .user)
     }
     
@@ -238,8 +239,8 @@ final class AppModelTests: XCTestCase {
     // MARK: - Icon Loading & Caching Tests
 
     func testSelectedAppIndexResetToNegativeOneWhenDisplayedListEmpty() {
-        let app1 = Application(id: "/Applications/SearchMe.app", name: "SearchMe", path: "/Applications/SearchMe.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app2 = Application(id: "/Applications/Other.app", name: "Other", path: "/Applications/Other.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app1 = Application(id: "/Applications/SearchMe.app", name: "SearchMe", path: "/Applications/SearchMe.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app2 = Application(id: "/Applications/Other.app", name: "Other", path: "/Applications/Other.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app1, app2])
 
         // Navigate to first app
@@ -256,7 +257,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testLaunchSelectedAppReturnsFalseWhenNoSelection() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         // No selection (selectedAppIndex = -1)
@@ -270,9 +271,9 @@ final class AppModelTests: XCTestCase {
     // MARK: - Category Counts Tests
 
     func testCategoryCountsReflectSearchFilter() {
-        let app1 = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app2 = Application(id: "/System/Applications/Finder.app", name: "Finder", path: "/System/Applications/Finder.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app3 = Application(id: "/Applications/Xcode.app", name: "Xcode", path: "/Applications/Xcode.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app1 = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app2 = Application(id: "/System/Applications/Finder.app", name: "Finder", path: "/System/Applications/Finder.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app3 = Application(id: "/Applications/Xcode.app", name: "Xcode", path: "/Applications/Xcode.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app1, app2, app3])
 
         // Before search: counts show all apps per category
@@ -291,7 +292,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCategoryCountsBecomesZeroWhenSearchYieldsNoResults() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
         XCTAssertEqual(appModel.categoryCounts[.user] ?? 0, 1)
 
@@ -318,7 +319,7 @@ final class AppModelTests: XCTestCase {
     // MARK: - Hidden Apps Tests
 
     func testToggleHiddenAppRemovesFromVisibleList() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         XCTAssertEqual(appModel.visibleApplications.count, 1)
@@ -329,7 +330,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testToggleHiddenAppTwiceRestoresVisibility() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         appModel.toggleHiddenApp(app.path)
@@ -339,11 +340,67 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(appModel.isAppHidden(app.path))
     }
 
+    func testShowHiddenAppsDefaultIsFalse() {
+        XCTAssertFalse(appModel.showHiddenApps)
+    }
+
+    func testShowHiddenAppsTrueRevealsHiddenAppsInVisibleList() {
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        appModel.setApplications([app])
+        appModel.toggleHiddenApp(app.path)
+
+        appModel.showHiddenApps = true
+
+        XCTAssertEqual(appModel.visibleApplications.count, 1)
+    }
+
+    func testShowHiddenAppsFalseStillHidesApps() {
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        appModel.setApplications([app])
+        appModel.toggleHiddenApp(app.path)
+
+        appModel.showHiddenApps = false
+
+        XCTAssertEqual(appModel.visibleApplications.count, 0)
+    }
+
+    func testShowHiddenAppsTogglingUpdatesVisibility() {
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        appModel.setApplications([app])
+        appModel.toggleHiddenApp(app.path)
+
+        appModel.showHiddenApps = true
+        XCTAssertEqual(appModel.visibleApplications.count, 1)
+
+        appModel.showHiddenApps = false
+        XCTAssertEqual(appModel.visibleApplications.count, 0)
+
+        appModel.showHiddenApps = true
+        XCTAssertEqual(appModel.visibleApplications.count, 1)
+    }
+
+    func testShowHiddenAppsDoesNotRevealPermanentlyHiddenApps() {
+        let app = Application(id: "/System/Applications/Launchpad.app", name: "Launchpad", path: "/System/Applications/Launchpad.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        appModel.setApplications([app])
+
+        appModel.showHiddenApps = true
+
+        XCTAssertEqual(appModel.visibleApplications.count, 0)
+    }
+
+    func testShowHiddenAppsDelegatesToSettings() {
+        appModel.showHiddenApps = true
+        XCTAssertTrue(appModel.settings.showHiddenApps)
+
+        appModel.showHiddenApps = false
+        XCTAssertFalse(appModel.settings.showHiddenApps)
+    }
+
     // MARK: - Search & Navigation Tests
 
     func testNavigationWrapsAroundInCircularFashion() {
-        let app1 = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let app2 = Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app1 = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let app2 = Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app1, app2])
 
         // Navigate forward from -1 → 0 → 1 → 0 (wrap)
@@ -363,9 +420,9 @@ final class AppModelTests: XCTestCase {
 
     func testSelectFirstAppAndSelectLastApp() {
         let apps = [
-            Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/App3.app", name: "App3", path: "/Applications/App3.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/App3.app", name: "App3", path: "/Applications/App3.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
         ]
         appModel.setApplications(apps)
 
@@ -377,7 +434,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testSelectAppAtIndexGuardsAgainstOutOfBounds() {
-        let app = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/App1.app", name: "App1", path: "/Applications/App1.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         appModel.selectApp(at: 100)
@@ -387,7 +444,7 @@ final class AppModelTests: XCTestCase {
     // MARK: - Recent Apps Tests
 
     func testRecordAppLaunchAddsToRecent() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
 
         XCTAssertFalse(appModel.isRecentApp(app.path))
@@ -397,7 +454,7 @@ final class AppModelTests: XCTestCase {
 
     func testRecentAppsLimitedToEightMostRecent() {
         let apps = (1...15).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
 
@@ -418,9 +475,9 @@ final class AppModelTests: XCTestCase {
 
     func testSortByNameUsesLocalizedCaseInsensitiveComparison() {
         let apps = [
-            Application(id: "/Applications/Zebra.app", name: "Zebra", path: "/Applications/Zebra.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/apple.app", name: "apple", path: "/Applications/apple.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/Banana.app", name: "Banana", path: "/Applications/Banana.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/Zebra.app", name: "Zebra", path: "/Applications/Zebra.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/apple.app", name: "apple", path: "/Applications/apple.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/Banana.app", name: "Banana", path: "/Applications/Banana.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
         ]
         appModel.setApplications(apps)
         appModel.setSortOption(.name)
@@ -435,9 +492,9 @@ final class AppModelTests: XCTestCase {
         let twoDaysAgo = now.addingTimeInterval(-172800)
 
         let apps = [
-            Application(id: "/Applications/Old.app", name: "Old", path: "/Applications/Old.app", icon: nil, installationDate: twoDaysAgo, isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/New.app", name: "New", path: "/Applications/New.app", icon: nil, installationDate: now, isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/Middle.app", name: "Middle", path: "/Applications/Middle.app", icon: nil, installationDate: yesterday, isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/Old.app", name: "Old", path: "/Applications/Old.app", icon: nil, installationDate: twoDaysAgo, isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/New.app", name: "New", path: "/Applications/New.app", icon: nil, installationDate: now, isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/Middle.app", name: "Middle", path: "/Applications/Middle.app", icon: nil, installationDate: yesterday, isFolder: false, containedApps: nil, bundleDescription: nil),
         ]
         appModel.setApplications(apps)
         appModel.setSortOption(.installationDate)
@@ -450,7 +507,7 @@ final class AppModelTests: XCTestCase {
 
     func testSelectAppUpMovesUpByColumnCount() {
         let apps = (0..<16).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -465,7 +522,7 @@ final class AppModelTests: XCTestCase {
 
     func testSelectAppDownMovesDownByColumnCount() {
         let apps = (0..<16).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -480,7 +537,7 @@ final class AppModelTests: XCTestCase {
 
     func testSelectAppLeftMovesLeft() {
         let apps = (0..<8).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -493,7 +550,7 @@ final class AppModelTests: XCTestCase {
 
     func testSelectAppRightMovesRight() {
         let apps = (0..<8).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -506,7 +563,7 @@ final class AppModelTests: XCTestCase {
 
     func testSelectAppUpWrapsToBottomRow() {
         let apps = (0..<16).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -521,7 +578,7 @@ final class AppModelTests: XCTestCase {
 
     func testSelectAppDownWrapsToTopRow() {
         let apps = (0..<16).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -536,7 +593,7 @@ final class AppModelTests: XCTestCase {
 
     func testSelectAppLeftWrapsToEndOfPreviousRow() {
         let apps = (0..<16).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -551,7 +608,7 @@ final class AppModelTests: XCTestCase {
 
     func testSelectAppRightWrapsToStartOfNextRow() {
         let apps = (0..<16).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
         appModel.columnCount = 8
@@ -566,7 +623,7 @@ final class AppModelTests: XCTestCase {
 
     func testGridNavigationWithDifferentColumnCounts() {
         let apps = (0..<20).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         appModel.setApplications(apps)
 
@@ -648,12 +705,19 @@ final class AppModelTests: XCTestCase {
 
     // MARK: - Permanently Hidden Apps
 
-    func testAppStoreIsAlwaysHidden() {
-        XCTAssertTrue(appModel.isAppHidden("/System/Applications/App Store.app"))
-    }
-
     func testLaunchpadIsAlwaysHidden() {
         XCTAssertTrue(appModel.isAppHidden("/System/Applications/Launchpad.app"))
+    }
+
+    func testLaunchpadNotInDisplayedApps() {
+        let apps = [
+            Application(id: "/System/Applications/Launchpad.app", name: "Launchpad", path: "/System/Applications/Launchpad.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+        ]
+        appModel.setApplications(apps)
+        let displayed = appModel.getDisplayedApps()
+        XCTAssertFalse(displayed.contains { $0.path == "/System/Applications/Launchpad.app" }, "Launchpad should not appear in displayed apps")
+        XCTAssertTrue(displayed.contains { $0.path == "/Applications/Test.app" }, "Other apps should still appear")
     }
 
     func testTogglePermanentlyHiddenAppIsIgnored() {
@@ -662,7 +726,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testNormalAppCanBeToggled() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app])
         XCTAssertFalse(appModel.isAppHidden(app.path))
         appModel.toggleHiddenApp(app.path)
@@ -674,8 +738,8 @@ final class AppModelTests: XCTestCase {
     // MARK: - Category Filter
 
     func testSystemCategoryFiltersToSystemAppsOnly() {
-        let systemApp = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let userApp = Application(id: "/Applications/MyApp.app", name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let systemApp = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let userApp = Application(id: "/Applications/MyApp.app", name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([systemApp, userApp])
         appModel.selectedCategory = .system
         let displayed = appModel.getDisplayedApps()
@@ -684,8 +748,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testUserCategoryFiltersToUserAppsOnly() {
-        let systemApp = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let userApp = Application(id: "/Applications/MyApp.app", name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let systemApp = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let userApp = Application(id: "/Applications/MyApp.app", name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([systemApp, userApp])
         appModel.selectedCategory = .user
         let displayed = appModel.getDisplayedApps()
@@ -694,8 +758,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testAllCategoryShowsAllApps() {
-        let systemApp = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
-        let userApp = Application(id: "/Applications/MyApp.app", name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let systemApp = Application(id: "/System/Applications/Safari.app", name: "Safari", path: "/System/Applications/Safari.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        let userApp = Application(id: "/Applications/MyApp.app", name: "MyApp", path: "/Applications/MyApp.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([systemApp, userApp])
         appModel.selectedCategory = .all
         let displayed = appModel.getDisplayedApps()

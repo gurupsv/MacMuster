@@ -89,6 +89,10 @@ class AppModel {
         get { navigation.scrollTargetAnchor }
         set { navigation.scrollTargetAnchor = newValue }
     }
+    var launchingAppPath: String? {
+        get { navigation.launchingAppPath }
+        set { navigation.launchingAppPath = newValue }
+    }
     var searchTerm: String {
         get { navigation.searchTerm }
         set { navigation.searchTerm = newValue }
@@ -176,6 +180,10 @@ class AppModel {
         get { settings.showFoldersFirst }
         set { settings.showFoldersFirst = newValue; library.dataVersion += 1 }
     }
+    var showHiddenApps: Bool {
+        get { settings.showHiddenApps }
+        set { settings.showHiddenApps = newValue; library.dataVersion += 1 }
+    }
 
     var presentationMode: SettingsAppearance.PresentationMode {
         get { settings.presentationMode }
@@ -247,6 +255,37 @@ class AppModel {
     func selectNextApp() { navigation.selectNextApp() }
     func selectPreviousApp() { navigation.selectPreviousApp() }
     func selectApp(at index: Int) { navigation.selectApp(at: index) }
+
+    /// Launches an app with immediate visual feedback and dismisses the launcher on a fixed timer.
+    ///
+    /// Order: set feedback state → hand off to the async launcher → dismiss after the feedback beat.
+    ///
+    /// The dismissal deliberately runs on its **own** task rather than inside the launch completion
+    /// handler. That handler fires only once LaunchServices has finished starting the target app
+    /// (measured: 146 ms for Calculator, 235 ms for Books, seconds for large apps), so hanging the
+    /// hide off it reintroduces exactly the freeze this is meant to remove. Time-to-dismiss must be
+    /// a constant, independent of which app was clicked.
+    func launchAndDismiss(_ app: Application) {
+        launchingAppPath = app.path
+
+        let feedbackDuration: UInt64 = shouldReduceMotion ? 0 : LaunchMetrics.dismissFeedbackNanoseconds
+        let dismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: feedbackDuration)
+            guard !Task.isCancelled else { return }
+            launchingAppPath = nil
+            StatusBarManager.shared.hideWindow()
+        }
+
+        ApplicationService.shared.launchApplication(at: app.path, appModel: self) { success in
+            guard !success else { return }
+            // A launch that fails fast can beat the dismissal — cancel it so the launcher doesn't
+            // flicker shut and straight back open. If it already fired, showWindow() restores it.
+            dismissTask.cancel()
+            self.launchingAppPath = nil
+            StatusBarManager.shared.showWindow()
+            NSAlert.showError("Launch Failed", "Could not launch \(app.name).")
+        }
+    }
 
     static var defaultScanDirectories: [String] { LibraryScanState.defaultScanDirectories }
 }

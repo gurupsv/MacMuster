@@ -273,13 +273,13 @@ final class FolderTests: XCTestCase {
     }
 
     func testGenerateFolderIconReturnsNonNilForSingleApp() {
-        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        let app = Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         XCTAssertNotNil(IconService.shared.generateFolderIcon([app]))
     }
 
     func testGenerateFolderIconUsesDefaultGridSize3() {
         let apps = (1...9).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         let icon = IconService.shared.generateFolderIcon(apps)
         XCTAssertNotNil(icon)
@@ -287,7 +287,7 @@ final class FolderTests: XCTestCase {
 
     func testGenerateFolderIconWithCustomGridSize() {
         let apps = (1...16).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         let icon = IconService.shared.generateFolderIcon(apps, gridSize: 4)
         XCTAssertNotNil(icon)
@@ -295,7 +295,7 @@ final class FolderTests: XCTestCase {
 
     func testGenerateFolderIconWithMoreAppsThanGridCapacity() {
         let apps = (1...20).map { i in
-            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+            Application(id: "/Applications/App\(i).app", name: "App\(i)", path: "/Applications/App\(i).app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         }
         let icon = IconService.shared.generateFolderIcon(apps, gridSize: 3)
         XCTAssertNotNil(icon)
@@ -430,8 +430,8 @@ final class FolderTests: XCTestCase {
 
     func testCreateFolderAfterSetApplications() {
         let apps = [
-            Application(id: "/Applications/Xcode.app", name: "Xcode", path: "/Applications/Xcode.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
-            Application(id: "/Applications/VSCode.app", name: "VSCode", path: "/Applications/VSCode.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil),
+            Application(id: "/Applications/Xcode.app", name: "Xcode", path: "/Applications/Xcode.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
+            Application(id: "/Applications/VSCode.app", name: "VSCode", path: "/Applications/VSCode.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil),
         ]
         appModel.setApplications(apps)
         _ = appModel.createFolder(name: "Development", appPaths: ["/Applications/Xcode.app", "/Applications/VSCode.app"])
@@ -439,7 +439,7 @@ final class FolderTests: XCTestCase {
     }
 
     func testDeleteFolderAfterSetApplications() {
-        let apps = [Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)]
+        let apps = [Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)]
         appModel.setApplications(apps)
         let folder = appModel.createFolder(name: "Temp", appPaths: ["/Applications/Test.app"])
         appModel.deleteFolder(folderId: folder!.id)
@@ -465,21 +465,21 @@ final class FolderTests: XCTestCase {
     }
 
     func testAllScanDirectoriesCombinesDefaultAndCustom() {
-        let apps = [Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)]
+        let apps = [Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)]
         appModel.setApplications(apps)
         appModel.customDirectories = ["/Users/test/CustomApps"]
         XCTAssertEqual(appModel.allScanDirectories.count, AppModel.defaultScanDirectories.count + 1)
     }
 
     func testAddCustomDirectoryAddsToList() {
-        let apps = [Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)]
+        let apps = [Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)]
         appModel.setApplications(apps)
         appModel.addCustomDirectory("/Users/test/CustomApps")
         XCTAssertTrue(appModel.customDirectories.contains("/Users/test/CustomApps"))
     }
 
     func testAddCustomDirectoryDoesNotDuplicate() {
-        let apps = [Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)]
+        let apps = [Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)]
         appModel.setApplications(apps)
         appModel.addCustomDirectory("/Users/test/CustomApps")
         appModel.addCustomDirectory("/Users/test/CustomApps")
@@ -487,7 +487,7 @@ final class FolderTests: XCTestCase {
     }
 
     func testAddCustomDirectoryToNonExistentPath() {
-        let apps = [Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)]
+        let apps = [Application(id: "/Applications/Test.app", name: "Test", path: "/Applications/Test.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)]
         appModel.setApplications(apps)
         appModel.addCustomDirectory("/NonExistentPath")
         XCTAssertTrue(appModel.customDirectories.contains("/NonExistentPath"))
@@ -496,7 +496,7 @@ final class FolderTests: XCTestCase {
     // MARK: - Display Pipeline Tests (I-1)
 
     private func makeApp(_ path: String) -> Application {
-        Application(id: path, name: (path as NSString).lastPathComponent, path: path, icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, appSize: nil, bundleDescription: nil)
+        Application(id: path, name: (path as NSString).lastPathComponent, path: path, icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
     }
 
     func testGetDisplayedAppsInsideFolderShowsOnlyFolderApps() {
