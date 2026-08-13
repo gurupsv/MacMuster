@@ -103,9 +103,9 @@ struct Application: Identifiable, Hashable {
         let containingFolder = (path as NSString).deletingLastPathComponent
         let homeApplications = (NSHomeDirectory() as NSString).appendingPathComponent("Applications")
         if containingFolder == homeApplications {
-            return "Installed in your personal Applications folder (~/Applications), not the system /Applications — verify this app's source."
+            return String(localized: "Installed in your personal Applications folder (~/Applications), not the system /Applications — verify this app's source.")
         }
-        return "Installed in \(containingFolder), not /Applications or /System/Applications — verify this app's source."
+        return String(localized: "Installed in \(containingFolder), not /Applications or /System/Applications — verify this app's source.")
     }
 }
 
@@ -189,13 +189,6 @@ extension Application {
     static func stripAppSuffix(_ item: String) -> String {
         item.hasSuffix(".app") ? String(item.dropLast(4)) : item
     }
-}
-
-// MARK: - Presentation Mode
-
-enum PresentationMode {
-    case glass
-    case sheet
 }
 
 

@@ -686,7 +686,7 @@ struct FoldersSettingsPanel: View {
                 Text("Folder Management")
                     .font(.system(size: 15, weight: .semibold))
                 Spacer()
-                Text("\(appModel.folders.count) folders")
+                Text(String(localized: "\(appModel.folders.count) folders"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -814,7 +814,7 @@ struct FolderRow: View {
                     HStack {
                         Image(systemName: "square.grid.2x2")
                             .font(.system(size: 10))
-                        Text("\(folder.appPaths.count) app\(folder.appPaths.count == 1 ? "" : "s")")
+                        Text(String(localized: "\(folder.appPaths.count) app\(folder.appPaths.count == 1 ? "" : "s")"))
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                     }
@@ -858,7 +858,7 @@ struct FolderRow: View {
                         appModel.deleteFolder(folderId: folder.id)
                     }
                 } message: {
-                    Text("Are you sure you want to delete the folder \"\(folder.name)\"? This cannot be undone.")
+                    Text(String(localized: "Are you sure you want to delete the folder \"\(folder.name)\"? This cannot be undone."))
                 }
             }
             
@@ -1194,7 +1194,7 @@ struct HiddenAppsSettingsPanel: View {
                 Text("Hidden Apps")
                     .font(.system(size: 15, weight: .semibold))
                 Spacer()
-                Text("\(totalHiddenCount) hidden, \(appModel.displayOrder.count - totalHiddenCount) visible")
+                Text(String(localized: "\(totalHiddenCount) hidden, \(appModel.displayOrder.count - totalHiddenCount) visible"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -1422,7 +1422,7 @@ struct AppDirectoriesSettingsPanel: View {
                     Image(systemName: "folder.badge.plus")
                         .font(.system(size: 11))
                         .foregroundStyle(.yellow)
-                    Text("Custom directories (\(filteredDirectories.count) added)")
+                    Text(String(localized: "Custom directories (\(filteredDirectories.count) added)"))
                         .font(.system(size: 12, weight: .medium))
                 }
                 
@@ -1560,7 +1560,7 @@ struct AppDirectoriesSettingsPanel: View {
                                 Button("Cancel", role: .cancel) {}
                             },
                             message: {
-                                Text("This will remove all \(appModel.customDirectories.count) custom director\(appModel.customDirectories.count == 1 ? "y" : "ies") and trigger a full app rescan.")
+                                Text(String(localized: "This will remove all \(appModel.customDirectories.count) custom director\(appModel.customDirectories.count == 1 ? "y" : "ies") and trigger a full app rescan."))
                             }
                         )
                     }

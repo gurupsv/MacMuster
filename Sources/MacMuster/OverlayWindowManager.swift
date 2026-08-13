@@ -226,7 +226,7 @@ class OverlayWindowManager {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.titlebarSeparatorStyle = .none
-            window.title = "MacMuster"
+            window.title = String(localized: "MacMuster")
             window.level = .normal
             window.collectionBehavior = [.canJoinAllSpaces]
             window.hasShadow = true
@@ -345,89 +345,91 @@ class OverlayWindowManager {
     // internal (not private) so OverlayWindowManagerTests can simulate key events via @testable import.
     func handleKeyDown(_ event: NSEvent) -> Bool {
         switch event.keyCode {
-case KeyCodes.escape: // Escape: if search is focused, unfocus it; else close folder if inside one; else hide launcher
-if window?.firstResponder is NSTextView || window?.firstResponder is NSTextField {
-// Search field is focused - unfocus it
-window?.makeFirstResponder(nil)
-return true
-} else if let appModel = appModel, appModel.currentFolderId != nil {
-// Inside a folder - go back to the root grid instead of dismissing
-appModel.closeFolder()
-return true
-} else {
-// At root and search is not focused - hide launcher
-hide()
-return true
-}
-        case KeyCodes.backspaceDelete: // Backspace/Delete: go up one level when inside a folder (and not editing search text)
-            if window?.firstResponder is NSTextView || window?.firstResponder is NSTextField {
-                return false
-            }
-            if let appModel = appModel, appModel.currentFolderId != nil {
-                appModel.closeFolder()
-                return true
-            }
-            return false
-        case KeyCodes.returnEnter[0], KeyCodes.returnEnter[1]: // Return, Enter
-            if let appModel = appModel, !appModel.searchTerm.isEmpty {
-                let displayedApps = appModel.getDisplayedApps()
-                if let first = displayedApps.first {
-                    if first.isFolder, let folderId = first.folderId {
-                        appModel.openFolder(folderId)
-                        // Don't hide — user navigated into a folder
-                        return true
-                    }
-                    appModel.launchAndDismiss(first)
-                }
-            } else {
-                if let appModel = appModel {
-                    let displayedApps = appModel.getDisplayedApps()
-                    let idx = appModel.selectedAppIndex
-                    if idx >= 0, idx < displayedApps.count {
-                        let app = displayedApps[idx]
-                        if app.isFolder {
-                            // Folder selected — navigate in, don't dismiss
-                            _ = appModel.launchSelectedApp()
-                            return true
-                        }
-                        appModel.launchAndDismiss(app)
-                    }
-                }
-            }
+        case KeyCodes.escape:           return handleEscape(event)
+        case KeyCodes.backspaceDelete:  return handleBackspace(event)
+        case KeyCodes.returnEnter[0], KeyCodes.returnEnter[1]: return handleReturn(event)
+        case KeyCodes.forwardSlash:     return handleForwardSlash(event)
+        case KeyCodes.leftArrow, KeyCodes.rightArrow,
+             KeyCodes.downArrow, KeyCodes.upArrow: return handleArrowKey(event)
+        default:                        return handleTyping(event)
+        }
+    }
+
+    func handleEscape(_ event: NSEvent) -> Bool {
+        if window?.firstResponder is NSTextView || window?.firstResponder is NSTextField {
+            window?.makeFirstResponder(nil)
             return true
-        case KeyCodes.forwardSlash: // Forward slash (/)
-            // Focus search field when / is pressed
-            NotificationCenter.default.post(name: NSNotification.Name("focusSearchField"), object: nil)
+        } else if let appModel = appModel, appModel.currentFolderId != nil {
+            appModel.closeFolder()
             return true
-        case KeyCodes.leftArrow: // Left arrow - move selection left
-            NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
-            appModel?.selectAppLeft()
+        } else {
+            hide()
             return true
-        case KeyCodes.rightArrow: // Right arrow - move selection right
-            NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
-            appModel?.selectAppRight()
-            return true
-        case KeyCodes.downArrow: // Down arrow - move selection down
-            NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
-            appModel?.selectAppDown()
-            return true
-        case KeyCodes.upArrow: // Up arrow - move selection up
-            NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
-            appModel?.selectAppUp()
-            return true
-        default:
-            // Type-to-search: Spotlight, Launchpad, Alfred, and Raycast all let you start typing
-            // the instant the window is open — no "/" or click required first. Mirror that instead
-            // of silently dropping the keystroke. Only reachable when no text field already has
-            // first responder (AppKit routes the event straight to the field in that case, so this
-            // default case never fires), so there's no risk of double-handling a keystroke.
-            if let appModel, isPlainTypingKeystroke(event) {
-                appModel.searchTerm += event.characters ?? ""
-            NotificationCenter.default.post(name: .focusSearchField, object: nil)
-                return true
-            }
+        }
+    }
+
+    func handleBackspace(_ event: NSEvent) -> Bool {
+        if window?.firstResponder is NSTextView || window?.firstResponder is NSTextField {
             return false
         }
+        if let appModel = appModel, appModel.currentFolderId != nil {
+            appModel.closeFolder()
+            return true
+        }
+        return false
+    }
+
+    func handleReturn(_ event: NSEvent) -> Bool {
+        if let appModel = appModel, !appModel.searchTerm.isEmpty {
+            let displayedApps = appModel.getDisplayedApps()
+            if let first = displayedApps.first {
+                if first.isFolder, let folderId = first.folderId {
+                    appModel.openFolder(folderId)
+                    return true
+                }
+                appModel.launchAndDismiss(first)
+            }
+        } else {
+            if let appModel = appModel {
+                let displayedApps = appModel.getDisplayedApps()
+                let idx = appModel.selectedAppIndex
+                if idx >= 0, idx < displayedApps.count {
+                    let app = displayedApps[idx]
+                    if app.isFolder {
+                        _ = appModel.launchSelectedApp()
+                        return true
+                    }
+                    appModel.launchAndDismiss(app)
+                }
+            }
+        }
+        return true
+    }
+
+    func handleForwardSlash(_ event: NSEvent) -> Bool {
+        NotificationCenter.default.post(name: NSNotification.Name("focusSearchField"), object: nil)
+        return true
+    }
+
+    func handleArrowKey(_ event: NSEvent) -> Bool {
+        NotificationCenter.default.post(name: .keyboardNavigationDidStart, object: nil)
+        switch event.keyCode {
+        case KeyCodes.leftArrow:  appModel?.selectAppLeft()
+        case KeyCodes.rightArrow: appModel?.selectAppRight()
+        case KeyCodes.downArrow:  appModel?.selectAppDown()
+        case KeyCodes.upArrow:    appModel?.selectAppUp()
+        default: return false
+        }
+        return true
+    }
+
+    func handleTyping(_ event: NSEvent) -> Bool {
+        if let appModel, isPlainTypingKeystroke(event) {
+            appModel.searchTerm += event.characters ?? ""
+            NotificationCenter.default.post(name: .focusSearchField, object: nil)
+            return true
+        }
+        return false
     }
 
     /// Whether `event` represents an ordinary printable character typed with no command/control

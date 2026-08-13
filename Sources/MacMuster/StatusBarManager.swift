@@ -18,45 +18,33 @@ class StatusBarManager: NSObject {
 
     func setup() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-
-        if let iconURL = Bundle.main.url(forResource: "MacMusterMenuBarTemplate", withExtension: "png"),
-            let menuBarIcon = NSImage(contentsOf: iconURL) {
-            menuBarIcon.isTemplate = true
-            menuBarIcon.size = NSSize(width: 18, height: 18)
-            if let button = statusItem?.button {
-                button.image = menuBarIcon
-                button.imagePosition = .imageOnly
-                button.target = self
-                button.action = #selector(statusItemClicked)
-                button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            }
-        }
+        refreshMenuBarIcon()
 
         let menu = NSMenu()
 
-        let toggleItem = NSMenuItem(title: "Show MacMuster", action: #selector(showWindow), keyEquivalent: "")
+        let toggleItem = NSMenuItem(title: String(localized: "Show MacMuster"), action: #selector(showWindow), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let exportItem = NSMenuItem(title: "Export Backup", action: #selector(exportBackup), keyEquivalent: "")
+        let exportItem = NSMenuItem(title: String(localized: "Export Backup"), action: #selector(exportBackup), keyEquivalent: "")
         exportItem.target = self
         menu.addItem(exportItem)
 
-        let restoreItem = NSMenuItem(title: "Restore Backup", action: #selector(restoreBackup), keyEquivalent: "")
+        let restoreItem = NSMenuItem(title: String(localized: "Restore Backup"), action: #selector(restoreBackup), keyEquivalent: "")
         restoreItem.target = self
         menu.addItem(restoreItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let settingsItem = NSMenuItem(title: "Settings", action: #selector(showSettings), keyEquivalent: "")
+        let settingsItem = NSMenuItem(title: String(localized: "Settings"), action: #selector(showSettings), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let quitItem = NSMenuItem(title: "Quit MacMuster", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: String(localized: "Quit MacMuster"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -65,6 +53,19 @@ class StatusBarManager: NSObject {
 
     func setAppModel(_ model: AppModel) {
         appModel = model
+    }
+
+    func refreshMenuBarIcon() {
+        guard let iconURL = Bundle.main.url(forResource: "MacMusterMenuBarTemplate", withExtension: "png"),
+              let menuBarIcon = NSImage(contentsOf: iconURL) else { return }
+        menuBarIcon.isTemplate = true
+        menuBarIcon.size = NSSize(width: 18, height: 18)
+        guard let button = statusItem?.button else { return }
+        button.image = menuBarIcon
+        button.imagePosition = .imageOnly
+        button.target = self
+        button.action = #selector(statusItemClicked)
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
     @objc private func statusItemClicked() {
@@ -98,7 +99,7 @@ class StatusBarManager: NSObject {
     
     @objc func exportBackup() {
         guard let url = BackupManager.shared.export() else { return }
-        NSAlert.showInfo("Export Complete", "Backup saved to:\n\(url.path)")
+        NSAlert.showInfo(String(localized: "Export Complete"), String(localized: "Backup saved to:\n\(url.path)"))
     }
 
     @objc func restoreBackup() {
@@ -108,19 +109,19 @@ class StatusBarManager: NSObject {
         openPanel.allowedContentTypes = [jsonType]
         openPanel.canChooseFiles = true
         openPanel.canChooseDirectories = false
-        openPanel.prompt = "Open"
-        openPanel.title = "Restore MacMuster Backup"
+        openPanel.prompt = String(localized: "Open")
+        openPanel.title = String(localized: "Restore MacMuster Backup")
 
         guard openPanel.runModal() == .OK, let url = openPanel.url else { return }
 
         guard let preview = BackupManager.shared.restore(from: url) else {
-            NSAlert.showError("Invalid Archive", "The selected file is not a valid MacMuster backup.")
+            NSAlert.showError(String(localized: "Invalid Archive"), String(localized: "The selected file is not a valid MacMuster backup."))
             return
         }
 
         if preview.missingAppPaths.isEmpty {
             BackupManager.shared.apply(preview: preview)
-            NSAlert.showInfo("Restore Complete", "All data restored successfully.")
+            NSAlert.showInfo(String(localized: "Restore Complete"), String(localized: "All data restored successfully."))
             return
         }
 
@@ -132,9 +133,12 @@ class StatusBarManager: NSObject {
             missingCount: skippedCount,
             missingPaths: Array(preview.missingAppPaths)
         )
-        if previewPanel.runModal() == Int(NSApplication.ModalResponse.OK.rawValue) {
-            BackupManager.shared.apply(preview: preview)
-            NSAlert.showInfo("Restore Complete", "Data restored. \(skippedCount) app(s) skipped (no longer on disk).")
+        Task { @MainActor in
+            let result = await previewPanel.runModal()
+            if result == .OK {
+                BackupManager.shared.apply(preview: preview)
+                NSAlert.showInfo(String(localized: "Restore Complete"), String(localized: "Data restored. \(skippedCount) app(s) skipped (no longer on disk)."))
+            }
         }
     }
 

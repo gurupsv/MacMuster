@@ -13,7 +13,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "MacMuster",
-            dependencies: []
+            dependencies: [],
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "MacMusterTests",

@@ -34,6 +34,13 @@ final class BackupManager {
         let recentAppsEnabled: Bool
         let overlayOpacity: Double
         let showInDock: Bool
+        let launchAnimationDirection: String
+        let launchAnimationEnabled: Bool
+        let presentationMode: String
+        let tintColor: String
+        let tintStrength: Double
+        let showHiddenApps: Bool
+        let launchMode: String
         let icons: IconPack
 
         init(
@@ -59,6 +66,13 @@ final class BackupManager {
             recentAppsEnabled: Bool,
             overlayOpacity: Double,
             showInDock: Bool,
+            launchAnimationDirection: String = "zoomOut",
+            launchAnimationEnabled: Bool = true,
+            presentationMode: String = "Glass",
+            tintColor: String = "#0000FF",
+            tintStrength: Double = 0.0,
+            showHiddenApps: Bool = false,
+            launchMode: String = "Window",
             icons: IconPack
         ) {
             self.schemaVersion = schemaVersion
@@ -83,6 +97,13 @@ final class BackupManager {
             self.recentAppsEnabled = recentAppsEnabled
             self.overlayOpacity = overlayOpacity
             self.showInDock = showInDock
+            self.launchAnimationDirection = launchAnimationDirection
+            self.launchAnimationEnabled = launchAnimationEnabled
+            self.presentationMode = presentationMode
+            self.tintColor = tintColor
+            self.tintStrength = tintStrength
+            self.showHiddenApps = showHiddenApps
+            self.launchMode = launchMode
             self.icons = icons
         }
     }
@@ -120,8 +141,8 @@ final class BackupManager {
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [jsonType]
-        panel.prompt = "Save"
-        panel.title = "Export MacMuster Backup"
+        panel.prompt = String(localized: "Save")
+        panel.title = String(localized: "Export MacMuster Backup")
         panel.nameFieldStringValue = "MacMuster-Backup.json"
 
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
@@ -153,6 +174,15 @@ final class BackupManager {
         let overlayOpacity = PreferencesStore.shared.loadOverlayOpacity() ?? GlowMetrics.overlayOpacityDefault
         let showInDock = PreferencesStore.shared.loadShowInDock()
 
+        // Previously-missing settings (Bug #4)
+        let launchAnimationDirection = PreferencesStore.shared.loadLaunchAnimationDirection() ?? "zoomOut"
+        let launchAnimationEnabled = PreferencesStore.shared.loadLaunchAnimationEnabled()
+        let presentationMode = PreferencesStore.shared.loadPresentationMode() ?? "Glass"
+        let tintColor = PreferencesStore.shared.loadTintColor() ?? "#0000FF"
+        let tintStrength = PreferencesStore.shared.loadTintStrength() ?? 0.0
+        let showHiddenApps = PreferencesStore.shared.loadShowHiddenApps()
+        let launchMode = PreferencesStore.shared.loadLaunchMode() ?? "Window"
+
         // Icon pack — read PNGs from disk cache and encode as base64 Data
         let iconEntries = readIconPack()
 
@@ -179,6 +209,13 @@ final class BackupManager {
             recentAppsEnabled: recentAppsEnabled,
             overlayOpacity: overlayOpacity,
             showInDock: showInDock,
+            launchAnimationDirection: launchAnimationDirection,
+            launchAnimationEnabled: launchAnimationEnabled,
+            presentationMode: presentationMode,
+            tintColor: tintColor,
+            tintStrength: tintStrength,
+            showHiddenApps: showHiddenApps,
+            launchMode: launchMode,
             icons: IconPack(entries: iconEntries)
         )
 
@@ -296,6 +333,15 @@ final class BackupManager {
         PreferencesStore.shared.saveOverlayOpacity(archive.overlayOpacity)
         PreferencesStore.shared.saveShowInDock(archive.showInDock)
 
+        // Previously-missing settings (Bug #4)
+        PreferencesStore.shared.saveLaunchAnimationDirection(archive.launchAnimationDirection)
+        PreferencesStore.shared.saveLaunchAnimationEnabled(archive.launchAnimationEnabled)
+        PreferencesStore.shared.savePresentationMode(archive.presentationMode)
+        PreferencesStore.shared.saveTintColor(archive.tintColor)
+        PreferencesStore.shared.saveTintStrength(archive.tintStrength)
+        PreferencesStore.shared.saveShowHiddenApps(archive.showHiddenApps)
+        PreferencesStore.shared.saveLaunchMode(LaunchMode(rawValue: archive.launchMode) ?? .window)
+
         // Restore icon cache — write PNGs from archive to disk cache
         restoreIconPack(from: archive.icons)
     }
@@ -304,7 +350,7 @@ final class BackupManager {
 
     private func readIconPack() -> [String: Data] {
         let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("MacMuster/icons-v3", isDirectory: true)
+            .appendingPathComponent("MacMuster/icons-v4", isDirectory: true)
 
         guard FileManager.default.fileExists(atPath: cacheDir.path) else { return [:] }
 
@@ -314,7 +360,9 @@ final class BackupManager {
             at: cacheDir, includingPropertiesForKeys: nil) else { return [:] }
 
         for fileURL in contents {
-            guard fileURL.pathExtension == "png" else { continue }
+            // v4 cache stores icons as bare SHA256 hex filenames (no extension) alongside
+            // .meta JSON sidecar files. Skip the meta files; read everything else as icon data.
+            guard fileURL.pathExtension != "meta" else { continue }
 
             do {
                 let data = try Data(contentsOf: fileURL)
@@ -329,7 +377,7 @@ final class BackupManager {
 
     private func restoreIconPack(from iconPack: IconPack) {
         let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("MacMuster/icons-v3", isDirectory: true)
+            .appendingPathComponent("MacMuster/icons-v4", isDirectory: true)
 
         do {
             try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)

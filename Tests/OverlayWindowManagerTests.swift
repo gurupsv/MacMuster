@@ -124,4 +124,172 @@ final class OverlayWindowManagerTests: XCTestCase {
         // Defensive: a range longer than the field is not the auto-select-all state.
         XCTAssertFalse(manager.isFullSelection(NSRange(location: 0, length: 5), fieldLength: 4))
     }
+
+    // MARK: - Refactored Key Handlers
+
+    func testHandleEscapeClosesFolderWhenInsideOne() {
+        let folder = appModel.createFolder(name: "Test", appPaths: [])
+        XCTAssertNotNil(folder)
+        appModel.openFolder(folder!.id)
+        XCTAssertNotNil(appModel.currentFolderId)
+
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "", charactersIgnoringModifiers: "",
+            isARepeat: false, keyCode: KeyCodes.escape)!
+        let result = manager.handleEscape(event)
+
+        XCTAssertTrue(result)
+        XCTAssertNil(appModel.currentFolderId, "Escape should close the open folder")
+    }
+
+    func testHandleEscapeHidesWhenAtRoot() {
+        appModel.closeFolder()
+        XCTAssertNil(appModel.currentFolderId)
+
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "", charactersIgnoringModifiers: "",
+            isARepeat: false, keyCode: KeyCodes.escape)!
+        let result = manager.handleEscape(event)
+
+        XCTAssertTrue(result)
+    }
+
+    func testHandleBackspaceClosesFolderWhenInsideOne() {
+        let folder = appModel.createFolder(name: "Test", appPaths: [])
+        appModel.openFolder(folder!.id)
+        XCTAssertNotNil(appModel.currentFolderId)
+
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "", charactersIgnoringModifiers: "",
+            isARepeat: false, keyCode: KeyCodes.backspaceDelete)!
+        let result = manager.handleBackspace(event)
+
+        XCTAssertTrue(result)
+        XCTAssertNil(appModel.currentFolderId, "Backspace should close the open folder")
+    }
+
+    func testHandleBackspaceReturnsFalseAtRoot() {
+        appModel.closeFolder()
+        XCTAssertNil(appModel.currentFolderId)
+
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "", charactersIgnoringModifiers: "",
+            isARepeat: false, keyCode: KeyCodes.backspaceDelete)!
+        let result = manager.handleBackspace(event)
+
+        XCTAssertFalse(result, "Backspace at root should return false to allow system handling")
+    }
+
+    func testHandleForwardSlashPostsFocusNotification() {
+        let expectation = self.expectation(forNotification: NSNotification.Name("focusSearchField"), object: nil)
+
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "/", charactersIgnoringModifiers: "/",
+            isARepeat: false, keyCode: KeyCodes.forwardSlash)!
+        let result = manager.handleForwardSlash(event)
+
+        XCTAssertTrue(result)
+        wait(for: [expectation], timeout: 1)
+    }
+
+    func testHandleArrowKeyPostsNavigationNotification() {
+        let expectation = self.expectation(forNotification: .keyboardNavigationDidStart, object: nil)
+
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "", charactersIgnoringModifiers: "",
+            isARepeat: false, keyCode: KeyCodes.downArrow)!
+        let result = manager.handleArrowKey(event)
+
+        XCTAssertTrue(result)
+        wait(for: [expectation], timeout: 1)
+    }
+
+    func testHandleArrowKeyCallsCorrectDirection() {
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "", charactersIgnoringModifiers: "",
+            isARepeat: false, keyCode: KeyCodes.rightArrow)!
+        let result = manager.handleArrowKey(event)
+
+        XCTAssertTrue(result)
+    }
+
+    func testHandleArrowKeyUnknownKeyCodeReturnsFalse() {
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "", charactersIgnoringModifiers: "",
+            isARepeat: false, keyCode: 999)!
+        let result = manager.handleArrowKey(event)
+
+        XCTAssertFalse(result, "Unknown key code in arrow handler should return false")
+    }
+
+    func testHandleTypingAppendsToSearchTerm() {
+        appModel.searchTerm = ""
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "a", charactersIgnoringModifiers: "a",
+            isARepeat: false, keyCode: 0)!
+        let result = manager.handleTyping(event)
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(appModel.searchTerm, "a", "Plain keystroke should append to search term")
+    }
+
+    func testHandleTypingIgnoresCommandModifiedKeystroke() {
+        appModel.searchTerm = ""
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "q", charactersIgnoringModifiers: "q",
+            isARepeat: false, keyCode: 12)!
+        let result = manager.handleTyping(event)
+
+        XCTAssertFalse(result)
+        XCTAssertEqual(appModel.searchTerm, "", "Cmd-modified keystroke should not append to search term")
+    }
+
+    func testHandleKeyDownDispatchesToCorrectHandler() {
+        appModel.searchTerm = ""
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "z", charactersIgnoringModifiers: "z",
+            isARepeat: false, keyCode: 6)!
+        let result = manager.handleKeyDown(event)
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(appModel.searchTerm, "z", "handleKeyDown should dispatch plain keystroke to handleTyping")
+    }
+
+    func testHandleKeyDownDispatchesEscape() {
+        let folder = appModel.createFolder(name: "Test", appPaths: [])
+        appModel.openFolder(folder!.id)
+
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "", charactersIgnoringModifiers: "",
+            isARepeat: false, keyCode: KeyCodes.escape)!
+        let result = manager.handleKeyDown(event)
+
+        XCTAssertTrue(result)
+        XCTAssertNil(appModel.currentFolderId, "handleKeyDown should dispatch escape to handleEscape")
+    }
+
+    func testHandleKeyDownDispatchesForwardSlash() {
+        let expectation = self.expectation(forNotification: NSNotification.Name("focusSearchField"), object: nil)
+
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "/", charactersIgnoringModifiers: "/",
+            isARepeat: false, keyCode: KeyCodes.forwardSlash)!
+        let result = manager.handleKeyDown(event)
+
+        XCTAssertTrue(result)
+        wait(for: [expectation], timeout: 1)
+    }
 }

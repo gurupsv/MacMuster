@@ -127,7 +127,7 @@ struct ContentView: View {
                             
                             Spacer()
 
-                            searchIconButton
+                            SearchIconButton(appModel: appModel, isSearchExpanded: $isSearchExpanded, isSearchFocused: $isSearchFocused)
 
                             ToolbarButtons(
                 appModel: appModel,
@@ -148,14 +148,14 @@ struct ContentView: View {
                                     // so its count is always 0 (see AppModelTests).
                                     let visibleCategories: [AppCategory] = [.all, .system, .user, .mostUsed, .recentlyLaunched, .newlyInstalled]
                                     ForEach(Array(visibleCategories.enumerated()), id: \.offset) { _, category in
-                                        categoryTabButton(for: category)
+                                        CategoryTabButton(appModel: appModel, category: category)
                                     }
                                 }
                             }
                             
                             Spacer()
 
-                            searchIconButton
+                            SearchIconButton(appModel: appModel, isSearchExpanded: $isSearchExpanded, isSearchFocused: $isSearchFocused)
 
                             Menu {
                                 ForEach(ApplicationSorter.SortOption.allCases, id: \.self) { option in
@@ -195,7 +195,7 @@ struct ContentView: View {
                     
                     // Search bar — shown only when expanded via icon or / key
                     if isSearchExpanded || !appModel.searchTerm.isEmpty {
-                        searchBar
+                        SearchBarView(appModel: appModel, isSearchFocused: $isSearchFocused)
                             .transition(.asymmetric(
                                 insertion: .move(edge: .top).combined(with: .opacity),
                                 removal: .opacity
@@ -231,8 +231,8 @@ struct ContentView: View {
                                 .font(.system(size: 48))
                                 .foregroundStyle(.secondary)
                             Text(appModel.searchTerm.isEmpty
-                                 ? "No applications here"
-                                 : "No results for \"\(appModel.searchTerm)\"")
+                                 ? String(localized: "No applications here")
+                                 : String(localized: "No results for \"\(appModel.searchTerm)\""))
                                 .font(.title3)
                                 .foregroundStyle(.secondary)
                             if !appModel.searchTerm.isEmpty {
@@ -369,7 +369,7 @@ spacing: LayoutMetrics.gridSpacing
                             HStack {
                                 Text(folder.name)
                                 Spacer()
-                                Text("\(folder.appPaths.count) apps")
+                                Text(String(localized: "\(folder.appPaths.count) apps"))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -418,69 +418,6 @@ spacing: LayoutMetrics.gridSpacing
         .frame(width: 400)
     }
     
-    // MARK: - Search Bar Extraction
-    private var searchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-                .font(.body)
-            
-            TextField("Search applications...", text: $appModel.searchTerm)
-                .textFieldStyle(.plain)
-                .font(.body)
-                .focused($isSearchFocused, equals: true)
-            
-            if !appModel.searchTerm.isEmpty {
-                Button {
-                    appModel.searchTerm = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(LayoutMetrics.searchPadding)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: LayoutMetrics.searchCornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: LayoutMetrics.searchCornerRadius)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-        )
-        .frame(maxWidth: 400, alignment: .center)
-        .frame(maxWidth: .infinity, alignment: .center)
-    }
-    
-    // MARK: - Search Icon Button
-    private var searchIconButton: some View {
-        Button {
-            if appModel.shouldReduceMotion {
-                isSearchExpanded.toggle()
-            } else {
-                withAnimation(.easeInOut(duration: 0.2)) { isSearchExpanded.toggle() }
-            }
-            if isSearchExpanded { isSearchFocused = true }
-        } label: {
-            Image(systemName: "magnifyingglass")
-                .font(.body)
-                .foregroundStyle(isSearchExpanded || !appModel.searchTerm.isEmpty ? Color.primary : Color.secondary)
-                .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
-                .background(
-                    Circle()
-                        .fill(isSearchExpanded || !appModel.searchTerm.isEmpty
-                              ? Color.primary.opacity(0.15)
-                              : Color.clear)
-                )
-                .background(.ultraThinMaterial, in: Circle())
-        }
-        .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
-        .help("Search (/)")
-        .accessibilityLabel("Search applications")
-    }
-
-    private func getCategoryCount(for category: AppCategory) -> Int {
-        appModel.categoryCounts[category, default: 0]
-    }
-    
     // MARK: - Grid Item View (Fixes compiler timeout)
     @ViewBuilder
     private func gridItemView(app: Application, isSelected: Bool) -> some View {
@@ -508,7 +445,7 @@ spacing: LayoutMetrics.gridSpacing
         .onTapGesture {
             handleAppTap(app)
         }
-        .contextMenu { appContextMenu(app) }
+        .contextMenu { AppContextMenu(appModel: appModel, app: app, selectedAppPathsForFolder: $selectedAppPathsForFolder, newFolderName: $newFolderName, showCreateFolder: $showCreateFolder) }
         .draggable(app.path)
         .dropDestination(for: String.self) { items, location in
             if let droppedPath = items.first {
@@ -539,12 +476,12 @@ spacing: LayoutMetrics.gridSpacing
     private func accessibilityLabel(for app: Application) -> String {
         if app.isFolder {
             let count = app.containedApps?.count ?? 0
-            return "\(app.name) folder, \(count) app\(count == 1 ? "" : "s")"
+            return String(localized: "\(app.name) folder, \(count) app\(count == 1 ? "" : "s")")
         }
         if let warning = app.provenanceWarning {
-            return "\(app.name), application. \(warning)"
+            return String(localized: "\(app.name), application. \(warning)")
         }
-        return "\(app.name), application"
+        return String(localized: "\(app.name), application")
     }
 
     private func handleAppTap(_ app: Application) {
@@ -590,7 +527,7 @@ spacing: LayoutMetrics.gridSpacing
         if !targetApp.isFolder {
             // Set up to create new folder with both apps
             selectedAppPathsForFolder = [droppedPath, targetApp.path]
-            newFolderName = "Folder"
+            newFolderName = String(localized: "Folder")
             showCreateFolder = true
             return
         }
@@ -611,178 +548,10 @@ spacing: LayoutMetrics.gridSpacing
     }
 
     // MARK: - Context Menu Extraction (Fixes compiler timeout)
-    @ViewBuilder
-    private func folderContextMenu(_ app: Application) -> some View {
-        if let folderId = app.folderId {
-            if let folder = appModel.folders.first(where: { $0.id == folderId }) {
-                Menu {
-                    ForEach(folder.appPaths, id: \.self) { appPath in
-                        Button {
-                            appModel.removeAppFromFolder(appPath, folderId: folderId)
-                        } label: {
-                            Label("Remove \(appPath.components(separatedBy: "/").last ?? appPath)", systemImage: "minus.circle")
-                        }
-                    }
-                } label: {
-                    Text("Manage Folder Contents")
-                }
-                Divider()
-                Button {
-                    newFolderName = folder.name
-                    selectedAppPathsForFolder = []
-                    showCreateFolder = true
-                } label: {
-                    Label("Rename Folder", systemImage: "pencil")
-                }
-                Button(role: .destructive) {
-                    appModel.deleteFolder(folderId: folderId)
-                } label: {
-                    Label("Delete Folder", systemImage: "trash")
-                }
-            }
-        } else {
-            if !app.isFolder {
-                Button {
-                    let parentPath = (app.path as NSString).deletingLastPathComponent
-                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: parentPath)])
-                } label: {
-                    Label("Show in Finder", systemImage: "folder")
-                }
-            }
-            Button {
-                selectedAppPathsForFolder = [app.path]
-                newFolderName = "Folder"
-                showCreateFolder = true
-            } label: {
-                Label("Add to Folder", systemImage: "folder.badge.plus")
-            }
-            if !appModel.folders.isEmpty {
-                Menu {
-                    ForEach(appModel.folders, id: \.id) { folder in
-                        Button {
-                            appModel.addAppToFolder(app.path, folderId: folder.id)
-                        } label: {
-                            Text("Add to \(folder.name)")
-                        }
-                    }
-                } label: {
-                    Label("Add to Existing Folder", systemImage: "folder")
-                }
-            }
-            Button {
-                appModel.toggleHiddenApp(app.path)
-            } label: {
-                Label(appModel.isAppHidden(app.path) ? "Show App" : "Hide App", systemImage: appModel.isAppHidden(app.path) ? "eye" : "eye.slash")
-            }
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(app.path, forType: .string)
-            } label: {
-                Label("Copy Path", systemImage: "doc.on.doc")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func appContextMenu(_ app: Application) -> some View {
-        if !app.isFolder {
-            Button {
-                let parentPath = (app.path as NSString).deletingLastPathComponent
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: parentPath)])
-            } label: {
-                Label("Show in Finder", systemImage: "folder")
-            }
-        }
-        Button {
-            selectedAppPathsForFolder = [app.path]
-            newFolderName = "Folder"
-            showCreateFolder = true
-        } label: {
-            Label("Add to Folder", systemImage: "folder.badge.plus")
-        }
-        .disabled(appModel.currentFolderId != nil)
-        if !appModel.folders.isEmpty && app.folderId == nil {
-            Menu("Add to Existing Folder") {
-                ForEach(appModel.folders, id: \.id) { folder in
-                    Button {
-                        appModel.addAppToFolder(app.path, folderId: folder.id)
-                    } label: {
-                        Text("Add to \(folder.name)")
-                    }
-                }
-            }
-            .disabled(appModel.currentFolderId != nil)
-        }
-        if let folderId = app.folderId {
-            Button(role: .destructive) {
-                appModel.moveAppToRoot(app.path, folderId: folderId)
-            } label: {
-                Label("Move to Root", systemImage: "arrow.up.right")
-            }
-            if !appModel.folders.isEmpty && appModel.currentFolderId != nil && folderId != appModel.currentFolderId {
-                Menu("Move to Other Folder") {
-                    ForEach(appModel.folders, id: \.id) { folder in
-                        Button {
-                            appModel.moveAppInFolder(app.path, from: app.folderId!, to: folder.id)
-                        } label: {
-                            Text("Move to \(folder.name)")
-                        }
-                    }
-                }
-            } else if !appModel.folders.isEmpty && appModel.currentFolderId != nil {
-                Menu("Move to Other Folder") {
-                    ForEach(appModel.folders, id: \.id) { folder in
-                        Button {
-                            appModel.moveAppInFolder(app.path, from: app.folderId!, to: folder.id)
-                        } label: {
-                            Text("Move to \(folder.name)")
-                        }
-                    }
-                }
-            }
-        }
-        Button {
-            appModel.toggleHiddenApp(app.path)
-        } label: {
-            Label(appModel.isAppHidden(app.path) ? "Show App" : "Hide App", systemImage: appModel.isAppHidden(app.path) ? "eye" : "eye.slash")
-        }
-        Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(app.path, forType: .string)
-        } label: {
-            Label("Copy Path", systemImage: "doc.on.doc")
-        }
-    }
+    // Extracted to AppContextMenu.swift and FolderContextMenu.swift
 
     // MARK: - Category Tab Extraction (Fixes compiler timeout)
-    private func categoryTabButton(for category: AppCategory) -> some View {
-        let isSelected = appModel.selectedCategory == category
-        return Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                appModel.selectedCategory = category
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Text(category.rawValue)
-                    .font(.subheadline)
-                    .fontWeight(isSelected ? .semibold : .regular)
-                Text("\(getCategoryCount(for: category))")
-                    .font(.caption)
-                    .foregroundStyle(isSelected
-                                     ? Color(nsColor: .windowBackgroundColor).opacity(0.7)
-                                     : Color.secondary)
-            }
-            .padding(.horizontal, LayoutMetrics.categoryTabPaddingHorizontal)
-            .padding(.vertical, LayoutMetrics.categoryTabPaddingVertical)
-            .background(
-                Capsule()
-                    .fill(isSelected ? Color.primary.opacity(0.9) : Color.clear)
-            )
-            .foregroundStyle(isSelected ? Color(nsColor: .windowBackgroundColor) : Color.secondary)
-        }
-        .buttonStyle(FocusableButtonStyle(cornerRadius: 16))
-        .disabled(getCategoryCount(for: category) == 0)
-    }
+    // Extracted to CategoryTabView.swift
 }
 
 // MARK: - Section View (for Recent Apps)
@@ -812,9 +581,9 @@ struct SectionView: View {
             ) {
                 ForEach(apps) { app in
                     AppIconView(appModel: appModel, app: app, isHovered: hoveredAppPath == app.path)
-                        .accessibilityLabel(app.provenanceWarning.map { "\(app.name), application. \($0)" } ?? "\(app.name), application")
+                        .accessibilityLabel(app.provenanceWarning.map { String(localized: "\(app.name), application. \($0)") } ?? String(localized: "\(app.name), application"))
                         .accessibilityAddTraits(.isButton)
-                        .help(app.provenanceWarning.map { "\(app.name) — \($0)" } ?? app.name)
+                        .help(app.provenanceWarning.map { String(localized: "\(app.name) — \($0)") } ?? app.name)
                         .onTapGesture {
                             onLaunch(app)
                         }
@@ -1158,7 +927,7 @@ struct ToolbarButtons: View {
         .accessibilityLabel("Show keyboard shortcuts")
 
         Button {
-            newFolderName = "Folder"
+            newFolderName = String(localized: "Folder")
             selectedAppPathsForFolder = []
             showCreateFolder = true
         } label: {

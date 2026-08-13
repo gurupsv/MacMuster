@@ -73,7 +73,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.updateApplicationIcon()
-                // Notify LibraryScanState so icons re-decode with the new appearance.
+                StatusBarManager.shared.refreshMenuBarIcon()
                 let appModel = AppModelContainer.shared.appModel
                 appModel.library.handleAppearanceChange()
             }

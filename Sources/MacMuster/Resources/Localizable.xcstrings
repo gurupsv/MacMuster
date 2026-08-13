@@ -1,0 +1,609 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "OK" : {
+      "extractionState" : "manual"
+    },
+    "Loading applications…" : {
+      "extractionState" : "manual"
+    },
+    "↑↓←→ Navigate" : {
+      "extractionState" : "manual"
+    },
+    "Launch" : {
+      "extractionState" : "manual"
+    },
+    "Search" : {
+      "extractionState" : "manual"
+    },
+    "Close" : {
+      "extractionState" : "manual"
+    },
+    "All Apps" : {
+      "extractionState" : "manual"
+    },
+    "Sort applications" : {
+      "extractionState" : "manual"
+    },
+    "Recent" : {
+      "extractionState" : "manual"
+    },
+    "No applications here" : {
+      "extractionState" : "manual"
+    },
+    "Clear Search" : {
+      "extractionState" : "manual"
+    },
+    "Cannot create folders inside another folder. Close this folder first." : {
+      "extractionState" : "manual"
+    },
+    "Create New Folder" : {
+      "extractionState" : "manual"
+    },
+    "Add to Folder" : {
+      "extractionState" : "manual"
+    },
+    "Folder Name" : {
+      "extractionState" : "manual"
+    },
+    "Also add to:" : {
+      "extractionState" : "manual"
+    },
+    "Apps to add:" : {
+      "extractionState" : "manual"
+    },
+    "Cancel" : {
+      "extractionState" : "manual"
+    },
+    "Add" : {
+      "extractionState" : "manual"
+    },
+    "Folder" : {
+      "extractionState" : "manual"
+    },
+    "Keyboard shortcuts" : {
+      "extractionState" : "manual"
+    },
+    "Show keyboard shortcuts" : {
+      "extractionState" : "manual"
+    },
+    "Create new folder" : {
+      "extractionState" : "manual"
+    },
+    "Open settings" : {
+      "extractionState" : "manual"
+    },
+    "Apps refreshed" : {
+      "extractionState" : "manual"
+    },
+    "Settings" : {
+      "extractionState" : "manual"
+    },
+    "Mac App Manager" : {
+      "extractionState" : "manual"
+    },
+    "Done" : {
+      "extractionState" : "manual"
+    },
+    "General" : {
+      "extractionState" : "manual"
+    },
+    "Appearance" : {
+      "extractionState" : "manual"
+    },
+    "Hidden Apps" : {
+      "extractionState" : "manual"
+    },
+    "App Directories" : {
+      "extractionState" : "manual"
+    },
+    "Dock" : {
+      "extractionState" : "manual"
+    },
+    "Folders" : {
+      "extractionState" : "manual"
+    },
+    "Startup" : {
+      "extractionState" : "manual"
+    },
+    "Start at Login" : {
+      "extractionState" : "manual"
+    },
+    "Automatically launch MacMuster when you log in" : {
+      "extractionState" : "manual"
+    },
+    "Launch Animation" : {
+      "extractionState" : "manual"
+    },
+    "Animation Enabled" : {
+      "extractionState" : "manual"
+    },
+    "Plays a zoom animation when the launcher appears. Always plays on first launch." : {
+      "extractionState" : "manual"
+    },
+    "Animation Direction" : {
+      "extractionState" : "manual"
+    },
+    "Choose how the launcher animates when it appears" : {
+      "extractionState" : "manual"
+    },
+    "Show Folders First" : {
+      "extractionState" : "manual"
+    },
+    "When enabled, folder icons appear at the top of the app list" : {
+      "extractionState" : "manual"
+    },
+    "Press Feedback" : {
+      "extractionState" : "manual"
+    },
+    "When enabled, app icons animate when pressed" : {
+      "extractionState" : "manual"
+    },
+    "Recent Apps" : {
+      "extractionState" : "manual"
+    },
+    "Show Recent Apps" : {
+      "extractionState" : "manual"
+    },
+    "When enabled, recent applications are displayed in the launcher" : {
+      "extractionState" : "manual"
+    },
+    "App Management" : {
+      "extractionState" : "manual"
+    },
+    "Refresh Apps" : {
+      "extractionState" : "manual"
+    },
+    "Scan for newly installed or removed applications, and rebuild all app icons from scratch" : {
+      "extractionState" : "manual"
+    },
+    "Refreshing..." : {
+      "extractionState" : "manual"
+    },
+    "Refresh Now" : {
+      "extractionState" : "manual"
+    },
+    "Auto Refresh" : {
+      "extractionState" : "manual"
+    },
+    "Automatically scan for new apps at regular intervals" : {
+      "extractionState" : "manual"
+    },
+    "5 minutes" : {
+      "extractionState" : "manual"
+    },
+    "15 minutes" : {
+      "extractionState" : "manual"
+    },
+    "30 minutes" : {
+      "extractionState" : "manual"
+    },
+    "1 hour" : {
+      "extractionState" : "manual"
+    },
+    "Refresh All Apps?" : {
+      "extractionState" : "manual"
+    },
+    "Refresh" : {
+      "extractionState" : "manual"
+    },
+    "This will scan for new/removed applications and rebuild all app icons from scratch. This may take a while." : {
+      "extractionState" : "manual"
+    },
+    "White" : {
+      "extractionState" : "manual"
+    },
+    "Black" : {
+      "extractionState" : "manual"
+    },
+    "Orange" : {
+      "extractionState" : "manual"
+    },
+    "Blue" : {
+      "extractionState" : "manual"
+    },
+    "Pink" : {
+      "extractionState" : "manual"
+    },
+    "Green" : {
+      "extractionState" : "manual"
+    },
+    "Cyan" : {
+      "extractionState" : "manual"
+    },
+    "Yellow" : {
+      "extractionState" : "manual"
+    },
+    "Glow Effect" : {
+      "extractionState" : "manual"
+    },
+    "Enable Glow" : {
+      "extractionState" : "manual"
+    },
+    "Show glowing edges around the overlay window" : {
+      "extractionState" : "manual"
+    },
+    "Glow Color" : {
+      "extractionState" : "manual"
+    },
+    "Select Glow Color" : {
+      "extractionState" : "manual"
+    },
+    "Choose the color for the overlay window edges" : {
+      "extractionState" : "manual"
+    },
+    "Custom color" : {
+      "extractionState" : "manual"
+    },
+    "Custom glow color" : {
+      "extractionState" : "manual"
+    },
+    "Glow Intensity" : {
+      "extractionState" : "manual"
+    },
+    "Intensity" : {
+      "extractionState" : "manual"
+    },
+    "Glow strength:" : {
+      "extractionState" : "manual"
+    },
+    "Glow Width" : {
+      "extractionState" : "manual"
+    },
+    "Width" : {
+      "extractionState" : "manual"
+    },
+    "Glow spread:" : {
+      "extractionState" : "manual"
+    },
+    "Folder Management" : {
+      "extractionState" : "manual"
+    },
+    "Manage your folders - rename, delete, or create new ones." : {
+      "extractionState" : "manual"
+    },
+    "Search folders..." : {
+      "extractionState" : "manual"
+    },
+    "No folders created yet." : {
+      "extractionState" : "manual"
+    },
+    "Folder name" : {
+      "extractionState" : "manual"
+    },
+    "Delete Folder" : {
+      "extractionState" : "manual"
+    },
+    "Delete" : {
+      "extractionState" : "manual"
+    },
+    "Font" : {
+      "extractionState" : "manual"
+    },
+    "Font Family" : {
+      "extractionState" : "manual"
+    },
+    "Font Size" : {
+      "extractionState" : "manual"
+    },
+    "Small (12px)" : {
+      "extractionState" : "manual"
+    },
+    "Medium (14px)" : {
+      "extractionState" : "manual"
+    },
+    "Large (16px)" : {
+      "extractionState" : "manual"
+    },
+    "Extra Large (18px)" : {
+      "extractionState" : "manual"
+    },
+    "Font Weight" : {
+      "extractionState" : "manual"
+    },
+    "Layout" : {
+      "extractionState" : "manual"
+    },
+    "Column Count" : {
+      "extractionState" : "manual"
+    },
+    "Number of columns in the app grid" : {
+      "extractionState" : "manual"
+    },
+    "Icon Size" : {
+      "extractionState" : "manual"
+    },
+    "Overlay Opacity" : {
+      "extractionState" : "manual"
+    },
+    "Window transparency level" : {
+      "extractionState" : "manual"
+    },
+    "Presentation Mode" : {
+      "extractionState" : "manual"
+    },
+    "Window background style" : {
+      "extractionState" : "manual"
+    },
+    "Tint Color" : {
+      "extractionState" : "manual"
+    },
+    "Window tint color" : {
+      "extractionState" : "manual"
+    },
+    "Tint Strength" : {
+      "extractionState" : "manual"
+    },
+    "Intensity of tint overlay (0 = no tint, 1 = full tint)" : {
+      "extractionState" : "manual"
+    },
+    "Launch Mode" : {
+      "extractionState" : "manual"
+    },
+    "How the MacMuster launcher window appears when opened" : {
+      "extractionState" : "manual"
+    },
+    "Apps hidden from the launcher. Toggle visibility using the checkboxes." : {
+      "extractionState" : "manual"
+    },
+    "Show Hidden Apps" : {
+      "extractionState" : "manual"
+    },
+    "When enabled, hidden apps are displayed in the launcher" : {
+      "extractionState" : "manual"
+    },
+    "Search applications..." : {
+      "extractionState" : "manual"
+    },
+    "No applications found." : {
+      "extractionState" : "manual"
+    },
+    "System" : {
+      "extractionState" : "manual"
+    },
+    "Utilities" : {
+      "extractionState" : "manual"
+    },
+    "User" : {
+      "extractionState" : "manual"
+    },
+    "Application Directories" : {
+      "extractionState" : "manual"
+    },
+    "Custom directories to scan for additional applications." : {
+      "extractionState" : "manual"
+    },
+    "Built-in directories (always scanned):" : {
+      "extractionState" : "manual"
+    },
+    "Filter directories..." : {
+      "extractionState" : "manual"
+    },
+    "No custom directories added" : {
+      "extractionState" : "manual"
+    },
+    "No directories match your search" : {
+      "extractionState" : "manual"
+    },
+    "Add Directory" : {
+      "extractionState" : "manual"
+    },
+    "Clear All" : {
+      "extractionState" : "manual"
+    },
+    "Clear All Custom Directories" : {
+      "extractionState" : "manual"
+    },
+    "Show in Dock" : {
+      "extractionState" : "manual"
+    },
+    "Display the MacMuster icon in the Dock when running" : {
+      "extractionState" : "manual"
+    },
+    "Show MacMuster" : {
+      "extractionState" : "manual"
+    },
+    "Export Backup" : {
+      "extractionState" : "manual"
+    },
+    "Restore Backup" : {
+      "extractionState" : "manual"
+    },
+    "Quit MacMuster" : {
+      "extractionState" : "manual"
+    },
+    "Export Complete" : {
+      "extractionState" : "manual"
+    },
+    "Open" : {
+      "extractionState" : "manual"
+    },
+    "Restore MacMuster Backup" : {
+      "extractionState" : "manual"
+    },
+    "Invalid Archive" : {
+      "extractionState" : "manual"
+    },
+    "The selected file is not a valid MacMuster backup." : {
+      "extractionState" : "manual"
+    },
+    "Restore Complete" : {
+      "extractionState" : "manual"
+    },
+    "All data restored successfully." : {
+      "extractionState" : "manual"
+    },
+    "MacMuster" : {
+      "extractionState" : "manual"
+    },
+    "Show in Finder" : {
+      "extractionState" : "manual"
+    },
+    "Add to Existing Folder" : {
+      "extractionState" : "manual"
+    },
+    "Move to Root" : {
+      "extractionState" : "manual"
+    },
+    "Move to Other Folder" : {
+      "extractionState" : "manual"
+    },
+    "Show App" : {
+      "extractionState" : "manual"
+    },
+    "Hide App" : {
+      "extractionState" : "manual"
+    },
+    "Copy Path" : {
+      "extractionState" : "manual"
+    },
+    "Manage Folder Contents" : {
+      "extractionState" : "manual"
+    },
+    "Rename Folder" : {
+      "extractionState" : "manual"
+    },
+    "Search (/)" : {
+      "extractionState" : "manual"
+    },
+    "Search applications" : {
+      "extractionState" : "manual"
+    },
+    "All" : {
+      "extractionState" : "manual"
+    },
+    "Most Used" : {
+      "extractionState" : "manual"
+    },
+    "Recently Launched" : {
+      "extractionState" : "manual"
+    },
+    "Newly Installed" : {
+      "extractionState" : "manual"
+    },
+    "Restore Preview" : {
+      "extractionState" : "manual"
+    },
+    "Apply Restore" : {
+      "extractionState" : "manual"
+    },
+    "Save" : {
+      "extractionState" : "manual"
+    },
+    "Export MacMuster Backup" : {
+      "extractionState" : "manual"
+    },
+    "Launch Failed" : {
+      "extractionState" : "manual"
+    },
+    "Window" : {
+      "extractionState" : "manual"
+    },
+    "Full Screen" : {
+      "extractionState" : "manual"
+    },
+    "Maximized" : {
+      "extractionState" : "manual"
+    },
+    "Small" : {
+      "extractionState" : "manual"
+    },
+    "Medium" : {
+      "extractionState" : "manual"
+    },
+    "Large" : {
+      "extractionState" : "manual"
+    },
+    "Extra Large" : {
+      "extractionState" : "manual"
+    },
+    "Name" : {
+      "extractionState" : "manual"
+    },
+    "Installation Date" : {
+      "extractionState" : "manual"
+    },
+    "Zoom Out (starts expanded, shrinks to normal)" : {
+      "extractionState" : "manual"
+    },
+    "Zoom In (starts small, grows to normal)" : {
+      "extractionState" : "manual"
+    },
+    "Glass (frosted translucent blur)" : {
+      "extractionState" : "manual"
+    },
+    "Sheet (opaque solid background)" : {
+      "extractionState" : "manual"
+    },
+    "Sort: %@" : {
+      "extractionState" : "manual"
+    },
+    "No results for \"%@\"" : {
+      "extractionState" : "manual"
+    },
+    "%lld apps" : {
+      "extractionState" : "manual"
+    },
+    "%@ folder, %lld app%@ — %@" : {
+      "extractionState" : "manual"
+    },
+    "%@, application. %@" : {
+      "extractionState" : "manual"
+    },
+    "%@, application" : {
+      "extractionState" : "manual"
+    },
+    "%@ — %@" : {
+      "extractionState" : "manual"
+    },
+    "Version %@" : {
+      "extractionState" : "manual"
+    },
+    "%lld hidden, %lld visible" : {
+      "extractionState" : "manual"
+    },
+    "Custom directories (%lld added)" : {
+      "extractionState" : "manual"
+    },
+    "This will remove all %lld custom director%@ and trigger a full app rescan." : {
+      "extractionState" : "manual"
+    },
+    "Backup saved to:\n%@" : {
+      "extractionState" : "manual"
+    },
+    "Data restored. %lld app(s) skipped (no longer on disk)." : {
+      "extractionState" : "manual"
+    },
+    "Could not launch %@." : {
+      "extractionState" : "manual"
+    },
+    "Folders to restore: %lld" : {
+      "extractionState" : "manual"
+    },
+    "Valid apps to restore: %lld" : {
+      "extractionState" : "manual"
+    },
+    "%lld app(s) will be skipped (not found on disk):" : {
+      "extractionState" : "manual"
+    },
+    "Are you sure you want to delete the folder \"%@\"? This cannot be undone." : {
+      "extractionState" : "manual"
+    },
+    "Installed in your personal Applications folder (~/Applications), not the system /Applications — verify this app's source." : {
+      "extractionState" : "manual"
+    },
+    "Installed in %@, not /Applications or /System/Applications — verify this app's source." : {
+      "extractionState" : "manual"
+    },
+    "Add to %@" : {
+      "extractionState" : "manual"
+    },
+    "Move to %@" : {
+      "extractionState" : "manual"
+    },
+    "%lld app%@ — %@" : {
+      "extractionState" : "manual"
+    }
+  },
+  "version" : "1.0"
+}

@@ -765,4 +765,22 @@ final class AppModelTests: XCTestCase {
         let displayed = appModel.getDisplayedApps()
         XCTAssertEqual(displayed.count, 2)
     }
+
+    // MARK: - PresentationMode (Bug #3: bare enum removed, only SettingsAppearance.PresentationMode exists)
+
+    func testPresentationModeIsNamespacedUnderSettingsAppearance() {
+        // The bare `PresentationMode` enum was removed from Types.swift.
+        // Only `SettingsAppearance.PresentationMode` should exist.
+        let mode = SettingsAppearance.PresentationMode.glass
+        XCTAssertEqual(mode.rawValue, "Glass")
+        XCTAssertEqual(SettingsAppearance.PresentationMode.allCases.count, 2)
+    }
+
+    func testPresentationModeRoundTripsThroughRawValue() {
+        for mode in SettingsAppearance.PresentationMode.allCases {
+            let raw = mode.rawValue
+            let restored = SettingsAppearance.PresentationMode(rawValue: raw)
+            XCTAssertEqual(restored, mode, "PresentationMode '\(raw)' should round-trip")
+        }
+    }
 }

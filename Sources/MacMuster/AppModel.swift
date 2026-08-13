@@ -5,6 +5,16 @@ import Observation
 
 /// Thin wrapper combining SettingsAppearance, LibraryScanState, and NavigationSelection.
 /// Existing code references AppModel; this delegates to the three smaller @Observable objects.
+///
+/// ## Migration Path (Issue #5)
+/// The ~100 delegated properties/methods below are a maintenance tax. New code should access
+/// the sub-objects directly:
+///   `appModel.settings.glowEnabled`  instead of  `appModel.glowEnabled`
+///   `appModel.library.folders`       instead of  `appModel.folders`
+///   `appModel.navigation.searchTerm` instead of  `appModel.searchTerm`
+///
+/// The delegated properties remain for backward compatibility with existing callers.
+/// Once all call sites are migrated, the delegation block (lines 28–257) can be removed.
 @MainActor
 @Observable
 class AppModel {
@@ -283,7 +293,7 @@ class AppModel {
             dismissTask.cancel()
             self.launchingAppPath = nil
             StatusBarManager.shared.showWindow()
-            NSAlert.showError("Launch Failed", "Could not launch \(app.name).")
+            NSAlert.showError(String(localized: "Launch Failed"), String(localized: "Could not launch \(app.name)."))
         }
     }
 

@@ -95,7 +95,7 @@ final class FolderStore {
             installationDate: folder.createdAt,
             isFolder: true,
             containedApps: folder.appPaths,
-            bundleDescription: "\(count) app\(count == 1 ? "" : "s")",
+            bundleDescription: String(localized: "\(count) app\(count == 1 ? "" : "s")"),
             folderId: folder.id
         )
     }

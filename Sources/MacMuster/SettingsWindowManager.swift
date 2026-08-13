@@ -59,7 +59,7 @@ class SettingsWindowManager {
             backing: .buffered,
             defer: false
         )
-        settingsWindow?.title = "Settings"
+        settingsWindow?.title = String(localized: "Settings")
         settingsWindow?.isRestorable = false
         settingsWindow?.hasShadow = true
         settingsWindow?.level = .floating

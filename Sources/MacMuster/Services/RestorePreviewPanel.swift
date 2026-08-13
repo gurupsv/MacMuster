@@ -4,8 +4,7 @@ import SwiftUI
 @MainActor
 class RestorePreviewPanel: NSObject {
     private var window: NSWindow?
-    private let resultSemaphore = DispatchSemaphore(value: 0)
-    private var _result = Int(NSApplication.ModalResponse.cancel.rawValue)
+    private var continuation: CheckedContinuation<NSApplication.ModalResponse, Never>?
 
     let folderCount: Int
     let appCount: Int
@@ -25,10 +24,10 @@ class RestorePreviewPanel: NSObject {
         super.init()
 
         let onApply: () -> Void = { [weak self] in
-            self?.complete(with: NSApplication.ModalResponse.OK)
+            self?.complete(with: .OK)
         }
         let onCancel: () -> Void = { [weak self] in
-            self?.complete(with: NSApplication.ModalResponse.cancel)
+            self?.complete(with: .cancel)
         }
 
         let contentView = RestorePreviewView(
@@ -52,7 +51,7 @@ class RestorePreviewPanel: NSObject {
             backing: .buffered,
             defer: false
         )
-        window?.title = "Restore Preview"
+        window?.title = String(localized: "Restore Preview")
         window?.isRestorable = false
         window?.hasShadow = true
         window?.level = .floating
@@ -61,19 +60,20 @@ class RestorePreviewPanel: NSObject {
         window?.minSize = NSSize(width: 500, height: 350)
     }
 
-    func runModal() -> Int {
-        guard let window else { return NSApplication.ModalResponse.cancel.rawValue }
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        window.center()
-        resultSemaphore.wait()
-        return _result
+    func runModal() async -> NSApplication.ModalResponse {
+        guard let window else { return .cancel }
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.center()
+        }
     }
 
     private func complete(with result: NSApplication.ModalResponse) {
-        _result = Int(result.rawValue)
-        resultSemaphore.signal()
         window?.orderOut(nil)
+        continuation?.resume(returning: result)
+        continuation = nil
     }
 }
 
@@ -109,7 +109,7 @@ struct RestorePreviewView: View {
                     HStack {
                         Image(systemName: "exclamationmark.triangle")
                             .foregroundStyle(.orange)
-                        Text("\(missingCount) app(s) will be skipped (not found on disk):")
+                        Text(String(localized: "\(missingCount) app(s) will be skipped (not found on disk):"))
                             .font(.system(size: 13, weight: .medium))
                     }
 

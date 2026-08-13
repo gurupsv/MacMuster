@@ -310,4 +310,180 @@ final class BackupManagerTests: XCTestCase {
 
         XCTAssertEqual(preview.appCount, 1 + folder.appPaths.count, "App count should include valid apps plus all folder app paths")
     }
+
+    // MARK: - Icon Pack Directory (Bug #1: icons-v3 → icons-v4)
+
+    // Note: export() opens an NSSavePanel which requires UI interaction, so icon pack
+    // directory tests verify the archive structure directly (see BackupArchive tests below).
+
+    @MainActor
+    func testIconPackRestoreWritesToV4CacheDirectory() throws {
+        // Verify that restoreIconPack writes to the v4 cache directory.
+        let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MacMuster/icons-v4", isDirectory: true)
+        // Clean up any existing v4 cache
+        try? FileManager.default.removeItem(at: cacheDir)
+
+        let iconPack = BackupManager.IconPack(entries: ["restore_test_key": Data([0x11, 0x22])])
+        let archive = BackupManager.BackupArchive(
+            appFolders: [],
+            customOrder: [:],
+            hiddenAppPaths: Set<String>(),
+            sortOption: ApplicationSorter.SortOption.name.rawValue,
+            iconSize: IconSize.medium.rawValue,
+            showFoldersFirst: false,
+            refreshInterval: 30.0,
+            currentFolderId: nil,
+            customDirectories: [],
+            glowEnabled: false,
+            glowColor: "#ffffff",
+            glowIntensity: 0.5,
+            glowWidth: 2.0,
+            fontFamily: "System",
+            fontSize: 14.0,
+            fontWeight: "Regular",
+            pressFeedbackEnabled: true,
+            recentAppsEnabled: false,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
+            showInDock: true,
+            icons: iconPack
+        )
+        let preview = BackupManager.BackupPreview(
+            archive: archive,
+            validAppPaths: Set<String>(),
+            missingAppPaths: Set<String>()
+        )
+        BackupManager.shared.apply(preview: preview)
+
+        let restoredFile = cacheDir.appendingPathComponent("restore_test_key")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: restoredFile.path),
+            "Restored icon should be written to the v4 cache directory")
+        let restoredData = try Data(contentsOf: restoredFile)
+        XCTAssertEqual(restoredData, Data([0x11, 0x22]),
+            "Restored icon data should match the original")
+
+        try? FileManager.default.removeItem(at: cacheDir)
+    }
+
+    // MARK: - BackupArchive Missing Fields (Bug #4)
+
+    func testBackupArchiveIncludesAllSevenPreviouslyMissingFields() {
+        let archive = BackupManager.BackupArchive(
+            appFolders: [],
+            customOrder: [:],
+            hiddenAppPaths: Set<String>(),
+            sortOption: ApplicationSorter.SortOption.name.rawValue,
+            iconSize: IconSize.medium.rawValue,
+            showFoldersFirst: false,
+            refreshInterval: 30.0,
+            currentFolderId: nil,
+            customDirectories: [],
+            glowEnabled: false,
+            glowColor: "#ffffff",
+            glowIntensity: 0.5,
+            glowWidth: 2.0,
+            fontFamily: "System",
+            fontSize: 14.0,
+            fontWeight: "Regular",
+            pressFeedbackEnabled: true,
+            recentAppsEnabled: false,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
+            showInDock: true,
+            launchAnimationDirection: "zoomIn",
+            launchAnimationEnabled: false,
+            presentationMode: "Sheet",
+            tintColor: "#FF0000",
+            tintStrength: 0.5,
+            showHiddenApps: true,
+            launchMode: "Full Screen",
+            icons: BackupManager.IconPack(entries: [:])
+        )
+        XCTAssertEqual(archive.launchAnimationDirection, "zoomIn")
+        XCTAssertEqual(archive.launchAnimationEnabled, false)
+        XCTAssertEqual(archive.presentationMode, "Sheet")
+        XCTAssertEqual(archive.tintColor, "#FF0000")
+        XCTAssertEqual(archive.tintStrength, 0.5)
+        XCTAssertEqual(archive.showHiddenApps, true)
+        XCTAssertEqual(archive.launchMode, "Full Screen")
+    }
+
+    func testBackupArchiveDefaultsForMissingFields() {
+        let archive = BackupManager.BackupArchive(
+            appFolders: [],
+            customOrder: [:],
+            hiddenAppPaths: Set<String>(),
+            sortOption: ApplicationSorter.SortOption.name.rawValue,
+            iconSize: IconSize.medium.rawValue,
+            showFoldersFirst: false,
+            refreshInterval: 30.0,
+            currentFolderId: nil,
+            customDirectories: [],
+            glowEnabled: false,
+            glowColor: "#ffffff",
+            glowIntensity: 0.5,
+            glowWidth: 2.0,
+            fontFamily: "System",
+            fontSize: 14.0,
+            fontWeight: "Regular",
+            pressFeedbackEnabled: true,
+            recentAppsEnabled: false,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
+            showInDock: true,
+            icons: BackupManager.IconPack(entries: [:])
+        )
+        // Defaults for the 7 previously-missing fields
+        XCTAssertEqual(archive.launchAnimationDirection, "zoomOut")
+        XCTAssertEqual(archive.launchAnimationEnabled, true)
+        XCTAssertEqual(archive.presentationMode, "Glass")
+        XCTAssertEqual(archive.tintColor, "#0000FF")
+        XCTAssertEqual(archive.tintStrength, 0.0)
+        XCTAssertEqual(archive.showHiddenApps, false)
+        XCTAssertEqual(archive.launchMode, "Window")
+    }
+
+    func testBackupArchiveRoundTripsAllFieldsViaJSON() throws {
+        let archive = BackupManager.BackupArchive(
+            appFolders: [],
+            customOrder: ["/app": 1],
+            hiddenAppPaths: Set(["/hidden.app"]),
+            sortOption: ApplicationSorter.SortOption.installationDate.rawValue,
+            iconSize: IconSize.large.rawValue,
+            showFoldersFirst: true,
+            refreshInterval: 900.0,
+            currentFolderId: "folder-123",
+            customDirectories: ["/Custom"],
+            glowEnabled: true,
+            glowColor: "#00FF00",
+            glowIntensity: 0.8,
+            glowWidth: 20.0,
+            fontFamily: "Helvetica Neue",
+            fontSize: 16.0,
+            fontWeight: "bold",
+            pressFeedbackEnabled: false,
+            recentAppsEnabled: true,
+            overlayOpacity: 0.75,
+            showInDock: false,
+            launchAnimationDirection: "zoomIn",
+            launchAnimationEnabled: false,
+            presentationMode: "Sheet",
+            tintColor: "#FF00FF",
+            tintStrength: 0.3,
+            showHiddenApps: true,
+            launchMode: "Maximized",
+            icons: BackupManager.IconPack(entries: ["k": Data([1])])
+        )
+        let data = try JSONEncoder().encode(archive)
+        let decoded = try JSONDecoder().decode(BackupManager.BackupArchive.self, from: data)
+        XCTAssertEqual(decoded.launchAnimationDirection, "zoomIn")
+        XCTAssertEqual(decoded.launchAnimationEnabled, false)
+        XCTAssertEqual(decoded.presentationMode, "Sheet")
+        XCTAssertEqual(decoded.tintColor, "#FF00FF")
+        XCTAssertEqual(decoded.tintStrength, 0.3)
+        XCTAssertEqual(decoded.showHiddenApps, true)
+        XCTAssertEqual(decoded.launchMode, "Maximized")
+        // Also verify existing fields survived
+        XCTAssertEqual(decoded.sortOption, ApplicationSorter.SortOption.installationDate.rawValue)
+        XCTAssertEqual(decoded.showFoldersFirst, true)
+        XCTAssertEqual(decoded.glowColor, "#00FF00")
+    }
 }
