@@ -447,7 +447,7 @@ struct GeneralSettingsPanel: View {
                     await MainActor.run {
                         isRefreshing = true
                     }
-                    await appModel.refreshDisplayOrder(force: true)
+                    await appModel.refreshDisplayOrder(reason: .userRequested)
                     await MainActor.run {
                         isRefreshing = false
                         showRefreshComplete = true

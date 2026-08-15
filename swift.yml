@@ -1,3 +1,0 @@
-lint: swift build 2>&1 | grep -E "error|warning"
-test: swift test 2>&1 | tail -30
-

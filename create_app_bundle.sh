@@ -5,6 +5,8 @@
 
 set -e
 
+source "$(dirname "$0")/build_common.sh"
+
 APP_NAME="MacMuster"
 APP_DIR="${APP_NAME}.app"
 BUNDLE_ID="com.macmuster.app"
@@ -13,6 +15,7 @@ ENTITLEMENTS="entitlements.plist"
 # Read version from single source of truth
 VERSION=$(cat version.txt 2>/dev/null || echo "1.0.0")
 BUILD_NUM=$(git rev-list --count HEAD 2>/dev/null || echo "1")
+GIT_REVISION=$(git describe --tags --always --dirty 2>/dev/null || echo "unknown")
 
 # Build release binary (debug builds can mask performance issues)
 echo "Building ${APP_NAME}..."
@@ -33,11 +36,9 @@ mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$BINARY" "$APP_DIR/Contents/MacOS/"
 
-# Copy resources
-RESOURCES_DIR="Resources"
-if [ -d "$RESOURCES_DIR" ]; then
-    cp -R "$RESOURCES_DIR"/* "$APP_DIR/Contents/Resources/"
-fi
+# Copy resources (explicit list — see build_common.sh)
+copy_bundle_resources "$APP_DIR/Contents/Resources"
+compile_asset_catalog "$APP_DIR/Contents/Resources"
 
 # Write Info.plist (must match build_production.sh for stable bundle identity)
 cat > "$APP_DIR/Contents/Info.plist" << PLIST_EOF
@@ -69,6 +70,8 @@ cat > "$APP_DIR/Contents/Info.plist" << PLIST_EOF
     <string>14.0</string>
     <key>NSRequiresAquaSystemAppearance</key>
     <false/>
+    <key>MacMusterGitRevision</key>
+    <string>${GIT_REVISION}</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
 </dict>

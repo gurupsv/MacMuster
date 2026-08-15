@@ -28,7 +28,21 @@ class LibraryScanState {
         }
     }
     var allScanDirectories: [String] = [] {
-        didSet { dataVersion += 1 }
+        didSet {
+            // Re-point the watcher at the new set and rescan, since the apps on offer just
+            // changed. Skipped until the initial load has run, which is what starts the watcher
+            // in the first place, and skipped when the value didn't actually change so redundant
+            // assignments (e.g. re-saving the same custom directories) don't invalidate every
+            // display cache for nothing. This only fires from a config change (`customDirectories`
+            // add/remove) — a deliberate user action, not filesystem churn — so it schedules with
+            // no settle delay rather than the 1s one FSEvents-driven calls use; a plain `.scheduled`
+            // refresh would not do here either: adding or removing a directory moves no mtime, so
+            // the staleness guard would skip the very rescan the change calls for.
+            guard !isLoading, oldValue != allScanDirectories else { return }
+            dataVersion += 1
+            startWatchingScanDirectories()
+            scheduleFileSystemRescan(delay: 0)
+        }
     }
     private var customDirectoryBookmarks: [String: Data] = [:]
     private var activeSecurityScopedURLs: [String: URL] = [:]
@@ -41,6 +55,12 @@ class LibraryScanState {
     }
     var _recentApps: [Application] = []
     var _mostUsedApps: [Application] = []
+    // INVARIANT: every writer of `customOrder` must go through this property (or bump
+    // `dataVersion` separately). `DisplayQuery` does not include `customOrder` because it is a
+    // dictionary, too costly to compare on every `getDisplayedApps` call. The cache stays correct
+    // only because each mutation here bumps `dataVersion`, which invalidates `cachedDisplayedApps`.
+    // Adding a new code path that mutates the drag order without this bump will silently serve a
+    // stale grid.
     var customOrder: [String: Int] = [:] {
         didSet { dataVersion += 1; PreferencesStore.shared.saveCustomOrder(customOrder) }
     }
@@ -49,10 +69,26 @@ class LibraryScanState {
     }
 
     private var cachedVisibleApps: (version: Int, apps: [Application])?
-    var cachedDisplayedApps: (version: Int, apps: [Application])?
+    /// Everything about a `getDisplayedApps` request that changes its answer.
+    ///
+    /// The cache used to key on `dataVersion` alone and ignore the arguments entirely. That held
+    /// together only because every setter feeding those arguments also bumps `dataVersion` — an
+    /// unwritten invariant spread across several files, where the penalty for breaking it is a
+    /// silently stale grid rather than a failure. `customOrder` is still covered that way: it is
+    /// a dictionary, too costly to compare per call, and its own observer bumps `dataVersion`.
+    struct DisplayQuery: Equatable {
+        let version: Int
+        let searchTerm: String
+        let showFoldersFirst: Bool
+        let sortOption: ApplicationSorter.SortOption
+        let selectedCategory: AppCategory
+    }
+    var cachedDisplayedApps: (query: DisplayQuery, apps: [Application])?
     var isScanning = false
     private var refreshTimer: Timer?
     private var cacheRefreshTimer: Timer?
+    private var directoryWatcher: DirectoryWatcher?
+    private var pendingRescanTask: Task<Void, Never>?
     weak var settings: SettingsAppearance?
     weak var navigation: NavigationSelection?
 
@@ -90,6 +126,7 @@ class LibraryScanState {
         dataVersion += 1
         self.updateFilteredApps()
         self.setupRefreshTimer()
+        self.startWatchingScanDirectories()
         isLoading = false
         await self.loadMissingIcons()
         self.updateRecentApps()
@@ -138,11 +175,56 @@ class LibraryScanState {
         }
     }
 
+    /// Subscribes to filesystem changes in the scanned directories so a newly installed app shows
+    /// up in seconds instead of waiting out the refresh interval. The periodic timer stays as a
+    /// backstop for anything the watcher misses (a stream dropped across sleep, a directory that
+    /// did not exist when the watcher started).
+    private func startWatchingScanDirectories() {
+        let watcher = directoryWatcher ?? DirectoryWatcher { [weak self] in
+            Task { @MainActor in self?.scheduleFileSystemRescan() }
+        }
+        directoryWatcher = watcher
+        watcher.start(paths: allScanDirectories)
+    }
+
+    /// Coalesces a burst of filesystem events into one rescan, after settling for `delay`.
+    ///
+    /// Installing an app is hundreds of writes over a noticeable stretch of time, and scanning
+    /// partway through would surface a half-copied bundle. Each FSEvents-driven call pushes the
+    /// rescan out, so the scan lands once the directory has been quiet for `delay`
+    /// (`installSettleNanoseconds`). A directory add/remove is a deliberate user action rather
+    /// than filesystem churn, so it passes `delay: 0` to skip that settle — but still goes
+    /// through here rather than calling `refreshDisplayOrder` directly, so a scan already in
+    /// flight gets queued behind instead of silently dropped.
+    private func scheduleFileSystemRescan(delay: UInt64 = ScanMetrics.installSettleNanoseconds) {
+        pendingRescanTask?.cancel()
+        pendingRescanTask = Task { @MainActor [weak self] in
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: delay)
+            }
+            guard let self, !Task.isCancelled else { return }
+
+            // `refreshDisplayOrder` drops the request outright if a scan is already running, so
+            // wait one out rather than losing the event that prompted this. Polls on
+            // `scanCompletionPollNanoseconds`, not `delay`/`installSettleNanoseconds` — those are
+            // burst-coalescing delays, unrelated to how quickly a finished scan should be noticed.
+            while isScanning {
+                try? await Task.sleep(nanoseconds: ScanMetrics.scanCompletionPollNanoseconds)
+                if Task.isCancelled { return }
+            }
+            await refreshDisplayOrder(reason: .fileSystemEvent)
+        }
+    }
+
     func cleanupTimerAndObservers() {
         refreshTimer?.invalidate()
         refreshTimer = nil
         cacheRefreshTimer?.invalidate()
         cacheRefreshTimer = nil
+        pendingRescanTask?.cancel()
+        pendingRescanTask = nil
+        directoryWatcher?.stop()
+        directoryWatcher = nil
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
@@ -248,12 +330,27 @@ class LibraryScanState {
         return ApplicationSorter.sort(apps, by: sortOption)
     }
 
-    /// - Parameter force: when `true`, bypasses the staleness guard (so the scan always runs)
-    ///   and wipes every cached icon — disk and memory — instead of preserving currently-loaded
-    ///   ones, so an icon that's rendering wrong gets re-decoded from scratch rather than being
-    ///   carried forward. Used by the manual "Refresh Now" button; the automatic background
-    ///   refresh always passes `false` to stay cheap and incremental.
-    func refreshDisplayOrder(force: Bool = false) async {
+    /// Why a refresh is happening. "Always scan" and "rebuild icons" are independent decisions,
+    /// and collapsing them into one `force` flag left no way to express the case the filesystem
+    /// watcher needs: scan right now, but keep the icons we already decoded.
+    enum RefreshReason {
+        /// Periodic timer. Skips the scan entirely when no watched directory's mtime moved and
+        /// the last scan is recent — the cheap, common case.
+        case scheduled
+        /// A watched directory changed on disk. Always scans: an app installed into an existing
+        /// subdirectory (`/Applications/SomeVendor/Foo.app`) leaves `/Applications`'s own mtime
+        /// untouched, so the staleness guard would otherwise skip precisely the install we were
+        /// told about. Icons are preserved — nothing about an install invalidates them.
+        case fileSystemEvent
+        /// The "Refresh Now" button. Always scans, and wipes every cached icon so one that is
+        /// rendering wrong gets re-decoded from scratch instead of being carried forward.
+        case userRequested
+
+        var bypassesStalenessCheck: Bool { self != .scheduled }
+        var rebuildsIcons: Bool { self == .userRequested }
+    }
+
+    func refreshDisplayOrder(reason: RefreshReason = .scheduled) async {
         guard !isScanning else { return }
         isScanning = true
         defer { isScanning = false }
@@ -262,7 +359,7 @@ class LibraryScanState {
         for dir in allDirs {
             if let mtime = try? FileManager.default.attributesOfItem(atPath: dir)[.modificationDate] as? Date { currentMtimes[dir] = mtime }
         }
-        if !force, let cache = scanCache {
+        if !reason.bypassesStalenessCheck, let cache = scanCache {
             let hasChanged = allDirs.contains { currentMtimes[$0] != cache.dirMtimes[$0] }
             if !hasChanged && Date().timeIntervalSince(cache.timestamp) < (settings?.refreshInterval ?? 300) * 2 { return }
         }
@@ -272,7 +369,7 @@ class LibraryScanState {
         scanCache = ScanCache(dirMtimes: currentMtimes, timestamp: Date())
 
         let freshApps: [Application]
-        if force {
+        if reason.rebuildsIcons {
             IconCacheManager.shared.clearAll()
             loadedIconsByPath.removeAll()
             freshApps = result.apps
@@ -306,6 +403,18 @@ class LibraryScanState {
 
     func isRecentApp(_ path: String) -> Bool { return _recentApps.contains { $0.path == path } }
     func getRecentApps() -> [Application] { return _recentApps }
+
+    /// Recomputes the launch-history lists and tab counts after "Show Recent Apps" is toggled.
+    ///
+    /// `RecentAppsTracker` starts or stops reporting history the instant the setting changes, but
+    /// `_recentApps` and `_mostUsedApps` are snapshots — without this they stay stale until the
+    /// next launch or scan, so re-enabling the setting would leave the tabs reading zero.
+    func recentAppsAvailabilityChanged() {
+        updateRecentApps()
+        dataVersion += 1
+        updateFilteredApps()
+    }
+
     private func updateRecentApps() {
         let recentPaths = RecentAppsTracker.shared.getRecentPaths()
         _recentApps = recentPaths.compactMap { appPathIndex[$0] }
@@ -357,7 +466,7 @@ class LibraryScanState {
         customDirectories.removeAll { $0 == path }
         if let url = activeSecurityScopedURLs.removeValue(forKey: path) { url.stopAccessingSecurityScopedResource() }
         if customDirectoryBookmarks.removeValue(forKey: path) != nil { PreferencesStore.shared.saveCustomDirectoryBookmarks(customDirectoryBookmarks) }
-        Task { await refreshDisplayOrder() }
+        // The rescan is driven by `allScanDirectories`'s observer, which the mutation above trips.
     }
     func addCustomDirectory(_ path: String, bookmarkData: Data? = nil) {
         guard ApplicationScanner.isValidCustomDirectory(path), !customDirectories.contains(path) else { return }

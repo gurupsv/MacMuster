@@ -19,6 +19,19 @@ enum ScanMetrics {
     static let searchDebounceNanoseconds: UInt64 = 150_000_000 // 150ms
     static let priorityIconLoadCount = 60
     static let newlyInstalledWindowSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
+
+    /// How long a watched directory must stay quiet before a filesystem-triggered rescan runs.
+    /// An install is a long burst of writes; scanning mid-copy would surface a partial bundle.
+    /// Long enough to let a copy finish, short enough that a new app appears while the user is
+    /// still looking at the installer.
+    static let installSettleNanoseconds: UInt64 = 1_000_000_000 // 1 s
+
+    /// How often `scheduleFileSystemRescan` re-checks `isScanning` when a rescan it wants to run
+    /// finds one already in flight. Deliberately much shorter than `installSettleNanoseconds` —
+    /// that constant is a burst-coalescing delay, unrelated to how quickly a finished scan should
+    /// be noticed, and a directory add/remove reuses this wait to stay snappy rather than being
+    /// dropped outright.
+    static let scanCompletionPollNanoseconds: UInt64 = 100_000_000 // 100 ms
 }
 
 // MARK: - Launch Metrics
@@ -94,9 +107,22 @@ enum LayoutMetrics {
     static let sectionViewPadding: CGFloat = 1
     static let searchPadding: CGFloat = 1
     static let searchCornerRadius: CGFloat = 8
-    static let categoryTabPaddingHorizontal: CGFloat = 10
-    static let categoryTabPaddingVertical: CGFloat = 5
+    // Category tabs sit directly on the launcher background, and that background dismisses the
+    // window when clicked. A near-miss therefore costs the user the whole launcher, so these are
+    // sized for a forgiving target rather than the tightest pill that fits the text.
+    static let categoryTabPaddingHorizontal: CGFloat = 14
+    static let categoryTabPaddingVertical: CGFloat = 7
     static let categoryTabCornerRadius: CGFloat = 6
+    /// Dead band around the tab strip that absorbs clicks instead of letting them dismiss.
+    static let categoryTabStripHitPadding: CGFloat = 6
+
+    // Hover/active feedback shared by the category tabs and the top-right icon buttons, so the
+    // launcher's controls all respond to the pointer in the same visual language.
+    /// Tint under the pointer for a control that is not already highlighted.
+    static let controlHoverOpacity: Double = 0.12
+    /// Tint for a control in a persistent "on" state, e.g. search while the field is open.
+    static let controlActiveOpacity: Double = 0.15
+    static let controlHoverAnimationDuration: TimeInterval = 0.12
     static let settingsButtonSize: CGFloat = 32
 }
 

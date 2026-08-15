@@ -48,10 +48,10 @@ Built entirely with **Swift 6.2** and **SwiftUI + AppKit**, MacMuster has zero e
 ### ⚡ Performance
 
 - **< 100ms** cold launch time
-- **Lazy icon loading** with batching (12 icons/frame)
+- **Lazy icon loading** with batching (60 icons per chunk, priority-first)
 - **Staleness-aware scanning** — skips a rescan entirely if no scanned directory has changed since the last one
-- **Persistent icon cache** — decoded icons are cached to disk and invalidated automatically when an app bundle is updated
-- **Release binary: 668KB** (stripped)
+- **Persistent icon cache** — SHA256-keyed on-disk cache with mtime invalidation, per-appearance (light/dark) variants
+- **Release binary: ~1.2MB** (stripped)
 
 ### 🎨 Customization
 
@@ -135,23 +135,23 @@ The glow effect smoothly fades from full opacity at the screen edges to transpar
 
 MacMuster takes a different approach from other Mac launchers. Here's how it stands apart:
 
-| | MacMuster | Raycast | Alfred | Spotlight |
-|---|:---:|:---:|:---:|:---:|
-| **Tech stack** | Pure Swift/SwiftUI + AppKit | React/TypeScript (web) | Objective-C (native) | Native (built-in) |
-| **Dependencies** | Zero external deps | Node.js runtime | Self-contained | N/A |
-| **Binary size** | ~668 KB stripped | ~80 MB+ | ~5 MB | Built-in |
-| **UI style** | Visual grid with app icons | Text-based command palette | Text-based command palette | Text list |
-| **Folder organization** | Drag-and-drop folders with live icon grids | Not available | Not available | Not available |
-| **Launch modes** | Window / Full Screen / Maximized | Single overlay | Single overlay | Single overlay |
-| **Glow effect** | Customizable edge glow (8 colors, intensity, width) | Not available | Not available | Not available |
-| **Provenance badge** | Flags apps outside /Applications | Not available | Not available | Not available |
-| **Multi-monitor** | Opens on cursor display, dims other displays | Single display | Single display | Single display |
-| **Network access** | Completely offline | Extensions + AI require internet | Workflows may use internet | Internet for web results |
-| **Pricing** | Free & open source (MIT) | Free + Pro subscription ($8/mo) | Free + Powerpack ($25 one-time) | Free (built-in) |
-| **AI features** | None (by design) | AI Chat, Quick AI, AI Commands | Not built-in | Not built-in |
-| **Extension ecosystem** | Not needed — everything built-in | 1,650+ extensions in Store | Community workflows | Not available |
-| **Backup & restore** | Full JSON export/import with preview | Cloud sync (Pro) | Settings sync | Not available |
-| **Privacy** | No analytics, no tracking, no telemetry | Anonymous analytics by default | Anonymous analytics | Apple analytics |
+| | MacMuster | Others |
+|---|:---:|:---:|
+| **Tech stack** | Pure Swift/SwiftUI + AppKit | Mixed (web, native, built-in) |
+| **Dependencies** | Zero external deps | Varies (runtime engines common) |
+| **Binary size** | ~1.2 MB stripped | ~5 MB – Built-in |
+| **UI style** | Visual grid with app icons | Text-based interfaces |
+| **Folder organization** | Drag-and-drop folders with live icon grids | Not available |
+| **Launch modes** | Window / Full Screen / Maximized | Single overlay |
+| **Glow effect** | Customizable edge glow (8 colors, intensity, width) | Not available |
+| **Provenance badge** | Flags apps outside /Applications | Not available |
+| **Multi-monitor** | Opens on cursor display, dims other displays | Single display |
+| **Network access** | Completely offline | Varies (most have internet features) |
+| **Pricing** | Free & open source (MIT) | Free, Free+paid subscription, or Free+one-time |
+| **AI features** | None (by design) | Limited or requires subscription |
+| **Extension ecosystem** | Not needed — everything built-in | Varies (1,650+ extensions, workflows, or none) |
+| **Backup & restore** | Full JSON export/import with preview | Limited or cloud-dependent |
+| **Privacy** | No analytics, no tracking, no telemetry | Analytics or telemetry common |
 
 ### MacMuster's philosophy
 
@@ -222,17 +222,17 @@ swift run MacMuster
 |-----|--------|
 | Start typing | Instantly search, no click or `/` needed |
 | `↑ ↓ ← →` | Navigate grid |
-| `Enter` | Launch selected app |
+| `Enter` | Launch selected app (or open folder) |
 | `Escape` | Close launcher (or unfocus search, or step out of a folder) |
 | `Backspace/Delete` | Step up one level when inside a folder |
 | `/` | Focus search field |
-| `⌘N` | Disabled (single window) |
+| `⌘Q` | Quit MacMuster |
 
 ### Menu Bar
 
-- **Click** menu bar icon → Show/hide launcher
+- **Left-click** menu bar icon → Show/hide launcher
+- **Right-click** menu bar icon → Full menu (Show MacMuster, Export/Restore Backup, Settings, Quit)
 - **Export Backup / Restore Backup** → Save or load folders, preferences, and hidden-app state as a JSON file (restore shows a preview of any apps no longer on disk before applying)
-- **Right-click** → Quit MacMuster
 
 ### Folders
 
@@ -244,10 +244,12 @@ swift run MacMuster
 ### Settings
 
 Open via **Gear icon** in launcher or **Settings** from menu bar:
-- General (start at login, show in Dock, refresh interval)
-- Appearance (launch mode, presentation style & tint, font, grid, icon size, glow, launch animation, folders-first, recent apps, press feedback)
+- General (start at login, launch animation, folders-first, press feedback, recent apps, refresh)
+- Appearance (glow effect, font, layout, icon size, overlay opacity, presentation mode, tint, launch mode)
 - Hidden Apps (toggle visibility)
 - App Directories (custom scan paths)
+- Dock (show/hide in Dock)
+- Folders (manage, rename, delete folders)
 
 ---
 
@@ -260,10 +262,15 @@ MacMuster/
 │   ├── AppDelegate.swift        # App lifecycle, singletons
 │   ├── AppModel.swift           # Core state (@Observable), orchestrates the pieces below
 │   ├── SettingsAppearance.swift # Appearance/behavior settings (launch mode, glow, tint, animation...)
-│   ├── LibraryScanState.swift   # Scanned app library, hidden-apps, category/search state
+│   ├── LibraryScanState.swift   # Scanned app library, hidden-apps, icon loading
+│   ├── LibraryScanState+Display.swift # Display ordering, search ranking, category management
 │   ├── NavigationSelection.swift # Keyboard grid navigation + selection state
 │   ├── Types.swift              # Application/AppFolder/LaunchMode models + shared constants
 │   ├── ContentView.swift        # Main launcher UI
+│   ├── AppContextMenu.swift     # Context menus for apps and folders
+│   ├── SearchBarView.swift      # Search bar and search icon button
+│   ├── CategoryTabView.swift    # Category filter tab button
+│   ├── ToolbarIconChrome.swift  # Shared hover/active chrome for toolbar icon buttons
 │   ├── OverlayWindowManager.swift   # Launcher window mgmt (Window/Full Screen/Maximized) + glow effect
 │   ├── StatusBarManager.swift       # Menu bar icon, Export/Restore Backup, Quit
 │   ├── SettingsWindowManager.swift  # Settings window
@@ -280,10 +287,13 @@ MacMuster/
 │       ├── IconCacheManager.swift     # On-disk icon cache, invalidated on bundle updates
 │       ├── PreferencesStore.swift     # UserDefaults persistence (single source of truth)
 │       ├── AlertHelper.swift          # Shared NSAlert presentation helpers
-│       └── RecentAppsTracker.swift    # Recent/most-used launch history
-├── Resources/                     # Icons, PrivacyInfo.xcprivacy
-├── Tests/                         # Unit tests
+│       ├── RecentAppsTracker.swift    # Recent/most-used launch history
+│       └── DirectoryWatcher.swift     # FSEvents-based install/remove detection
+├── MacMuster.xcassets/              # Asset catalog (light/dark app icon variants)
+├── Resources/                     # Icons, PrivacyInfo.xcprivacy, Localizable.xcstrings
+├── Tests/                         # Unit tests (27 test files, 455 tests)
 ├── Package.swift                  # SPM manifest
+├── build_common.sh                # Shared build config (resource list, asset-catalog compile)
 ├── build_production.sh            # Production build script
 └── create_app_bundle.sh           # Local dev bundle script
 ```
@@ -294,8 +304,8 @@ MacMuster/
 |----------|-----------|
 | `@Observable` + SwiftUI | Modern, performant state management |
 | Hybrid AppKit/SwiftUI | Native window control + declarative UI |
-| Background scanning | Non-blocking UI, 5-min refresh cycle |
-| LRU icon cache (100) | Memory-bounded, fast access |
+| Background scanning | Non-blocking UI, configurable refresh cycle |
+| NSCache + disk cache | Memory-bounded, mtime-aware invalidation |
 | Path-based identity | Stable `ForEach` identifiers |
 
 ---
@@ -369,7 +379,14 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ## 🙏 Acknowledgments
 
+### Frameworks & Tools
 - **Apple** — Swift, SwiftUI, AppKit frameworks
+
+### AI-Assisted Development
+This project has benefited from AI-assisted code review and development:
+- **Claude (Opus/Fable)** — Security enhancements, vulnerability assessments, and security-focused code reviews
+- **DeepSeek & QWEN** — Performance profiling, optimization strategies, and bug diagnosis
+- **ChatGPT** — App name suggestions and icon design concepts
 - **Contributors** — All who helped improve MacMuster
 
 ---

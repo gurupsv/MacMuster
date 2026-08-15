@@ -51,12 +51,16 @@ extension LibraryScanState {
     // MARK: Display Ordering
 
     func getDisplayedApps(searchTerm: String, showFoldersFirst: Bool, customOrder: [String: Int], sortOption: ApplicationSorter.SortOption, selectedCategory: AppCategory, columnCount: Int) -> [Application] {
-        if let cached = cachedDisplayedApps, cached.version == dataVersion { return cached.apps }
+        let query = DisplayQuery(version: dataVersion, searchTerm: searchTerm,
+                                 showFoldersFirst: showFoldersFirst, sortOption: sortOption,
+                                 selectedCategory: selectedCategory)
+        if let cached = cachedDisplayedApps, cached.query == query { return cached.apps }
         let baseApps = getBaseAppsForCurrentContext()
         let appsWithFolderId = populateFolderIds(for: baseApps)
-        let filtered = applySearchFilter(to: appsWithFolderId, searchTerm: searchTerm)
-        let result = applyOrdering(to: filtered, searchTerm: searchTerm, showFoldersFirst: showFoldersFirst, customOrder: customOrder, sortOption: sortOption, selectedCategory: selectedCategory)
-        cachedDisplayedApps = (dataVersion, result)
+        let searchMatched = applySearchFilter(to: appsWithFolderId, searchTerm: searchTerm)
+        let categoryMatched = applyCategoryFilter(to: searchMatched, selectedCategory: selectedCategory)
+        let result = applyOrdering(to: categoryMatched, searchTerm: searchTerm, showFoldersFirst: showFoldersFirst, customOrder: customOrder, sortOption: sortOption, selectedCategory: selectedCategory)
+        cachedDisplayedApps = (query, result)
         return result
     }
 
@@ -113,6 +117,18 @@ extension LibraryScanState {
         .map(\.0)
     }
 
+    /// Narrows the list to the selected category.
+    ///
+    /// This is a filtering step in its own right, applied before ordering. It used to live inside
+    /// `applyNonSearchOrdering`, below two early returns and a `switch` that only handled three of
+    /// the six categories — so "Newly Installed", "Most Used" and "Recently Launched" were never
+    /// filtered at all, and *no* category filtered once the user had drag-reordered or turned on
+    /// "Show Folders First". Ordering decisions have no business deciding which apps exist.
+    private func applyCategoryFilter(to apps: [Application], selectedCategory: AppCategory) -> [Application] {
+        guard selectedCategory != .all else { return apps }
+        return apps.filter { matchesSelectedCategory($0, selectedCategory: selectedCategory) }
+    }
+
     private func applyOrdering(to apps: [Application], searchTerm: String, showFoldersFirst: Bool, customOrder: [String: Int], sortOption: ApplicationSorter.SortOption, selectedCategory: AppCategory) -> [Application] {
         guard !searchTerm.isEmpty else { return applyNonSearchOrdering(to: apps, showFoldersFirst: showFoldersFirst, customOrder: customOrder, sortOption: sortOption, selectedCategory: selectedCategory) }
         return apps
@@ -133,11 +149,7 @@ extension LibraryScanState {
             }
         }
         if folderFirstApplied { return ordered }
-        switch selectedCategory {
-        case .system, .utilities, .user:
-            ordered = ordered.filter { matchesSelectedCategory($0, selectedCategory: selectedCategory) }
-        default: break
-        }
+        // Category filtering happens in `applyCategoryFilter`, before this function runs.
         if selectedCategory == .recentlyLaunched {
             return ordered.sorted {
                 let a = RecentAppsTracker.shared.recentAppLaunchTimes[$0.path], b = RecentAppsTracker.shared.recentAppLaunchTimes[$1.path]

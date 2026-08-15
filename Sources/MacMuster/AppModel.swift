@@ -165,7 +165,27 @@ class AppModel {
     }
     var showRecentApps: Bool {
         get { settings.showRecentApps }
-        set { settings.showRecentApps = newValue }
+        set {
+            settings.showRecentApps = newValue
+            // Turning the setting off retires the Most Used / Recently Launched tabs. If the user
+            // is standing on one, move them somewhere that still exists — otherwise the tab
+            // vanishes while the selection persists, leaving an empty grid and no tab highlighted.
+            if !newValue, AppCategory.launchHistoryCategories.contains(selectedCategory) {
+                selectedCategory = .all
+            }
+            library.recentAppsAvailabilityChanged()
+        }
+    }
+
+    /// Category tabs to offer, in display order.
+    ///
+    /// `.utilities` is permanently absent: `getCategory()` folds it into `.user`, so its count is
+    /// always zero. Most Used and Recently Launched come and go with "Show Recent Apps", since a
+    /// tab that can only ever read zero is worse than no tab at all.
+    var visibleCategories: [AppCategory] {
+        let ordered: [AppCategory] = [.all, .system, .user, .mostUsed, .recentlyLaunched, .newlyInstalled]
+        guard !showRecentApps else { return ordered }
+        return ordered.filter { !AppCategory.launchHistoryCategories.contains($0) }
     }
     var pressFeedbackEnabled: Bool {
         get { settings.pressFeedbackEnabled }
@@ -213,7 +233,9 @@ class AppModel {
     // MARK: - Delegated Methods
 
     func startLoading() async { await library.startLoading() }
-    func refreshDisplayOrder(force: Bool = false) async { await library.refreshDisplayOrder(force: force) }
+    func refreshDisplayOrder(reason: LibraryScanState.RefreshReason = .scheduled) async {
+        await library.refreshDisplayOrder(reason: reason)
+    }
     func loadMissingIcons() async { await library.loadMissingIcons() }
     func refreshCachedIcons() async { await library.refreshCachedIcons() }
     func cleanupTimerAndObservers() { library.cleanupTimerAndObservers() }

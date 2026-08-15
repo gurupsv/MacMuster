@@ -11,8 +11,17 @@
 # Universal Binary Build (Intel + Apple Silicon):
 # Set BUILD_UNIVERSAL=1 to build for both architectures:
 #   BUILD_UNIVERSAL=1 ./build_production.sh
+#
+# Environment variables:
+#   BUILD_UNIVERSAL=1   build arm64 + x86_64 and merge with lipo
+#   SKIP_PKG=1          stop at the .app; do not build MacMuster.pkg
+#   DEVELOPER_ID        "Developer ID Application: ..."  — signs the .app
+#   INSTALLER_ID        "Developer ID Installer: ..."    — signs the .pkg (a different cert)
+#   NOTARY_PROFILE      notarytool keychain profile; notarizes+staples whatever is signed
 
 set -e
+
+source "$(dirname "$0")/build_common.sh"
 
 APP_NAME="MacMuster"
 BUILD_CONFIG="release"
@@ -101,10 +110,26 @@ if [ "${BUILD_UNIVERSAL:-0}" = "1" ]; then
     echo "Universal binary includes both arm64 and x86_64 architectures"
 fi
 
-# Get version from single source of truth
+# Version, from the single source of truth.
+#
+# CFBundleShortVersionString is user-visible (Settings renders it verbatim) and Apple requires
+# at most three period-separated integers. This used to be `git describe --tags --always --dirty`,
+# which produces "1.0.1-dirty" — invalid, shown to users, and worse, sourced from the latest tag
+# rather than version.txt, so this script and create_app_bundle.sh reported different versions
+# for the same commit. When no tag existed it degraded further to a bare commit hash.
 BASE_VERSION=$(cat version.txt 2>/dev/null || echo "1.0.0")
-VERSION=$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "${BASE_VERSION}")
+VERSION="${BASE_VERSION}"
 BUILD_NUM=$(git rev-list --count HEAD 2>/dev/null || echo "1")
+
+# Build provenance, recorded in its own Info.plist key so a crash report can still be traced to
+# an exact tree without that detail leaking into the version users see.
+GIT_REVISION=$(git describe --tags --always --dirty 2>/dev/null || echo "unknown")
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    echo ""
+    echo "Warning: building from a dirty working tree (${GIT_REVISION})." >&2
+    echo "         This build cannot be reproduced from a commit — commit or stash before releasing." >&2
+    echo ""
+fi
 BUNDLE_ID="com.macmuster.app"
 APP_BUNDLE="${APP_NAME}.app"
 
@@ -117,12 +142,10 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 # Copy binary
 cp "$BINARY_PATH" "$APP_BUNDLE/Contents/MacOS/"
 
-# Copy resources
+# Copy resources (explicit list — see build_common.sh)
 echo "Copying resources..."
-RESOURCES_DIR="Resources"
-if [ -d "$RESOURCES_DIR" ]; then
-    cp -R "$RESOURCES_DIR"/* "$APP_BUNDLE/Contents/Resources/"
-fi
+copy_bundle_resources "$APP_BUNDLE/Contents/Resources"
+compile_asset_catalog "$APP_BUNDLE/Contents/Resources"
 
 # Create Info.plist
 cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST_EOF
@@ -156,6 +179,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST_EOF
     <false/>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
+    <key>MacMusterGitRevision</key>
+    <string>${GIT_REVISION}</string>
     <key>NSHumanReadableCopyright</key>
     <string>© 2024 MacMuster. All rights reserved.</string>
 </dict>
@@ -204,6 +229,59 @@ elif [ -n "$DEVELOPER_ID" ]; then
     echo "Skipping notarization: set NOTARY_PROFILE to a notarytool keychain profile to notarize+staple automatically."
 fi
 
+# ---------------------------------------------------------------------------
+# Installer package
+# ---------------------------------------------------------------------------
+# Set SKIP_PKG=1 to stop at the .app.
+#
+# Signing an installer requires a *Developer ID Installer* certificate — a different
+# certificate from the Developer ID Application one used for the app above. Set INSTALLER_ID
+# to use it; without it the .pkg is unsigned and only good for local testing.
+if [ "${SKIP_PKG:-0}" != "1" ]; then
+    echo ""
+    echo "=== Building installer package ==="
+
+    PKG_PATH="${APP_NAME}.pkg"
+    PKG_UNSIGNED="${APP_NAME}-unsigned.pkg"
+    rm -f "$PKG_PATH" "$PKG_UNSIGNED"
+
+    # Two things here are deliberate, because the previous hand-rolled package got both wrong:
+    #   --install-location /Applications, not the build directory. That package was built with
+    #     the source tree as its install location, so installing it dropped the app into the repo.
+    #   --version "$BASE_VERSION", not "$VERSION". pkgbuild wants a plain dotted-numeric string;
+    #     handing it the `git describe` value ("469f83c-dirty") is what silently produced the
+    #     nonsense package version "469.0.0".
+    pkgbuild \
+        --component "$APP_BUNDLE" \
+        --install-location /Applications \
+        --identifier "$BUNDLE_ID" \
+        --version "$BASE_VERSION" \
+        "$PKG_UNSIGNED"
+
+    if [ -n "$INSTALLER_ID" ]; then
+        echo "Signing installer with: $INSTALLER_ID"
+        productsign --sign "$INSTALLER_ID" "$PKG_UNSIGNED" "$PKG_PATH"
+        rm -f "$PKG_UNSIGNED"
+    else
+        mv "$PKG_UNSIGNED" "$PKG_PATH"
+        echo "Installer is unsigned — set INSTALLER_ID=\"Developer ID Installer: Your Name\" to sign it."
+    fi
+
+    # Gatekeeper validates the installer itself, so the .pkg needs its own notarization ticket
+    # even though the app inside it already carries one. notarytool accepts a .pkg directly —
+    # no zip wrapper, unlike the bare .app above.
+    if [ -n "$INSTALLER_ID" ] && [ -n "$NOTARY_PROFILE" ]; then
+        echo "Notarizing installer (profile: $NOTARY_PROFILE)..."
+        xcrun notarytool submit "$PKG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+        echo "Stapling installer..."
+        xcrun stapler staple "$PKG_PATH"
+    elif [ -n "$INSTALLER_ID" ]; then
+        echo "Skipping installer notarization: set NOTARY_PROFILE to notarize+staple automatically."
+    fi
+
+    echo "Installer: ${PKG_PATH} ($(du -h "$PKG_PATH" | cut -f1))"
+fi
+
 # Verify the binary runs (non-blocking - launch app in background and terminate after timeout)
 echo "Verifying binary..."
 "$APP_BUNDLE/Contents/MacOS/MacMuster" &
@@ -250,6 +328,15 @@ fi
 if [ -n "$DEVELOPER_ID" ] && [ -n "$NOTARY_PROFILE" ]; then
     echo "✓ Notarized and stapled (profile: $NOTARY_PROFILE)"
 fi
+if [ "${SKIP_PKG:-0}" != "1" ]; then
+    if [ -n "$INSTALLER_ID" ] && [ -n "$NOTARY_PROFILE" ]; then
+        echo "✓ Installer built, signed, notarized and stapled (${APP_NAME}.pkg)"
+    elif [ -n "$INSTALLER_ID" ]; then
+        echo "✓ Installer built and signed (${APP_NAME}.pkg) — not notarized"
+    else
+        echo "✓ Installer built (${APP_NAME}.pkg) — unsigned, local testing only"
+    fi
+fi
 if [ "${BUILD_UNIVERSAL:-0}" = "1" ]; then
     echo ""
     echo "=== For Universal Binary Distribution ==="
@@ -268,6 +355,9 @@ else
         echo "2. Store notarization credentials once: xcrun notarytool store-credentials \"<profile-name>\" --apple-id <id> --team-id <team> --password <app-specific-password>"
         echo "3. Re-run with both set to notarize+staple automatically: DEVELOPER_ID=\"...\" NOTARY_PROFILE=\"<profile-name>\" ./build_production.sh"
     fi
+    if [ "${SKIP_PKG:-0}" != "1" ] && [ -z "$INSTALLER_ID" ]; then
+        echo "4. To ship the installer, sign it with a Developer ID *Installer* certificate (distinct from the Application one): INSTALLER_ID=\"Developer ID Installer: Your Name\" ./build_production.sh"
+    fi
 fi
 if [ "${BUILD_UNIVERSAL:-0}" = "1" ]; then
     echo ""
@@ -278,6 +368,9 @@ fi
 echo ""
 echo "=== To Install Locally ==="
 echo "cp -R \"MacMuster.app\" /Applications/"
+if [ "${SKIP_PKG:-0}" != "1" ]; then
+    echo "  ...or via the installer: sudo installer -pkg \"${APP_NAME}.pkg\" -target /"
+fi
 echo ""
 echo "Build artifacts in: ${APP_NAME}.app"
 

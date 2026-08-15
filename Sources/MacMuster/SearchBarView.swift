@@ -51,16 +51,7 @@ struct SearchIconButton: View {
             if isSearchExpanded { isSearchFocused = true }
         } label: {
             Image(systemName: "magnifyingglass")
-                .font(.body)
-                .foregroundStyle(isSearchExpanded || !appModel.searchTerm.isEmpty ? Color.primary : Color.secondary)
-                .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
-                .background(
-                    Circle()
-                        .fill(isSearchExpanded || !appModel.searchTerm.isEmpty
-                              ? Color.primary.opacity(0.15)
-                              : Color.clear)
-                )
-                .background(.ultraThinMaterial, in: Circle())
+                .toolbarIconChrome(isActive: isSearchExpanded || !appModel.searchTerm.isEmpty)
         }
         .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
         .help("Search (/)")

@@ -127,15 +127,22 @@ struct ContentView: View {
                             
                             Spacer()
 
-                            SearchIconButton(appModel: appModel, isSearchExpanded: $isSearchExpanded, isSearchFocused: $isSearchFocused)
+                            HStack {
+                                SearchIconButton(appModel: appModel, isSearchExpanded: $isSearchExpanded, isSearchFocused: $isSearchFocused)
 
-                            ToolbarButtons(
-                appModel: appModel,
-                showKeyboardHint: $showKeyboardHint,
-                newFolderName: $newFolderName,
-                showCreateFolder: $showCreateFolder,
-                selectedAppPathsForFolder: $selectedAppPathsForFolder
-            )
+                                ToolbarButtons(
+                                    appModel: appModel,
+                                    showKeyboardHint: $showKeyboardHint,
+                                    newFolderName: $newFolderName,
+                                    showCreateFolder: $showCreateFolder,
+                                    selectedAppPathsForFolder: $selectedAppPathsForFolder
+                                )
+                            }
+                            // Same hazard as the tab strip: the gaps between these buttons are
+                            // launcher background, and clicking it dismisses. Absorb any tap the
+                            // buttons themselves did not take so a near-miss costs nothing.
+                            .contentShape(Rectangle())
+                            .onTapGesture { }
                         }
                         .padding(.horizontal)
                         .padding(.bottom, 4)
@@ -144,51 +151,63 @@ struct ContentView: View {
                         HStack {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
-                                    // .utilities is intentionally excluded — getCategory() folds it into .user,
-                                    // so its count is always 0 (see AppModelTests).
-                                    let visibleCategories: [AppCategory] = [.all, .system, .user, .mostUsed, .recentlyLaunched, .newlyInstalled]
-                                    ForEach(Array(visibleCategories.enumerated()), id: \.offset) { _, category in
+                                    // Which tabs exist is a model decision (see AppModel.visibleCategories).
+                                    // Keyed by category rather than offset so tabs appearing or
+                                    // disappearing with "Show Recent Apps" don't reuse each other's state.
+                                    ForEach(appModel.visibleCategories, id: \.self) { category in
                                         CategoryTabButton(appModel: appModel, category: category)
                                     }
                                 }
+                                // The launcher background dismisses the window on click, and the
+                                // gaps between these pills are that background. Missing a tab by
+                                // a few points would close the launcher outright, so the strip
+                                // swallows any tap its buttons did not take. Child buttons still
+                                // win for their own area; this only catches the misses.
+                                .padding(.vertical, LayoutMetrics.categoryTabStripHitPadding)
+                                .contentShape(Rectangle())
+                                .onTapGesture { }
                             }
                             
                             Spacer()
 
-                            SearchIconButton(appModel: appModel, isSearchExpanded: $isSearchExpanded, isSearchFocused: $isSearchFocused)
+                            HStack {
+                                SearchIconButton(appModel: appModel, isSearchExpanded: $isSearchExpanded, isSearchFocused: $isSearchFocused)
 
-                            Menu {
-                                ForEach(ApplicationSorter.SortOption.allCases, id: \.self) { option in
-                                    Button {
-                                        appModel.setSortOption(option)
-                                    } label: {
-                                        HStack {
-                                            Text(option.rawValue)
-                                            if appModel.sortOption == option {
-                                                Image(systemName: "checkmark")
+                                Menu {
+                                    ForEach(ApplicationSorter.SortOption.allCases, id: \.self) { option in
+                                        Button {
+                                            appModel.setSortOption(option)
+                                        } label: {
+                                            HStack {
+                                                Text(option.rawValue)
+                                                if appModel.sortOption == option {
+                                                    Image(systemName: "checkmark")
+                                                }
                                             }
                                         }
                                     }
+                                } label: {
+                                    Image(systemName: "arrow.up.arrow.down")
+                                        .toolbarIconChrome()
                                 }
-                            } label: {
-                                Image(systemName: "arrow.up.arrow.down")
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
-                                    .background(.ultraThinMaterial, in: Circle())
-                            }
-                            .menuStyle(.borderlessButton)
-                            .fixedSize()
-                            .help("Sort: \(appModel.sortOption.rawValue)")
-                            .accessibilityLabel("Sort applications")
+                                .menuStyle(.borderlessButton)
+                                .fixedSize()
+                                .help("Sort: \(appModel.sortOption.rawValue)")
+                                .accessibilityLabel("Sort applications")
 
-                            ToolbarButtons(
-                appModel: appModel,
-                showKeyboardHint: $showKeyboardHint,
-                newFolderName: $newFolderName,
-                showCreateFolder: $showCreateFolder,
-                selectedAppPathsForFolder: $selectedAppPathsForFolder
-            )
+                                ToolbarButtons(
+                                    appModel: appModel,
+                                    showKeyboardHint: $showKeyboardHint,
+                                    newFolderName: $newFolderName,
+                                    showCreateFolder: $showCreateFolder,
+                                    selectedAppPathsForFolder: $selectedAppPathsForFolder
+                                )
+                            }
+                            // Same hazard as the tab strip: the gaps between these buttons are
+                            // launcher background, and clicking it dismisses. Absorb any tap the
+                            // buttons themselves did not take so a near-miss costs nothing.
+                            .contentShape(Rectangle())
+                            .onTapGesture { }
                         }
                         .padding(.horizontal)
                     }
@@ -917,10 +936,7 @@ struct ToolbarButtons: View {
             }
         }) {
             Image(systemName: "questionmark.circle")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
-                .background(.ultraThinMaterial, in: Circle())
+                .toolbarIconChrome()
         }
         .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
         .help("Keyboard shortcuts")
@@ -932,10 +948,7 @@ struct ToolbarButtons: View {
             showCreateFolder = true
         } label: {
             Image(systemName: "folder.badge.plus")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
-                .background(.ultraThinMaterial, in: Circle())
+                .toolbarIconChrome()
         }
         .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
         .accessibilityLabel("Create new folder")
@@ -945,10 +958,7 @@ struct ToolbarButtons: View {
             SettingsWindowManager.shared.show()
         }) {
             Image(systemName: "gearshape")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .frame(width: LayoutMetrics.settingsButtonSize, height: LayoutMetrics.settingsButtonSize)
-                .background(.ultraThinMaterial, in: Circle())
+                .toolbarIconChrome()
         }
         .buttonStyle(FocusableButtonStyle(cornerRadius: LayoutMetrics.settingsButtonSize / 2))
         .accessibilityLabel("Open settings")

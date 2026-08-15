@@ -132,6 +132,11 @@ enum AppCategory: String, CaseIterable {
     case system = "System"
     case utilities = "Utilities"
     case user = "User"
+
+    /// Categories that are views onto launch history, and so have nothing to show once the user
+    /// turns "Show Recent Apps" off. Both the tab strip and the fallback-selection logic read
+    /// this, so there is exactly one definition of what that setting governs.
+    static let launchHistoryCategories: Set<AppCategory> = [.mostUsed, .recentlyLaunched]
 }
 
 // MARK: - IconSize
