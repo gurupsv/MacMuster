@@ -33,7 +33,7 @@ final class BackupManagerTests: XCTestCase {
         XCTAssertEqual(archive.schemaVersion, 1, "Backup archive should have schema version field")
     }
 
-    func testSchemaVersionDefaultsToOne() {
+    func testSchemaVersionDefaultsToTwo() {
         let archive = BackupManager.BackupArchive(
             appFolders: [],
             customOrder: [:],
@@ -57,7 +57,10 @@ final class BackupManagerTests: XCTestCase {
             showInDock: true,
             icons: BackupManager.IconPack(entries: [:])
         )
-        XCTAssertEqual(archive.schemaVersion, 1, "Unspecified schema version should default to 1")
+        // Schema v2 added `knownBundleMtimes` + `recentlyUpdatedPaths` for the recently-updated
+        // badge. The default moved from 1 → 2; an explicit v1 archive still decodes (the new
+        // fields are optional with empty-dict defaults) for backward compatibility.
+        XCTAssertEqual(archive.schemaVersion, 2, "Unspecified schema version should default to 2 (current schema)")
     }
 
     // MARK: - Restore Preview — Path Validation
@@ -485,5 +488,118 @@ final class BackupManagerTests: XCTestCase {
         XCTAssertEqual(decoded.sortOption, ApplicationSorter.SortOption.installationDate.rawValue)
         XCTAssertEqual(decoded.showFoldersFirst, true)
         XCTAssertEqual(decoded.glowColor, "#00FF00")
+    }
+
+    // MARK: - Schema v2: Recently Updated Badge State
+
+    func testBackupArchiveDefaultsToSchemaVersionTwo() {
+        // Already covered by `testSchemaVersionDefaultsToTwo`, but assert here too that an
+        // archive built without specifying schemaVersion lands on 2 (the current schema).
+        let archive = BackupManager.BackupArchive(
+            appFolders: [],
+            customOrder: [:],
+            hiddenAppPaths: Set<String>(),
+            sortOption: ApplicationSorter.SortOption.name.rawValue,
+            iconSize: IconSize.medium.rawValue,
+            showFoldersFirst: false,
+            refreshInterval: 30.0,
+            currentFolderId: nil,
+            customDirectories: [],
+            glowEnabled: false,
+            glowColor: "#ffffff",
+            glowIntensity: 0.5,
+            glowWidth: 2.0,
+            fontFamily: "System",
+            fontSize: 14.0,
+            fontWeight: "Regular",
+            pressFeedbackEnabled: true,
+            recentAppsEnabled: false,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
+            showInDock: true,
+            icons: BackupManager.IconPack(entries: [:])
+        )
+        XCTAssertEqual(archive.schemaVersion, 2, "Default schema version should be 2 (current)")
+    }
+
+    func testBackupArchiveRoundTripsRecentlyUpdatedState() throws {
+        // The v2 fields (`knownBundleMtimes`, `recentlyUpdatedPaths`) must survive a JSON
+        // encode/decode round-trip so a backup taken before quit restores the same badge
+        // state and baseline after relaunch.
+        let mtime = Date().addingTimeInterval(-3600)
+        let detected = Date().addingTimeInterval(-1800)
+        let archive = BackupManager.BackupArchive(
+            appFolders: [],
+            customOrder: [:],
+            hiddenAppPaths: Set<String>(),
+            sortOption: ApplicationSorter.SortOption.name.rawValue,
+            iconSize: IconSize.medium.rawValue,
+            showFoldersFirst: false,
+            refreshInterval: 30.0,
+            currentFolderId: nil,
+            customDirectories: [],
+            glowEnabled: false,
+            glowColor: "#ffffff",
+            glowIntensity: 0.5,
+            glowWidth: 2.0,
+            fontFamily: "System",
+            fontSize: 14.0,
+            fontWeight: "Regular",
+            pressFeedbackEnabled: true,
+            recentAppsEnabled: false,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
+            showInDock: true,
+            knownBundleMtimes: ["/Applications/Safari.app": mtime],
+            recentlyUpdatedPaths: ["/Applications/Safari.app": detected],
+            icons: BackupManager.IconPack(entries: [:])
+        )
+        let data = try JSONEncoder().encode(archive)
+        let decoded = try JSONDecoder().decode(BackupManager.BackupArchive.self, from: data)
+
+        XCTAssertEqual(decoded.schemaVersion, 2, "Decoded schema version should be 2")
+        XCTAssertEqual(decoded.knownBundleMtimes.count, 1, "knownBundleMtimes should round-trip")
+        XCTAssertEqual(decoded.knownBundleMtimes["/Applications/Safari.app"], mtime,
+            "knownBundleMtimes values should be preserved exactly")
+        XCTAssertEqual(decoded.recentlyUpdatedPaths.count, 1, "recentlyUpdatedPaths should round-trip")
+        XCTAssertEqual(decoded.recentlyUpdatedPaths["/Applications/Safari.app"], detected,
+            "recentlyUpdatedPaths values should be preserved exactly")
+    }
+
+    func testBackupArchiveV1StillDecodesWithEmptyV2Fields() throws {
+        // Backward compatibility: an archive written under schema v1 (before the v2 fields
+        // existed) must still decode, with the new fields defaulting to empty dictionaries.
+        // Simulate a v1 archive by encoding the struct with empty v2 fields and an explicit
+        // schemaVersion of 1, then decoding — the new fields should be empty, not nil/throw.
+        let archive = BackupManager.BackupArchive(
+            schemaVersion: 1,
+            appFolders: [],
+            customOrder: [:],
+            hiddenAppPaths: Set<String>(),
+            sortOption: ApplicationSorter.SortOption.name.rawValue,
+            iconSize: IconSize.medium.rawValue,
+            showFoldersFirst: false,
+            refreshInterval: 30.0,
+            currentFolderId: nil,
+            customDirectories: [],
+            glowEnabled: false,
+            glowColor: "#ffffff",
+            glowIntensity: 0.5,
+            glowWidth: 2.0,
+            fontFamily: "System",
+            fontSize: 14.0,
+            fontWeight: "Regular",
+            pressFeedbackEnabled: true,
+            recentAppsEnabled: false,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault,
+            showInDock: true,
+            icons: BackupManager.IconPack(entries: [:])
+        )
+        let data = try JSONEncoder().encode(archive)
+        let decoded = try JSONDecoder().decode(BackupManager.BackupArchive.self, from: data)
+
+        XCTAssertEqual(decoded.schemaVersion, 1, "Explicit v1 schema version should be honored")
+        XCTAssertTrue(decoded.knownBundleMtimes.isEmpty,
+            "v1 archive should decode with empty knownBundleMtimes (backward-compatible default)")
+        XCTAssertTrue(decoded.recentlyUpdatedPaths.isEmpty,
+            "v1 archive should decode with empty recentlyUpdatedPaths (backward-compatible default)")
     }
 }

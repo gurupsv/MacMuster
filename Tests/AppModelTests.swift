@@ -47,6 +47,9 @@ final class AppModelTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "tintColor")
         UserDefaults.standard.removeObject(forKey: "tintStrength")
         UserDefaults.standard.removeObject(forKey: "showHiddenApps")
+        // Schema v2 keys — clear so recently-updated badge state doesn't leak between tests.
+        UserDefaults.standard.removeObject(forKey: "knownBundleMtimes")
+        UserDefaults.standard.removeObject(forKey: "recentlyUpdatedPaths")
     }
     
     // MARK: - Application Identity Tests

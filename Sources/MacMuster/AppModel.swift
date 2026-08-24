@@ -71,6 +71,14 @@ class AppModel {
         get { library.currentFolderId }
         set { library.currentFolderId = newValue }
     }
+    var recentlyUpdatedPaths: Set<String> {
+        get { library.recentlyUpdatedPaths }
+        set { library.recentlyUpdatedPaths = newValue }
+    }
+    var runningAppPaths: Set<String> {
+        get { library.runningAppPaths }
+        set { library.runningAppPaths = newValue }
+    }
     var _recentApps: [Application] {
         get { library._recentApps }
         set { library._recentApps = newValue }

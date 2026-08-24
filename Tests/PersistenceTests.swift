@@ -40,6 +40,9 @@ final class PersistenceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "recentAppsEnabled")
         UserDefaults.standard.removeObject(forKey: "pressFeedbackEnabled")
         UserDefaults.standard.removeObject(forKey: "showHiddenApps")
+        // Schema v2 keys — clear so the recently-updated badge state doesn't leak between tests.
+        UserDefaults.standard.removeObject(forKey: "knownBundleMtimes")
+        UserDefaults.standard.removeObject(forKey: "recentlyUpdatedPaths")
     }
 
     // MARK: - Hidden Apps Persistence Tests
@@ -701,5 +704,59 @@ final class PersistenceTests: XCTestCase {
         UserDefaults.standard.set("Extra Large", forKey: "iconSize")
         let newAppModel = AppModel()
         XCTAssertEqual(newAppModel.iconSize, .extraLarge)
+    }
+
+    // MARK: - Recently Updated Badge Persistence (Schema v2)
+
+    func testSaveAndLoadKnownBundleMtimesRoundTrips() {
+        let mtimes: [String: Date] = [
+            "/Applications/Safari.app": Date().addingTimeInterval(-3600),
+            "/Applications/Xcode.app": Date().addingTimeInterval(-7200),
+        ]
+        PreferencesStore.shared.saveKnownBundleMtimes(mtimes)
+
+        let loaded = PreferencesStore.shared.loadKnownBundleMtimes()
+        XCTAssertEqual(loaded?.count, 2, "loadKnownBundleMtimes should return the saved entries")
+        XCTAssertEqual(loaded?["/Applications/Safari.app"], mtimes["/Applications/Safari.app"],
+            "Saved mtime values should be preserved exactly")
+        XCTAssertEqual(loaded?["/Applications/Xcode.app"], mtimes["/Applications/Xcode.app"])
+    }
+
+    func testLoadKnownBundleMtimesWithNoDataReturnsNil() {
+        UserDefaults.standard.removeObject(forKey: "knownBundleMtimes")
+        XCTAssertNil(PreferencesStore.shared.loadKnownBundleMtimes(),
+            "Absent key should return nil so callers treat it as 'no baseline, build one this scan'")
+    }
+
+    func testLoadKnownBundleMtimesWithInvalidDataReturnsNil() {
+        UserDefaults.standard.set("not-json", forKey: "knownBundleMtimes")
+        XCTAssertNil(PreferencesStore.shared.loadKnownBundleMtimes(),
+            "Corrupt data should decode to nil, not crash")
+    }
+
+    func testSaveAndLoadRecentlyUpdatedPathsRoundTrips() {
+        let now = Date()
+        let paths: [String: Date] = [
+            "/Applications/Safari.app": now,
+            "/Applications/Xcode.app": now.addingTimeInterval(-60),
+        ]
+        PreferencesStore.shared.saveRecentlyUpdatedPaths(paths)
+
+        let loaded = PreferencesStore.shared.loadRecentlyUpdatedPaths()
+        XCTAssertEqual(loaded?.count, 2, "loadRecentlyUpdatedPaths should return the saved entries")
+        XCTAssertEqual(loaded?["/Applications/Safari.app"], paths["/Applications/Safari.app"])
+        XCTAssertEqual(loaded?["/Applications/Xcode.app"], paths["/Applications/Xcode.app"])
+    }
+
+    func testLoadRecentlyUpdatedPathsWithNoDataReturnsNil() {
+        UserDefaults.standard.removeObject(forKey: "recentlyUpdatedPaths")
+        XCTAssertNil(PreferencesStore.shared.loadRecentlyUpdatedPaths(),
+            "Absent key should return nil")
+    }
+
+    func testLoadRecentlyUpdatedPathsWithInvalidDataReturnsNil() {
+        UserDefaults.standard.set("not-json", forKey: "recentlyUpdatedPaths")
+        XCTAssertNil(PreferencesStore.shared.loadRecentlyUpdatedPaths(),
+            "Corrupt data should decode to nil, not crash")
     }
 }

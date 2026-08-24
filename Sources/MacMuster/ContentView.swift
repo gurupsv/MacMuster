@@ -742,6 +742,38 @@ struct AppIconView: View {
                         .accessibilityHidden(true)
                 }
             }
+            // Phase 1: "recently updated" badge — fires when an app's bundle mtime jumped since
+            // the previous scan (the moment an App Store/direct-download update completes). mtime
+            // is the only public signal that an update landed; download-progress % is not reachable
+            // via any public macOS API, so this badge is the buildable interpretation of "patching".
+            // `monochrome` + a single accent color matches the provenance badge's rendering mode.
+            .overlay(alignment: .topLeading) {
+                if appModel.recentlyUpdatedPaths.contains(app.path) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: UpdateMetrics.recentlyUpdatedBadgeSymbolSize))
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundStyle(Color.accentColor)
+                        .padding(4)
+                        .accessibilityLabel(Text("Recently updated"))
+                        .accessibilityHidden(true)
+                }
+            }
+            // Phase 2: "running" indicator — a dot, not a full badge, so it reads as ambient
+            // status rather than an alert. `bottomLeading` keeps it clear of the provenance
+            // triangle (`bottomTrailing`) and the checkmark (`topTrailing`). Green is the
+            // conventional "running/online" color; on a colored app icon it stays legible at
+            // small sizes without a ring.
+            .overlay(alignment: .bottomLeading) {
+                if appModel.runningAppPaths.contains(app.path) {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: UpdateMetrics.runningDotSize, height: UpdateMetrics.runningDotSize)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 1))
+                        .padding(4)
+                        .accessibilityLabel(Text("Running"))
+                        .accessibilityHidden(true)
+                }
+            }
             // F-1: provenance badge — a bundle outside the OS-vetted install locations can be
             // named/iconed to impersonate a real app (e.g. a fake "Safari.app" in ~/Applications),
             // so flag anything not under /Applications or /System/Applications.

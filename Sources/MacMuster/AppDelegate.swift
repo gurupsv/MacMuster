@@ -22,19 +22,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         updateApplicationIcon()
         observeAppearanceChanges()
-        
+
         let appModel = AppModelContainer.shared.appModel
-        
+
         // Set up status bar with the app model
         StatusBarManager.shared.setup()
         StatusBarManager.shared.setAppModel(appModel)
-        
+
         // Set up overlay window manager with the app model
         OverlayWindowManager.shared.setup(appModel: appModel)
-        
+
         // Set up settings window manager with the app model
         SettingsWindowManager.shared.setup(appModel: appModel)
-        
+
+        // Start tracking running apps and seed the library's running-path set. The tracker's
+        // notification observers keep it current after this; the initial snapshot catches
+        // apps that were already running before the launcher started (Finder, Dock, etc.).
+        RunningAppTracker.shared.start()
+        appModel.library.runningAppPaths = RunningAppTracker.shared.runningAppPaths
+
         // Show the overlay window on launch
         OverlayWindowManager.shared.show()
     }

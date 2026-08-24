@@ -41,10 +41,16 @@ final class BackupManager {
         let tintStrength: Double
         let showHiddenApps: Bool
         let launchMode: String
+        // Schema v2: recently-updated badge state. The mtime baseline (`knownBundleMtimes`)
+        // is long-lived; the badge membership (`recentlyUpdatedPaths`) is age-evicted. Both
+        // round-trip so a restored backup continues badging apps that updated just before
+        // the backup was taken, and measures future deltas against the backed-up baseline.
+        let knownBundleMtimes: [String: Date]
+        let recentlyUpdatedPaths: [String: Date]
         let icons: IconPack
 
         init(
-            schemaVersion: Int = 1,
+            schemaVersion: Int = 2,
             checksum: String = "", // computed at export time; empty on import from older schemas
             appFolders: [AppFolder],
             customOrder: [String: Int],
@@ -73,6 +79,8 @@ final class BackupManager {
             tintStrength: Double = 0.0,
             showHiddenApps: Bool = false,
             launchMode: String = "Window",
+            knownBundleMtimes: [String: Date] = [:],
+            recentlyUpdatedPaths: [String: Date] = [:],
             icons: IconPack
         ) {
             self.schemaVersion = schemaVersion
@@ -104,6 +112,8 @@ final class BackupManager {
             self.tintStrength = tintStrength
             self.showHiddenApps = showHiddenApps
             self.launchMode = launchMode
+            self.knownBundleMtimes = knownBundleMtimes
+            self.recentlyUpdatedPaths = recentlyUpdatedPaths
             self.icons = icons
         }
     }
@@ -183,11 +193,17 @@ final class BackupManager {
         let showHiddenApps = PreferencesStore.shared.loadShowHiddenApps()
         let launchMode = PreferencesStore.shared.loadLaunchMode() ?? "Window"
 
+        // Schema v2: recently-updated badge state. Backed up so a restored backup continues
+        // badging apps that updated just before the backup was taken, and so the mtime baseline
+        // survives a restore-and-rescan without re-badging every app as updated.
+        let knownBundleMtimes = PreferencesStore.shared.loadKnownBundleMtimes() ?? [:]
+        let recentlyUpdatedPaths = PreferencesStore.shared.loadRecentlyUpdatedPaths() ?? [:]
+
         // Icon pack — read PNGs from disk cache and encode as base64 Data
         let iconEntries = readIconPack()
 
         var archive = BackupArchive(
-            schemaVersion: 1,
+            schemaVersion: 2,
             checksum: "", // placeholder — will be computed after final encoding
             appFolders: folders,
             customOrder: customOrder,
@@ -216,6 +232,8 @@ final class BackupManager {
             tintStrength: tintStrength,
             showHiddenApps: showHiddenApps,
             launchMode: launchMode,
+            knownBundleMtimes: knownBundleMtimes,
+            recentlyUpdatedPaths: recentlyUpdatedPaths,
             icons: IconPack(entries: iconEntries)
         )
 
@@ -341,6 +359,14 @@ final class BackupManager {
         PreferencesStore.shared.saveTintStrength(archive.tintStrength)
         PreferencesStore.shared.saveShowHiddenApps(archive.showHiddenApps)
         PreferencesStore.shared.saveLaunchMode(LaunchMode(rawValue: archive.launchMode) ?? .window)
+
+        // Schema v2: restore the recently-updated badge state. The mtime baseline is restored
+        // verbatim so the next scan measures deltas against the backed-up baseline rather than
+        // treating every app as freshly updated. The badge membership is restored too, but
+        // age-eviction on the next `loadFromDefaults` drops entries that expired while the
+        // backup was on the shelf.
+        PreferencesStore.shared.saveKnownBundleMtimes(archive.knownBundleMtimes)
+        PreferencesStore.shared.saveRecentlyUpdatedPaths(archive.recentlyUpdatedPaths)
 
         // Restore icon cache — write PNGs from archive to disk cache
         restoreIconPack(from: archive.icons)

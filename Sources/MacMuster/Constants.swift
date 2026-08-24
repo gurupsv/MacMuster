@@ -34,6 +34,27 @@ enum ScanMetrics {
     static let scanCompletionPollNanoseconds: UInt64 = 100_000_000 // 100 ms
 }
 
+// MARK: - Update Metrics
+
+enum UpdateMetrics {
+    /// How long an app stays badged as "recently updated" after its bundle mtime jumped.
+    /// Matches the `newlyInstalledWindowSeconds` window so the two badges (newly installed vs
+    /// recently updated) retire on the same cadence — a user who notices one expects the other
+    /// to behave the same way.
+    static let recentlyUpdatedBadgeSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
+
+    /// A mtime delta below this is ignored as noise (subsecond churn from filesystem metadata
+    /// touching that isn't a real update). Mirrors `IconCacheManager.datesEqualIgnoringSubsecond`,
+    /// which compares mtimes at second granularity for the same reason.
+    static let mtimeDeltaEpsilonSeconds: TimeInterval = 1.0
+
+    /// Point size of the "recently updated" sparkles badge overlay.
+    static let recentlyUpdatedBadgeSymbolSize: CGFloat = 11
+
+    /// Diameter of the "running" indicator dot overlay.
+    static let runningDotSize: CGFloat = 8
+}
+
 // MARK: - Launch Metrics
 
 enum LaunchMetrics {

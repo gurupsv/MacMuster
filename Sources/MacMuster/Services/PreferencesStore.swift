@@ -39,11 +39,16 @@ final class PreferencesStore {
         case tintColor = "tintColor"
         case tintStrength = "tintStrength"
         case showHiddenApps = "showHiddenApps"
+        // Phase 1: recently-updated badge state. Two separate keys so the mtime baseline
+        // (long-lived) and the badge membership (short-lived, age-evicted) can be read
+        // and written independently — the baseline must never be pruned by age.
+        case knownBundleMtimes = "knownBundleMtimes"
+        case recentlyUpdatedPaths = "recentlyUpdatedPaths"
     }
 
     /// Current schema version. Increment when adding/removing/changing preference keys.
     /// Used for future migrations (e.g., renaming keys, consolidating settings, etc.).
-    private let currentSchemaVersion = 1
+    private let currentSchemaVersion = 2
     
     private init() {
         // Migrate schema if needed
@@ -81,8 +86,11 @@ final class PreferencesStore {
     /// Run any needed migrations when schema version changes.
     /// Add cases here as new schema versions are introduced.
     private func runMigrations(from oldVersion: Int, to newVersion: Int) {
+        // Schema v2: adds `knownBundleMtimes` and `recentlyUpdatedPaths` for the recently-updated
+        // badge. Both keys are absent on v1 installs, and `loadKnownBundleMtimes`/`loadRecentlyUpdatedPaths`
+        // return nil for an absent key — so the trackers simply start with empty state and build
+        // a baseline on the first scan. No data transformation is needed.
         // Example: if oldVersion < 2 { /* migrate from v1 to v2 */ }
-        // For now, this is a no-op as we're at schema version 1
     }
     
     // MARK: - General Preferences
@@ -365,5 +373,35 @@ final class PreferencesStore {
 
     func loadTintStrength() -> Double? {
         defaults.value(forKey: Keys.tintStrength.rawValue) as? Double
+    }
+
+    // MARK: - Recently Updated Badge (schema v2)
+
+    /// Persisted baseline of per-app bundle mtimes, so a relaunch doesn't re-badge every
+    /// app as updated on the first scan. Returns nil when the key is absent (first run or
+    /// pre-schema-v2 install) — callers treat nil as "no baseline, build one this scan".
+    func loadKnownBundleMtimes() -> [String: Date]? {
+        guard let data = defaults.data(forKey: Keys.knownBundleMtimes.rawValue) else { return nil }
+        return try? JSONDecoder().decode([String: Date].self, from: data)
+    }
+
+    func saveKnownBundleMtimes(_ mtimes: [String: Date]) {
+        if let data = try? JSONEncoder().encode(mtimes) {
+            defaults.set(data, forKey: Keys.knownBundleMtimes.rawValue)
+        }
+    }
+
+    /// Persisted set of currently-badgeed "recently updated" app paths with the date each was
+    /// first detected, so a relaunch continues to badge apps that updated just before quit.
+    /// Age-eviction happens in `RecentlyUpdatedTracker.loadFromDefaults`, not here.
+    func loadRecentlyUpdatedPaths() -> [String: Date]? {
+        guard let data = defaults.data(forKey: Keys.recentlyUpdatedPaths.rawValue) else { return nil }
+        return try? JSONDecoder().decode([String: Date].self, from: data)
+    }
+
+    func saveRecentlyUpdatedPaths(_ paths: [String: Date]) {
+        if let data = try? JSONEncoder().encode(paths) {
+            defaults.set(data, forKey: Keys.recentlyUpdatedPaths.rawValue)
+        }
     }
 }

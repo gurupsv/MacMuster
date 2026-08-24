@@ -53,6 +53,19 @@ class LibraryScanState {
     var currentFolderId: String? = nil {
         didSet { dataVersion += 1; PreferencesStore.shared.saveCurrentFolderId(currentFolderId) }
     }
+    /// App paths currently flagged as recently updated (bundle mtime jumped since the previous
+    /// scan). Driven by `RecentlyUpdatedTracker`; read by `AppIconView` to show a sparkles
+    /// badge. `@Observable` propagates changes to the UI without manual `dataVersion` bumps.
+    var recentlyUpdatedPaths: Set<String> = [] {
+        didSet { dataVersion += 1 }
+    }
+    /// Filesystem paths of currently-running app bundles. Driven by `RunningAppTracker`
+    /// (NSWorkspace launch/terminate notifications); read by `AppIconView` to show a running
+    /// dot. `@Observable` propagates changes to the UI. Folder entries (synthetic) are never
+    /// added here — they aren't launchable processes.
+    var runningAppPaths: Set<String> = [] {
+        didSet { dataVersion += 1 }
+    }
     var _recentApps: [Application] = []
     var _mostUsedApps: [Application] = []
     // INVARIANT: every writer of `customOrder` must go through this property (or bump
@@ -101,6 +114,11 @@ class LibraryScanState {
         loadSortOption()
         loadCustomDirectories()
         loadRecentLaunchTimes()
+        // Load the persisted mtime baseline and any surviving "recently updated" entries before
+        // the first scan runs, so the first `detectUpdatedApps` call measures deltas against the
+        // pre-relaunch baseline rather than treating every app as freshly updated.
+        RecentlyUpdatedTracker.shared.loadFromDefaults()
+        recentlyUpdatedPaths = Set(RecentlyUpdatedTracker.shared.recentlyUpdated.keys)
     }
 
     private func loadCustomOrder() {
@@ -130,6 +148,7 @@ class LibraryScanState {
         isLoading = false
         await self.loadMissingIcons()
         self.updateRecentApps()
+        updateRecentlyUpdatedBadges()
     }
 
     private func loadHiddenApps() {
@@ -226,6 +245,9 @@ class LibraryScanState {
         directoryWatcher?.stop()
         directoryWatcher = nil
         NSWorkspace.shared.notificationCenter.removeObserver(self)
+        // Flush any pending badge state so a quit right after a detected update doesn't lose it.
+        RecentlyUpdatedTracker.shared.persist()
+        RunningAppTracker.shared.stop()
     }
 
     /// Called when the system appearance (light/dark) changes. Re-decodes all cached icons
@@ -320,6 +342,24 @@ class LibraryScanState {
         for app in displayOrder { appPathIndex[app.path] = app }
     }
 
+    /// Runs recently-updated detection against the current `displayOrder` and pushes the
+    /// resulting path set into `recentlyUpdatedPaths` so `AppIconView` can badge apps.
+    /// Called after each scan completes (both initial load and refresh). The mtime reads
+    /// are batched here rather than in the scanner so the scanner stays pure of stateful
+    /// cross-scan tracking — it returns apps with their current mtime, and this method
+    /// compares that against the persisted baseline.
+    private func updateRecentlyUpdatedBadges() {
+        var currentMtimes: [String: Date] = [:]
+        for app in displayOrder where !app.isFolder {
+            currentMtimes[app.path] = app.installationDate
+        }
+        RecentlyUpdatedTracker.shared.detectUpdatedApps(currentMtimesByPath: currentMtimes)
+        let updated = Set(RecentlyUpdatedTracker.shared.recentlyUpdated.keys)
+        if updated != recentlyUpdatedPaths {
+            recentlyUpdatedPaths = updated
+        }
+    }
+
     func sortedApplications(_ apps: [Application]) -> [Application] {
         if !customOrder.isEmpty {
             return apps.sorted {
@@ -392,6 +432,7 @@ class LibraryScanState {
         let currentPaths = Set(displayOrder.map(\.path))
         loadedIconsByPath = loadedIconsByPath.filter { currentPaths.contains($0.key) }
         self.updateRecentApps()
+        updateRecentlyUpdatedBadges()
     }
 
     func recordAppLaunch(at path: String) {
