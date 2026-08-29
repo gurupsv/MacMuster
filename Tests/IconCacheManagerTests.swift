@@ -115,19 +115,22 @@ final class IconCacheManagerTests: XCTestCase {
             "cachedAppPaths should report exactly the app that was cached")
     }
 
-    func testCacheIconForNonExistentPathStoresInMemoryCacheOnly() {
-        // cacheIcon writes to memoryCache BEFORE the mtime check. If the path doesn't exist,
-        // the mtime check fails and disk cache is not written, but the icon IS stored in the
-        // memory cache. This is correct — subsequent reads hit the memory cache immediately.
+    func testCacheIconForNonExistentPathCachesNothing() {
+        // Behaviour change (PERF-1): cacheIcon used to store in memory *before* reading the
+        // mtime, so a path that could not be statted still produced a memory entry. Every cache
+        // entry is now tagged with the mtime it was rendered for, and an untaggable entry can
+        // never be validated on the way back out — so it is not stored at all. That also makes
+        // this agree with testCachedIconForNonExistentPathReturnsNil below, which the old
+        // behaviour contradicted (it passed only while nothing had populated that key).
         let icon = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
             NSColor.blue.setFill()
             rect.fill()
             return true
         }
         IconCacheManager.shared.cacheIcon(icon, for: "/NonExistent/Path.app", appearance: .light)
-        let cached = IconCacheManager.shared.cachedIcon(for: "/NonExistent/Path.app", appearance: .light)
-        XCTAssertNotNil(cached, "Icon should be cached in memory (mtime check only affects disk cache)")
-        XCTAssertEqual(cached?.size.width, icon.size.width, "Cached icon size should match")
+
+        XCTAssertNil(IconCacheManager.shared.cachedIcon(for: "/NonExistent/Path.app", appearance: .light),
+            "An icon for a path with no readable mtime should not be cached — the entry could never be validated")
     }
 
     func testCachedIconForNonExistentPathReturnsNil() {
@@ -152,8 +155,16 @@ final class IconCacheManagerTests: XCTestCase {
 
     // MARK: - clearAll (force refresh)
 
-    func testClearAllRemovesInMemoryCachedIcon() {
-        let path = "/NonExistent/ClearAllTest.app"
+    func testClearAllRemovesInMemoryCachedIcon() throws {
+        // Uses a real on-disk path: cache entries are now tagged with the bundle's mtime, so a
+        // path that cannot be statted is not cached at all (see
+        // testCacheIconForNonExistentPathCachesNothing). A temp directory stands in for a bundle —
+        // the cache only ever stats the path.
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ClearAllTest-\(UUID().uuidString).app", isDirectory: true).path
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
         let icon = NSImage(size: NSSize(width: 32, height: 32), flipped: false) { rect in
             NSColor.purple.setFill()
             rect.fill()

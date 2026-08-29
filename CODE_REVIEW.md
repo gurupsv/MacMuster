@@ -12,13 +12,13 @@ messages and issues.
 |---|---:|---:|---:|
 | Critical | 1 | 1 | 0 |
 | Security | 4 | 2 | 2 |
-| Performance | 6 | 0 | 6 |
+| Performance | 6 | 1 | 5 |
 | Usability | 9 | 1 | 8 |
 | Other bugs | 9 | 1 | 8 |
-| **Total** | **29** | **5** | **24** |
+| **Total** | **29** | **6** | **23** |
 
-Next up: `PERF-1` (the icon mtime cache that never refreshes), then the
-"settings need a restart" cluster (`UX-4`, `UX-5`).
+Next up: the "settings need a restart" cluster (`UX-4`, `UX-5`), then `PERF-2`
+(`findContainedApps` running for every app on every scan).
 
 ---
 
@@ -120,7 +120,33 @@ with a symlink afterwards, and every later scan follows it. Low severity given t
 
 ## ⚡ Performance
 
-### [ ] PERF-1 — Icon mtime cache never refreshes, defeating icon invalidation
+### [x] PERF-1 — Icon mtime cache never refreshes, defeating icon invalidation — **FIXED**
+
+> **Fixed 2026-08-29.** Turned out to be **two** defects, either of which alone keeps the bug
+> alive:
+>
+> 1. `currentBundleModificationTime` short-circuited on the cached value, and that cache was only
+>    ever written by that same method — so nothing re-read the disk after the first read of a path.
+>    It now always stats and writes through.
+> 2. `cachedIcon` returned in-memory hits before checking anything, and `loadMissingIcons(force:)`
+>    re-loads *through* `cachedIcon` — so a correct disk-layer check would still have been handed
+>    the stale image out of memory. Added `memoryEntryMtime`, recording the mtime each in-memory
+>    image was rendered for, so a memory hit is validated for the cost of one `stat` and none of
+>    the disk reads the memory layer exists to skip.
+>
+> Also dropped the no-op mtime "refresh" pass from `pruneDeletedApps` (it wrote each stale entry
+> back over itself), and pointed `refreshCachedIcons` at a fresh disk read instead of the
+> in-memory record — that comparison was a number against itself.
+>
+> Covered by `Tests/IconStalenessTests.swift` (7 tests) driving real files whose mtimes move on
+> disk. Verified non-vacuous against *each* defect separately: restoring defect 1 fails 5 of 7,
+> restoring defect 2 alone still fails 3 of 7. Suite: 634 → 641.
+>
+> **Behaviour change:** `cacheIcon` no longer stores an entry for a path whose mtime cannot be
+> read, since such an entry can never be validated. Two tests in `IconCacheManagerTests` asserted
+> the old behaviour and were updated; one of them contradicted its own neighbour
+> (`testCachedIconForNonExistentPathReturnsNil`) and passed only by ordering luck.
+
 
 **Where:** `Sources/MacMuster/Services/IconCacheManager.swift:305` and `:257-261`
 

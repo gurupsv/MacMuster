@@ -328,11 +328,17 @@ class LibraryScanState {
             var stale: [Application] = []
             for (appPath, cachedMtime) in cachedByPath {
                 guard currentPaths.contains(appPath), let app = appPathIndex[appPath] else { continue }
-                if let currentMtime = IconCacheManager.shared.cachedMtime(for: appPath) {
-                    let cachedSec = Int(cachedMtime.timeIntervalSince1970)
-                    let currentSec = Int(currentMtime.timeIntervalSince1970)
-                    if cachedSec != currentSec { stale.append(app) }
+                // Read the bundle's mtime from disk rather than from the in-memory record. The
+                // record is written *when an icon is cached*, so comparing it against the .meta
+                // file — which stores that same value — compared a number with itself and found
+                // nothing stale, ever. This is the comparison the job exists to make, and it is
+                // on a background thread precisely so the syscalls are affordable.
+                guard let currentMtime = IconCacheManager.shared.currentBundleModificationTime(for: appPath) else {
+                    continue // Bundle vanished between the scan and now; pruning will collect it.
                 }
+                let cachedSec = Int(cachedMtime.timeIntervalSince1970)
+                let currentSec = Int(currentMtime.timeIntervalSince1970)
+                if cachedSec != currentSec { stale.append(app) }
             }
             return stale
         }.value
