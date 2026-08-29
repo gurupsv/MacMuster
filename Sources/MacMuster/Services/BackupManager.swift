@@ -11,9 +11,26 @@ final class BackupManager {
 
     // MARK: - Archive Types
 
+    /// On-disk container. The checksum covers `payload`'s bytes **exactly as written**, so
+    /// verification never has to re-encode the archive to check it.
+    ///
+    /// That indirection is the whole point. The previous design stored the digest *inside* the
+    /// archive and hashed the whole file, which cannot work: the digest would have to cover itself.
+    /// Re-encoding the decoded archive to work around that is no fix either, because the encoding
+    /// is not byte-stable across processes — `hiddenAppPaths` is a `Set<String>`, and a Set encodes
+    /// to a JSON array in iteration order, which depends on per-process hash seeding.
+    /// Hashing an opaque byte blob sidesteps both problems.
+    struct BackupFile: Codable {
+        let checksum: String
+        let payload: Data
+    }
+
     struct BackupArchive: Codable {
         let schemaVersion: Int
-        var checksum: String // SHA256 hex digest of the final JSON data for integrity verification on restore; mutable so we can compute it after encoding and re-encode with the actual value.
+        /// Legacy field, retained only so archives written by older builds still decode.
+        /// Integrity is now carried by `BackupFile.checksum` over the payload bytes; nothing
+        /// reads this. Always written as "".
+        var checksum: String
         let appFolders: [AppFolder]
         let customOrder: [String: Int]
         let hiddenAppPaths: Set<String>
@@ -202,9 +219,9 @@ final class BackupManager {
         // Icon pack — read PNGs from disk cache and encode as base64 Data
         let iconEntries = readIconPack()
 
-        var archive = BackupArchive(
+        let archive = BackupArchive(
             schemaVersion: 2,
-            checksum: "", // placeholder — will be computed after final encoding
+            checksum: "", // legacy field; integrity lives on the BackupFile container
             appFolders: folders,
             customOrder: customOrder,
             hiddenAppPaths: hiddenAppPaths,
@@ -238,41 +255,50 @@ final class BackupManager {
         )
 
         do {
-            let initialJSON = try JSONEncoder().encode(archive) // encode with checksum placeholder
-            // Compute SHA256 checksum of the JSON containing placeholder.
-            let digest1 = SHA256.hash(data: initialJSON)
-            let checksumHex = digest1.map { String(format: "%02x", $0) }.joined()
-            archive.checksum = checksumHex
-            // Re-encode with actual checksum inserted — produces a different JSON, so re-compute on the true final JSON.
-            let finalJSON = try JSONEncoder().encode(archive) // encode with actual checksum now
-            let finalChecksumHex = SHA256.hash(data: finalJSON).map { String(format: "%02x", $0) }.joined()
-            archive.checksum = finalChecksumHex
-            try finalJSON.write(to: url)
+            try Self.encodeArchive(archive).write(to: url)
             return url
         } catch {
             return nil
         }
     }
 
+    // MARK: - Encoding / Decoding
+
+    /// Encodes `archive` into the on-disk `BackupFile` container, checksum included.
+    /// Split out from `export()` (which is gated behind an `NSSavePanel`) so the integrity
+    /// round-trip is reachable from tests.
+    nonisolated static func encodeArchive(_ archive: BackupArchive) throws -> Data {
+        let payload = try JSONEncoder().encode(archive)
+        let file = BackupFile(checksum: sha256Hex(payload), payload: payload)
+        return try JSONEncoder().encode(file)
+    }
+
+    /// Decodes archive bytes, verifying integrity when the container carries a checksum.
+    /// Returns nil when the data is not a backup at all, or when verification fails.
+    ///
+    /// Falls back to decoding a bare `BackupArchive` for archives written before the container
+    /// existed. Those carry no usable checksum — the old scheme never produced a verifiable one —
+    /// so they are accepted unverified rather than rejected outright.
+    nonisolated static func decodeArchive(from data: Data) -> BackupArchive? {
+        if let file = try? JSONDecoder().decode(BackupFile.self, from: data) {
+            guard sha256Hex(file.payload) == file.checksum else {
+                return nil // Corrupted or truncated in transit.
+            }
+            return try? JSONDecoder().decode(BackupArchive.self, from: file.payload)
+        }
+        return try? JSONDecoder().decode(BackupArchive.self, from: data)
+    }
+
+    nonisolated static func sha256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
     // MARK: - Restore
 
     func restore(from url: URL) -> BackupPreview? {
-        var finalJSON: Data
-        var archive: BackupArchive
-        do {
-            finalJSON = try Data(contentsOf: url)
-            archive = try JSONDecoder().decode(BackupArchive.self, from: finalJSON)
-        } catch {
-            return nil // Cannot decode — invalid file format.
-        }
-
-        // Verify checksum integrity (skip if checksum is empty — older schema backups have no checksum).
-        if !archive.checksum.isEmpty {
-            let digest = SHA256.hash(data: finalJSON)
-            let expectedChecksumHex = digest.map { String(format: "%02x", $0) }.joined()
-            if archive.checksum != expectedChecksumHex {
-                return nil // Checksum mismatch — file was corrupted or tampered.
-            }
+        guard let data = try? Data(contentsOf: url),
+              let archive = Self.decodeArchive(from: data) else {
+            return nil // Not a backup, or failed integrity verification.
         }
 
         // Validate app paths against disk
@@ -282,16 +308,12 @@ final class BackupManager {
         var missing: Set<String> = []
 
         for path in allAppPaths {
-            guard FileManager.default.fileExists(atPath: path) else {
-                missing.insert(path)
-                continue
-            }
+            // One stat answers both "does it exist" and "is it a directory" — an .app bundle
+            // must be both, plus carry the .app suffix.
             var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else {
-                missing.insert(path)
-                continue
-            }
-            guard path.hasSuffix(".app") else {
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir),
+                  isDir.boolValue,
+                  path.hasSuffix(".app") else {
                 missing.insert(path)
                 continue
             }
@@ -374,6 +396,22 @@ final class BackupManager {
 
     // MARK: - Private
 
+    /// Whether `key` is a filename `IconCacheManager` could actually have written: the bare
+    /// 64-character lowercase hex SHA256 digest it uses as a cache filename, nothing else.
+    ///
+    /// Icon-pack keys arrive from an untrusted backup file and are appended to the cache
+    /// directory path, so anything looser is an arbitrary-file-write primitive — a key of
+    /// `../../../../foo` escapes the cache directory entirely, and `~/Library/LaunchAgents`
+    /// is reachable that way. Matching the exact expected shape rejects path separators,
+    /// `..`, absolute paths, and empty keys as a side effect of being strict, rather than
+    /// trying to enumerate bad input.
+    /// Explicit ASCII ranges rather than `isHexDigit`/`isNumber`, which also accept uppercase
+    /// and non-ASCII digits (`isNumber` is true for "٣"). The cache only ever writes lowercase
+    /// ASCII hex, so that is exactly what is accepted.
+    nonisolated static func isValidIconCacheKey(_ key: String) -> Bool {
+        key.count == 64 && key.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
+    }
+
     private func readIconPack() -> [String: Data] {
         let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("MacMuster/icons-v4", isDirectory: true)
@@ -387,8 +425,11 @@ final class BackupManager {
 
         for fileURL in contents {
             // v4 cache stores icons as bare SHA256 hex filenames (no extension) alongside
-            // .meta JSON sidecar files. Skip the meta files; read everything else as icon data.
-            guard fileURL.pathExtension != "meta" else { continue }
+            // .meta JSON sidecar files. Skip the meta files, and take only names matching the
+            // shape the cache actually writes — so the archive can never carry a key that
+            // `restoreIconPack` would then refuse (or worse, act on).
+            let name = fileURL.lastPathComponent
+            guard fileURL.pathExtension != "meta", Self.isValidIconCacheKey(name) else { continue }
 
             do {
                 let data = try Data(contentsOf: fileURL)
@@ -412,7 +453,15 @@ final class BackupManager {
         }
 
         for (key, imageData) in iconPack.entries {
+            // The key comes from an untrusted file and is about to become a write path.
+            guard Self.isValidIconCacheKey(key) else { continue }
+
             let iconURL = cacheDir.appendingPathComponent(key, isDirectory: false)
+
+            // Belt and braces: even a key that passed the shape check must still land inside
+            // the cache directory. Cheap, and it survives someone loosening the check above.
+            guard iconURL.standardizedFileURL.deletingLastPathComponent().path
+                    == cacheDir.standardizedFileURL.path else { continue }
 
             do {
                 try imageData.write(to: iconURL)
