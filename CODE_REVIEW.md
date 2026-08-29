@@ -13,11 +13,12 @@ messages and issues.
 | Critical | 1 | 1 | 0 |
 | Security | 4 | 2 | 2 |
 | Performance | 6 | 0 | 6 |
-| Usability | 9 | 0 | 9 |
+| Usability | 9 | 1 | 8 |
 | Other bugs | 9 | 1 | 8 |
-| **Total** | **29** | **4** | **25** |
+| **Total** | **29** | **5** | **24** |
 
-Next up: `UX-1` (a regression in freshly shipped work), then `PERF-1`.
+Next up: `PERF-1` (the icon mtime cache that never refreshes), then the
+"settings need a restart" cluster (`UX-4`, `UX-5`).
 
 ---
 
@@ -187,7 +188,22 @@ Extra Large is 100 pt = 200 px on a 2× display, so the largest icon size render
 
 ## 🧭 Usability
 
-### [ ] UX-1 — The running dot is frozen at app launch (regression in shipped feature)
+### [x] UX-1 — The running dot is frozen at app launch (regression in shipped feature) — **FIXED**
+
+> **Fixed 2026-08-29.** `RunningAppTracker` gained an `onChange` hook, published from a `didSet`
+> on `runningAppPaths` so *every* mutation path (snapshot, launch, terminate, direct assignment)
+> notifies, and only on a real change. `AppDelegate` installs the hook **before** `start()`, so
+> the initial snapshot arrives through the same route as every later update; the one-time `Set`
+> copy is gone.
+>
+> Also removed the `dataVersion += 1` from `LibraryScanState.runningAppPaths`. Nothing in display,
+> sort, navigation or folder logic reads that set (verified), and now that updates are live it
+> would have rebuilt the whole grid on every system-wide launch/quit. `@Observable` re-renders the
+> affected cells on its own.
+>
+> Covered by `Tests/RunningAppBadgeLivenessTests.swift` (6 tests). Verified non-vacuous: with the
+> hook stubbed out, 5 of the 6 fail. Suite: 628 → 634.
+
 
 **Where:** `Sources/MacMuster/AppDelegate.swift:42`
 
@@ -359,8 +375,7 @@ over it.
 
 ### [ ] BUG-8 — Dead code
 
-- `RunningAppTracker.didChangeScreenObserver` — declared at `Services/RunningAppTracker.swift:30`,
-  never assigned or removed.
+- ~~`RunningAppTracker.didChangeScreenObserver`~~ — **removed 2026-08-29** alongside `UX-1`.
 - `LibraryScanState.loadFolders()` — `LibraryScanState.swift:157-159`, never called (the initializer
   inlines the same logic).
 - `NSWorkspace.shared.notificationCenter.removeObserver(self)` — `LibraryScanState.swift:247`;

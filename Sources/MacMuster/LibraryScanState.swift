@@ -63,9 +63,14 @@ class LibraryScanState {
     /// (NSWorkspace launch/terminate notifications); read by `AppIconView` to show a running
     /// dot. `@Observable` propagates changes to the UI. Folder entries (synthetic) are never
     /// added here — they aren't launchable processes.
-    var runningAppPaths: Set<String> = [] {
-        didSet { dataVersion += 1 }
-    }
+    ///
+    /// Deliberately does **not** bump `dataVersion`. That counter invalidates
+    /// `cachedDisplayedApps`, and no display decision reads this set — which apps are shown, in
+    /// what order, and under which category are all independent of whether an app is running.
+    /// The badge is read straight from this property in `AppIconView`, so `@Observable` already
+    /// re-renders the affected cells. Bumping here would recompute the whole grid (filter +
+    /// category + sort over every app) every time *any* app on the system launches or quits.
+    var runningAppPaths: Set<String> = []
     var _recentApps: [Application] = []
     var _mostUsedApps: [Application] = []
     // INVARIANT: every writer of `customOrder` must go through this property (or bump

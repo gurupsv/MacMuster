@@ -23,11 +23,30 @@ final class RunningAppTracker {
     /// Filesystem paths of currently-running app bundles. Drives the running dot in
     /// `AppIconView`. Left mutable (not `private(set)`) to mirror `RecentAppsTracker`'s
     /// convention — tests reset it in tearDown.
-    var runningAppPaths: Set<String> = []
+    ///
+    /// Publishes through `onChange` on every real mutation, whichever code path caused it —
+    /// snapshot, launch, terminate, or a direct assignment in a test.
+    var runningAppPaths: Set<String> = [] {
+        didSet {
+            guard runningAppPaths != oldValue else { return }
+            onChange?(runningAppPaths)
+        }
+    }
+
+    /// Called on the main actor whenever `runningAppPaths` actually changes, with the new value.
+    ///
+    /// The tracker cannot write to the UI's copy itself without reaching into `LibraryScanState`,
+    /// so it publishes instead and `AppDelegate` wires the two together. This exists because a
+    /// plain assignment at startup is not enough: `runningAppPaths` is a `Set`, a value type, so
+    /// copying it into `library.runningAppPaths` once produced a snapshot frozen at launch —
+    /// later launches and quits updated only the tracker's own copy and never reached the badge.
+    ///
+    /// Only fired on a real change, so an app relaunching into a path already in the set does not
+    /// churn the UI.
+    var onChange: ((Set<String>) -> Void)?
 
     private var launchObserver: NSObjectProtocol?
     private var terminateObserver: NSObjectProtocol?
-    private var didChangeScreenObserver: NSObjectProtocol?
 
     /// Snapshots the currently-running apps and installs launch/terminate observers.
     /// Idempotent — safe to call more than once; a second call just refreshes the snapshot
@@ -92,7 +111,7 @@ final class RunningAppTracker {
                 paths.insert(path)
             }
         }
-        runningAppPaths = paths
+        runningAppPaths = paths // `didSet` publishes if this is a real change
     }
 
     func isRunning(_ path: String) -> Bool {
