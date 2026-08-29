@@ -749,41 +749,22 @@ struct AppIconView: View {
             // `monochrome` + a single accent color matches the provenance badge's rendering mode.
             .overlay(alignment: .topLeading) {
                 if appModel.recentlyUpdatedPaths.contains(app.path) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: UpdateMetrics.recentlyUpdatedBadgeSymbolSize))
-                        .symbolRenderingMode(.monochrome)
-                        .foregroundStyle(Color.accentColor)
-                        .padding(4)
-                        .accessibilityLabel(Text("Recently updated"))
-                        .accessibilityHidden(true)
-                }
-            }
-            // Phase 2: "running" indicator — a dot, not a full badge, so it reads as ambient
-            // status rather than an alert. `bottomLeading` keeps it clear of the provenance
-            // triangle (`bottomTrailing`) and the checkmark (`topTrailing`). Green is the
-            // conventional "running/online" color; on a colored app icon it stays legible at
-            // small sizes without a ring.
-            .overlay(alignment: .bottomLeading) {
-                if appModel.runningAppPaths.contains(app.path) {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: UpdateMetrics.runningDotSize, height: UpdateMetrics.runningDotSize)
-                        .overlay(Circle().stroke(Color.white, lineWidth: 1))
-                        .padding(4)
-                        .accessibilityLabel(Text("Running"))
-                        .accessibilityHidden(true)
-                }
-            }
-            // F-1: provenance badge — a bundle outside the OS-vetted install locations can be
-            // named/iconed to impersonate a real app (e.g. a fake "Safari.app" in ~/Applications),
-            // so flag anything not under /Applications or /System/Applications.
-            .overlay(alignment: .bottomTrailing) {
-                if !app.isFromTrustedLocation {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11))
-                        .symbolRenderingMode(.monochrome)
-                        .foregroundStyle(Color.yellow)
-                        .accessibilityHidden(true)
+                    // A white copy of the glyph rendered slightly larger behind the accent-color
+                    // one fakes an outline/stroke — SF Symbols have no native border modifier —
+                    // matching the running dot's white ring for legibility on colored app icons.
+                    ZStack {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: recentlyUpdatedBadgeSymbolSize + 2, weight: .heavy))
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(Color.white)
+                        Image(systemName: "sparkles")
+                            .font(.system(size: recentlyUpdatedBadgeSymbolSize))
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .padding(4)
+                    .accessibilityLabel(Text("Recently updated"))
+                    .accessibilityHidden(true)
                 }
             }
             .scaleEffect(isSelected || (isPressed && feedbackEnabled) ? LayoutMetrics.appIconHoverScale : 1.0)
@@ -832,8 +813,38 @@ struct AppIconView: View {
                     .accessibilityHidden(true)
             }
         }
+        // Phase 2: "running" indicator — a dot, not a full badge, so it reads as ambient
+        // status rather than an alert. Anchored to the icon itself (not the whole tile, which
+        // also includes the app name label below) so it sits on the icon's bottom-left corner,
+        // clear of the provenance triangle (`bottomTrailing`) and the checkmark (`topTrailing`).
+        // Green is the conventional "running/online" color; on a colored app icon it stays
+        // legible at small sizes without a ring.
+        .overlay(alignment: .bottomLeading) {
+            if appModel.runningAppPaths.contains(app.path) {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: runningDotSize, height: runningDotSize)
+                    .overlay(Circle().stroke(Color.white, lineWidth: 1))
+                    .padding(4)
+                    .accessibilityLabel(Text("Running"))
+                    .accessibilityHidden(true)
+            }
+        }
+        // F-1: provenance badge — a bundle outside the OS-vetted install locations can be
+        // named/iconed to impersonate a real app (e.g. a fake "Safari.app" in ~/Applications),
+        // so flag anything not under /Applications or /System/Applications. Anchored to the
+        // icon for the same reason as the running dot above.
+        .overlay(alignment: .bottomTrailing) {
+            if !app.isFromTrustedLocation {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(Color.yellow)
+                    .accessibilityHidden(true)
+            }
+        }
     }
-    
+
     private var appNameView: some View {
         Text(app.name)
             .font(getFontForAppName())
@@ -867,6 +878,17 @@ struct AppIconView: View {
         case .large: return IconMetrics.iconSizeLarge
         case .extraLarge: return IconMetrics.iconSizeExtraLarge
         }
+    }
+
+    // Scaled with iconSize (via UpdateMetrics' ratios) so the badges stay proportionate across
+    // the Small/Medium/Large/Extra Large icon size setting instead of a fixed point size that
+    // reads as tiny on large icons or oversized on small ones.
+    private var recentlyUpdatedBadgeSymbolSize: CGFloat {
+        iconSize * UpdateMetrics.recentlyUpdatedBadgeSymbolSizeRatio
+    }
+
+    private var runningDotSize: CGFloat {
+        iconSize * UpdateMetrics.runningDotSizeRatio
     }
 
     // Folders inset their composited mini-grid so it sits inside the backdrop;

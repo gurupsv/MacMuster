@@ -48,11 +48,16 @@ enum UpdateMetrics {
     /// which compares mtimes at second granularity for the same reason.
     static let mtimeDeltaEpsilonSeconds: TimeInterval = 1.0
 
-    /// Point size of the "recently updated" sparkles badge overlay.
-    static let recentlyUpdatedBadgeSymbolSize: CGFloat = 11
+    /// Ratio of the "recently updated" sparkles badge's point size to the app icon size, so the
+    /// badge scales with the user's chosen icon size (Settings > Icon Size) instead of staying a
+    /// fixed size that reads as tiny on Extra Large icons or oversized on Small ones. 0.21875
+    /// matches the previous fixed 14pt badge at the Medium (64pt) icon size.
+    static let recentlyUpdatedBadgeSymbolSizeRatio: CGFloat = 0.21875
 
-    /// Diameter of the "running" indicator dot overlay.
-    static let runningDotSize: CGFloat = 8
+    /// Ratio of the "running" indicator dot's diameter to the app icon size, same rationale as
+    /// `recentlyUpdatedBadgeSymbolSizeRatio` above. 0.15625 matches the previous fixed 10pt dot
+    /// at the Medium (64pt) icon size.
+    static let runningDotSizeRatio: CGFloat = 0.15625
 }
 
 // MARK: - Launch Metrics

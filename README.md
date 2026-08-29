@@ -44,6 +44,8 @@ Built entirely with **Swift 6.2** and **SwiftUI + AppKit**, MacMuster has zero e
 | **Multi-Monitor** | Launcher opens on the display under your cursor; dimmed backgrounds on other displays; reacts to display changes |
 | **Accessibility** | Keyboard shortcuts help, screen reader support, reduce motion/transparency, non-color selection cues, visible keyboard focus rings |
 | **Provenance Badge** | Apps installed outside `/Applications`/`/System/Applications` (e.g. `~/Applications`) show a warning badge |
+| **Running Indicator** | A green dot on an icon's bottom-left corner marks apps that are currently running |
+| **Recently Updated Badge** | A sparkles badge on an icon's top-left corner marks apps whose bundle changed in the last 14 days — the signal that an App Store or direct-download update just landed |
 
 ### ⚡ Performance
 
@@ -95,6 +97,24 @@ Enhanced visual edge glow with customizable options:
 The glow effect smoothly fades from full opacity at the screen edges to transparent inward, creating a soft neon-like border around the launcher.
 
 > **Note**: The glow is rendered behind all UI content and won't cover keyboard shortcuts or other elements.
+
+### 🟢 App Status Badges
+
+Small corner badges on each icon tell you an app's state at a glance, without opening it:
+
+<div align="center">
+
+| Recently Updated | Running + Recently Updated | Running |
+|:---:|:---:|:---:|
+| ![Recently Updated](Screenshots/Recently-Updated-App.png) | ![Running and Recently Updated](Screenshots/Recently-Updated-App-Running.png) | ![Running](Screenshots/Running-App.png) |
+
+</div>
+
+- **✨ Sparkles** (top-left) — the app's bundle changed within the last 14 days
+- **🟢 Green dot** (bottom-left) — the app is currently running
+- **⚠️ Warning triangle** (bottom-right, not shown above) — the app is installed outside `/Applications`/`/System/Applications` (see Provenance Badge)
+
+Badges are independent and stack freely — an app can be running, recently updated, both, or neither.
 
 ### 🔒 Privacy & Security
 

@@ -33,10 +33,10 @@ final class ConstantsTests: XCTestCase {
             "mtimeDeltaEpsilonSeconds should be 1.0 (second granularity)")
     }
 
-    func testUpdateMetricsBadgeSizesArePositive() {
-        XCTAssertGreaterThan(UpdateMetrics.recentlyUpdatedBadgeSymbolSize, 0,
-            "Recently-updated badge symbol size must be positive")
-        XCTAssertGreaterThan(UpdateMetrics.runningDotSize, 0,
-            "Running dot size must be positive")
+    func testUpdateMetricsBadgeSizeRatiosArePositive() {
+        XCTAssertGreaterThan(UpdateMetrics.recentlyUpdatedBadgeSymbolSizeRatio, 0,
+            "Recently-updated badge symbol size ratio must be positive")
+        XCTAssertGreaterThan(UpdateMetrics.runningDotSizeRatio, 0,
+            "Running dot size ratio must be positive")
     }
 }
