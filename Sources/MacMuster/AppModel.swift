@@ -31,6 +31,13 @@ class AppModel {
         library.settings = settings
         // Library needs selectedAppIndex for sort-aware position tracking
         library.navigation = navigation
+        // Changing the refresh interval has to rebuild the live scan timer. The setting cannot
+        // reach the library itself — unlike OverlayWindowManager, LibraryScanState is not a
+        // singleton — so the connection is made here. `library` owns the timer and is owned by
+        // self, so this closure captures it weakly to avoid a retain cycle through `settings`.
+        settings.onRefreshIntervalChange = { [weak library] in
+            library?.rescheduleRefreshTimer()
+        }
     }
 
     // MARK: - Delegated Properties

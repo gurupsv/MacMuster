@@ -13,12 +13,11 @@ messages and issues.
 | Critical | 1 | 1 | 0 |
 | Security | 4 | 2 | 2 |
 | Performance | 6 | 1 | 5 |
-| Usability | 9 | 3 | 6 |
+| Usability | 9 | 5 | 4 |
 | Other bugs | 9 | 4 | 5 |
-| **Total** | **29** | **11** | **18** |
+| **Total** | **29** | **13** | **16** |
 
-Next up: the "settings need a restart" cluster (`UX-4`, `UX-5`), then the scanner group
-(`PERF-2`, `PERF-4`, `PERF-5`, `SEC-2`, `BUG-4`).
+Next up: the scanner group (`PERF-2`, `PERF-4`, `PERF-5`, `SEC-2`, `BUG-4`).
 
 ---
 
@@ -278,7 +277,14 @@ task hangs forever and Swift may log a continuation-leak warning.
 
 **Fix:** set a delegate and resume with `.cancel` in `windowWillClose`, or drop `.closable`.
 
-### [ ] UX-4 — Refresh-interval changes need a restart
+### [x] UX-4 — Refresh-interval changes need a restart — **FIXED**
+
+> **Fixed 2026-08-29.** Split `setupRefreshTimer` so the scan timer can be rebuilt on its own
+> (`rescheduleRefreshTimer`) without restarting the six-hourly icon-cache timer, which used to
+> be recreated alongside it. `SettingsAppearance` publishes through `onRefreshIntervalChange`,
+> wired by `AppModel` — the setting cannot reach `LibraryScanState` directly because it is not
+> a singleton.
+
 
 **Where:** `Sources/MacMuster/LibraryScanState.swift:183-195`, called only from `:146`
 
@@ -287,7 +293,14 @@ value but never reschedules the timer.
 
 **Fix:** call `setupRefreshTimer()` from the `refreshInterval` setter.
 
-### [ ] UX-5 — Overlay opacity and presentation mode need a restart
+### [x] UX-5 — Overlay opacity and presentation mode need a restart — **FIXED**
+
+> **Fixed 2026-08-29.** Extracted `applyBackgroundColor()` as the single place the launcher's
+> background is decided, and exposed `refreshAppearance()` for the settings to call. Also
+> re-applied at the end of `applyWindowMode`, since changing `styleMask`/`isOpaque` per mode
+> can reset it, and extended to the dimming windows on other displays. Tint colour and tint
+> strength repaint too — they feed the Sheet background, not just the opacity slider.
+
 
 **Where:** `Sources/MacMuster/OverlayWindowManager.swift:159-166` (set only in `setup()`);
 `Sources/MacMuster/SettingsAppearance.swift:50-56`, `:107-109`

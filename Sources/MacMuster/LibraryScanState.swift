@@ -216,6 +216,20 @@ class LibraryScanState {
     }
 
     private func setupRefreshTimer() {
+        rescheduleRefreshTimer()
+        cacheRefreshTimer?.invalidate()
+        cacheRefreshTimer = Timer.scheduledTimer(withTimeInterval: 6 * 60 * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.refreshCachedIcons() }
+        }
+    }
+
+    /// (Re)builds the periodic scan timer at the currently configured interval.
+    ///
+    /// Separate from the six-hourly icon-cache timer so changing the scan interval does not also
+    /// restart that one. Called on initial load and again whenever the user changes the interval
+    /// in Settings — the timer was previously built once and never rebuilt, so a changed interval
+    /// was persisted and then ignored until the next launch.
+    func rescheduleRefreshTimer() {
         refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: settings?.refreshInterval ?? ScanMetrics.refreshIntervalDefault, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -223,11 +237,16 @@ class LibraryScanState {
                 await self.refreshDisplayOrder()
             }
         }
-        cacheRefreshTimer?.invalidate()
-        cacheRefreshTimer = Timer.scheduledTimer(withTimeInterval: 6 * 60 * 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.refreshCachedIcons() }
-        }
     }
+
+    /// The interval the live scan timer is currently firing at, or nil when it is not scheduled.
+    /// Exposed so a test can assert the timer really was rebuilt rather than just the value stored.
+    var activeRefreshTimerInterval: TimeInterval? { refreshTimer?.timeInterval }
+
+    /// When the six-hourly icon-cache timer next fires. Exposed so a test can assert that
+    /// rescheduling the scan timer leaves this one alone — they used to be rebuilt together, so
+    /// every interval change pushed the cache refresh out by another six hours.
+    var activeCacheRefreshTimerFireDate: Date? { cacheRefreshTimer?.fireDate }
 
     /// Subscribes to filesystem changes in the scanned directories so a newly installed app shows
     /// up in seconds instead of waiting out the refresh interval. The periodic timer stays as a
