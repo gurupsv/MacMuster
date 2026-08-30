@@ -20,6 +20,12 @@ enum ScanMetrics {
     static let priorityIconLoadCount = 60
     static let newlyInstalledWindowSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
 
+    /// Fallback rescan interval when none has been stored. Named because it was previously
+    /// spelled out at each use site and one of them drifted: the backup exporter defaulted to
+    /// 30 s, so a backup taken before the user ever touched the setting recorded an interval ten
+    /// times more aggressive than the app's own, and restoring it applied that.
+    static let refreshIntervalDefault: TimeInterval = 300 // 5 minutes
+
     /// How long a watched directory must stay quiet before a filesystem-triggered rescan runs.
     /// An install is a long burst of writes; scanning mid-copy would surface a partial bundle.
     /// Long enough to let a copy finish, short enough that a new app appears while the user is

@@ -13,12 +13,12 @@ messages and issues.
 | Critical | 1 | 1 | 0 |
 | Security | 4 | 2 | 2 |
 | Performance | 6 | 1 | 5 |
-| Usability | 9 | 1 | 8 |
-| Other bugs | 9 | 1 | 8 |
-| **Total** | **29** | **6** | **23** |
+| Usability | 9 | 3 | 6 |
+| Other bugs | 9 | 4 | 5 |
+| **Total** | **29** | **11** | **18** |
 
-Next up: the "settings need a restart" cluster (`UX-4`, `UX-5`), then `PERF-2`
-(`findContainedApps` running for every app on every scan).
+Next up: the "settings need a restart" cluster (`UX-4`, `UX-5`), then the scanner group
+(`PERF-2`, `PERF-4`, `PERF-5`, `SEC-2`, `BUG-4`).
 
 ---
 
@@ -246,7 +246,13 @@ The comment at `:38-40` asserts the observers keep it current — they do not.
 **Fix:** give `RunningAppTracker` an `onChange` callback that pushes into `library.runningAppPaths`,
 or have the view read the tracker directly.
 
-### [ ] UX-2 — Restore appears to do nothing until relaunch
+### [x] UX-2 — Restore appears to do nothing until relaunch — **FIXED**
+
+> **Fixed 2026-08-29.** Added `reloadFromPersistence()` to `SettingsAppearance` and
+> `LibraryScanState`, and `AppModel.reloadAfterRestore()` tying them together with the badge
+> trackers. `StatusBarManager` calls it on both restore paths. `SettingsAppearance.init` now
+> routes through the same method rather than duplicating the load.
+
 
 **Where:** `Sources/MacMuster/Services/BackupManager.swift:306-373`
 
@@ -257,7 +263,12 @@ sees a "Restore Complete" dialog and no visible change.
 
 **Fix:** after `apply()`, reload settings and folders into the live model (or trigger a full reload).
 
-### [ ] UX-3 — Closing the restore preview with the red button hangs the flow
+### [x] UX-3 — Closing the restore preview with the red button hangs the flow — **FIXED**
+
+> **Fixed 2026-08-29.** `RestorePreviewPanel` conforms to `NSWindowDelegate` and resumes with
+> `.cancel` in `windowWillClose`. `complete` now takes the continuation before resuming, so
+> the extra completion path cannot double-resume (which would trap).
+
 
 **Where:** `Sources/MacMuster/Services/RestorePreviewPanel.swift:48-61`
 
@@ -333,14 +344,22 @@ which contains no synthetic folder entries — so folder names never match. It a
 
 ## 🐛 Other bugs
 
-### [ ] BUG-1 — Backup writes a 30 s refresh interval where the app defaults to 300 s
+### [x] BUG-1 — Backup writes a 30 s refresh interval where the app defaults to 300 s — **FIXED**
+
+> **Fixed 2026-08-29.** Added `ScanMetrics.refreshIntervalDefault` and pointed all four sites
+> at it, so the value cannot drift apart again.
+
 
 **Where:** `Sources/MacMuster/Services/BackupManager.swift:166`
 
 `loadRefreshInterval() ?? 30.0` — every other site uses `?? 300`. A backup taken on a fresh install
 bakes in rescans 10× more aggressive than intended, and restoring it applies that.
 
-### [ ] BUG-2 — Folder timestamps are reset on restore
+### [x] BUG-2 — Folder timestamps are reset on restore — **FIXED**
+
+> **Fixed 2026-08-29.** `apply` copies the decoded folder and edits `appPaths`, instead of
+> rebuilding it through the initializer that stamps `Date()`.
+
 
 **Where:** `Sources/MacMuster/Services/BackupManager.swift:318-323`
 
@@ -411,7 +430,12 @@ over it.
   first. Latent: wiring `launchSelectedApp` to a new key path would silently stop recording launches
   and skip dismissing the launcher.
 
-### [ ] BUG-9 — Backed-up icons can never be used after restore
+### [x] BUG-9 — Backed-up icons can never be used after restore — **FIXED**
+
+> **Fixed 2026-08-29.** The pack now carries `.meta` sidecars alongside bitmaps, and ships only
+> complete pairs. Key validation extended to sidecars via `isValidIconPackKey`, keeping the
+> SEC-1 traversal guard intact for both halves.
+
 
 **Where:** `Sources/MacMuster/Services/BackupManager.swift` — `readIconPack` (skips `.meta` files)
 vs `IconCacheManager.cachedIcon` (`:112-115`)

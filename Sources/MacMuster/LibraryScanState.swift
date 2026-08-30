@@ -126,6 +126,36 @@ class LibraryScanState {
         recentlyUpdatedPaths = Set(RecentlyUpdatedTracker.shared.recentlyUpdated.keys)
     }
 
+    /// Re-reads the persisted library state into this live object, then rebuilds the derived
+    /// views that depend on it.
+    ///
+    /// Used after a backup restore. `BackupManager.apply` writes to `PreferencesStore` and
+    /// `FolderStore`, neither of which feeds back into this object — `folders`' observer pushes
+    /// *to* `FolderStore`, not from it — so the restored library sat on disk while the grid went
+    /// on showing the pre-restore folders, ordering and hidden apps until the next launch.
+    ///
+    /// Does not rescan: a restore changes how the apps on disk are organised, not which apps
+    /// exist. `customDirectories` is the exception — its observer re-points the watcher and
+    /// triggers a rescan on its own when the directory set actually changed.
+    func reloadFromPersistence() {
+        hiddenAppPaths = PreferencesStore.shared.loadHiddenApps() ?? []
+        folders = PreferencesStore.shared.loadFolders() ?? []
+        customOrder = PreferencesStore.shared.loadCustomOrder() ?? [:]
+        currentFolderId = PreferencesStore.shared.loadCurrentFolderId()
+        loadSortOption()
+        loadCustomDirectories()
+
+        cachedAppsInAnyFolder = nil
+        cachedVisibleApps = nil
+        cachedDisplayedApps = nil
+        dataVersion += 1
+        rebuildAppPathIndex()
+        updateRecentApps()
+        updateFilteredApps()
+        // Folder icons are composited from member icons, and membership just changed wholesale.
+        IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex, changedAppPaths: [])
+    }
+
     private func loadCustomOrder() {
         if let order = PreferencesStore.shared.loadCustomOrder() { customOrder = order }
     }
@@ -187,7 +217,7 @@ class LibraryScanState {
 
     private func setupRefreshTimer() {
         refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: settings?.refreshInterval ?? 300, repeats: true) { [weak self] _ in
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: settings?.refreshInterval ?? ScanMetrics.refreshIntervalDefault, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, !self.isScanning else { return }
                 await self.refreshDisplayOrder()
@@ -412,7 +442,7 @@ class LibraryScanState {
         }
         if !reason.bypassesStalenessCheck, let cache = scanCache {
             let hasChanged = allDirs.contains { currentMtimes[$0] != cache.dirMtimes[$0] }
-            if !hasChanged && Date().timeIntervalSince(cache.timestamp) < (settings?.refreshInterval ?? 300) * 2 { return }
+            if !hasChanged && Date().timeIntervalSince(cache.timestamp) < (settings?.refreshInterval ?? ScanMetrics.refreshIntervalDefault) * 2 { return }
         }
         let result = await Task.detached(priority: .utility) {
             ApplicationScanner.shared.scanDirectories(directories: allDirs)

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-class RestorePreviewPanel: NSObject {
+class RestorePreviewPanel: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var continuation: CheckedContinuation<NSApplication.ModalResponse, Never>?
 
@@ -58,7 +58,27 @@ class RestorePreviewPanel: NSObject {
         window?.isReleasedWhenClosed = false
         window?.contentView = hostingView
         window?.minSize = NSSize(width: 500, height: 350)
+        // The style mask includes .closable, so the title-bar button can dismiss this window
+        // without going through either of the buttons above. Without a delegate to notice that,
+        // `runModal`'s continuation was never resumed and the restore flow hung for the rest of
+        // the session (and Swift would warn about a leaked continuation).
+        window?.delegate = self
     }
+
+    /// Closing via the title-bar button is a cancel. Routed through `complete` so it cannot
+    /// double-resume if a button was clicked first — `complete` clears the continuation.
+    func windowWillClose(_ notification: Notification) {
+        complete(with: .cancel)
+    }
+
+    /// True while `runModal` is suspended waiting for a response. Lets a caller — in practice a
+    /// test — wait for the continuation to be installed rather than racing it.
+    var isAwaitingResponse: Bool { continuation != nil }
+
+    /// Whether the window will actually route its close button back to this object. Exposed
+    /// because calling `windowWillClose` directly proves only that the handler works, not that
+    /// AppKit would ever call it — the bug was the missing wiring, not the handler.
+    var handlesWindowClose: Bool { window?.delegate === self }
 
     func runModal() async -> NSApplication.ModalResponse {
         guard let window else { return .cancel }
@@ -70,10 +90,15 @@ class RestorePreviewPanel: NSObject {
         }
     }
 
+    /// Resolves `runModal` exactly once, whichever way the panel was dismissed — Apply, Cancel,
+    /// or the title-bar close button. Taking the continuation before resuming makes a second
+    /// call a no-op, which matters now that `windowWillClose` is also a completion path: clicking
+    /// Cancel orders the window out, and that can deliver the close notification too.
     private func complete(with result: NSApplication.ModalResponse) {
-        window?.orderOut(nil)
-        continuation?.resume(returning: result)
+        guard let pending = continuation else { return }
         continuation = nil
+        window?.orderOut(nil)
+        pending.resume(returning: result)
     }
 }
 

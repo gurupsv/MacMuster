@@ -180,7 +180,7 @@ final class BackupManager {
         let sortOption = PreferencesStore.shared.loadSortOption() ?? ApplicationSorter.SortOption.name.rawValue
         let iconSize = PreferencesStore.shared.loadIconSize() ?? IconSize.medium.rawValue
         let showFoldersFirst = PreferencesStore.shared.loadShowFoldersFirst()
-        let refreshInterval = PreferencesStore.shared.loadRefreshInterval() ?? 30.0
+        let refreshInterval = PreferencesStore.shared.loadRefreshInterval() ?? ScanMetrics.refreshIntervalDefault
         let currentFolderId = PreferencesStore.shared.loadCurrentFolderId()
         let customDirectories = PreferencesStore.shared.loadCustomDirectories() ?? []
 
@@ -334,15 +334,17 @@ final class BackupManager {
         // Clean up folders before applying restored data
         FolderStore.shared.folders.removeAll()
 
-        // Recreate folders — remove missing app paths from each folder's membership
+        // Recreate folders — remove missing app paths from each folder's membership.
+        //
+        // Copy the decoded folder and edit the one field that changes, rather than building a
+        // fresh AppFolder from its parts: that initializer stamps `createdAt`/`modifiedAt` with
+        // `Date()`, so every restored folder silently lost the timestamps the archive had
+        // faithfully carried. Dropping apps that are no longer installed is a restore-time
+        // adaptation, not a user edit, so `modifiedAt` is preserved too — the restored state
+        // should read as the state that was backed up.
         for folder in archive.appFolders {
-            let cleanedPaths = folder.appPaths.filter { preview.validAppPaths.contains($0) }
-            let cleanedFolder = AppFolder(
-                id: folder.id,
-                name: folder.name,
-                appPaths: cleanedPaths,
-                customIcon: folder.customIcon
-            )
+            var cleanedFolder = folder
+            cleanedFolder.appPaths = folder.appPaths.filter { preview.validAppPaths.contains($0) }
             FolderStore.shared.folders.append(cleanedFolder)
         }
 
@@ -412,7 +414,22 @@ final class BackupManager {
         key.count == 64 && key.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
     }
 
-    private func readIconPack() -> [String: Data] {
+    nonisolated static let iconMetaSuffix = ".meta"
+
+    /// Whether `name` is a filename the icon cache could have written — either the bitmap (a bare
+    /// 64-char hex digest) or its `.meta` sidecar. Both halves travel in the pack, and both become
+    /// write paths on restore, so both go through the same shape check. Anything else — path
+    /// separators, `..`, absolute paths, an empty name — fails by not matching the shape, which
+    /// is what keeps this a whitelist rather than an attempt to enumerate bad input.
+    nonisolated static func isValidIconPackKey(_ name: String) -> Bool {
+        guard name.hasSuffix(iconMetaSuffix) else { return isValidIconCacheKey(name) }
+        return isValidIconCacheKey(String(name.dropLast(iconMetaSuffix.count)))
+    }
+
+    /// Reads the on-disk icon cache into pack entries. Internal rather than private so a test can
+    /// assert what an export actually carries — the bug this guards against (a pack missing its
+    /// `.meta` sidecars) is invisible from the outside until a restore silently does nothing.
+    func readIconPack() -> [String: Data] {
         let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("MacMuster/icons-v4", isDirectory: true)
 
@@ -424,22 +441,30 @@ final class BackupManager {
             at: cacheDir, includingPropertiesForKeys: nil) else { return [:] }
 
         for fileURL in contents {
-            // v4 cache stores icons as bare SHA256 hex filenames (no extension) alongside
-            // .meta JSON sidecar files. Skip the meta files, and take only names matching the
-            // shape the cache actually writes — so the archive can never carry a key that
-            // `restoreIconPack` would then refuse (or worse, act on).
+            // The v4 cache stores each icon as a bare SHA256 hex filename **plus** a `.meta` JSON
+            // sidecar, and `IconCacheManager.cachedIcon` requires both to be present before it
+            // will read an entry. The sidecars used to be skipped here, which made the whole icon
+            // pack inert: a restore wrote bitmaps with no metadata, so every one of them was
+            // ignored and re-decoded from scratch — the largest part of a backup, carried for
+            // nothing. Take both halves, accepting only names the cache itself could have
+            // written so the archive can never carry a key `restoreIconPack` would refuse.
             let name = fileURL.lastPathComponent
-            guard fileURL.pathExtension != "meta", Self.isValidIconCacheKey(name) else { continue }
+            guard Self.isValidIconPackKey(name) else { continue }
 
             do {
-                let data = try Data(contentsOf: fileURL)
-                entries[fileURL.lastPathComponent] = data
+                entries[name] = try Data(contentsOf: fileURL)
             } catch {
                 // Skip corrupted icon files silently
             }
         }
 
-        return entries
+        // A bitmap without its sidecar can never be read back, and a sidecar without its bitmap
+        // is dead weight. Ship only complete pairs rather than bytes that cannot be used.
+        return entries.filter { key, _ in
+            key.hasSuffix(Self.iconMetaSuffix)
+                ? entries[String(key.dropLast(Self.iconMetaSuffix.count))] != nil
+                : entries[key + Self.iconMetaSuffix] != nil
+        }
     }
 
     private func restoreIconPack(from iconPack: IconPack) {
@@ -454,7 +479,7 @@ final class BackupManager {
 
         for (key, imageData) in iconPack.entries {
             // The key comes from an untrusted file and is about to become a write path.
-            guard Self.isValidIconCacheKey(key) else { continue }
+            guard Self.isValidIconPackKey(key) else { continue }
 
             let iconURL = cacheDir.appendingPathComponent(key, isDirectory: false)
 

@@ -247,6 +247,19 @@ class AppModel {
     func loadMissingIcons() async { await library.loadMissingIcons() }
     func refreshCachedIcons() async { await library.refreshCachedIcons() }
     func cleanupTimerAndObservers() { library.cleanupTimerAndObservers() }
+
+    /// Pulls freshly-restored state off disk into the live objects the UI reads.
+    ///
+    /// `BackupManager.apply` writes to `PreferencesStore`, `FolderStore` and the badge trackers,
+    /// none of which the running app re-reads on its own — so without this a restore reported
+    /// success and visibly changed nothing until the next launch.
+    func reloadAfterRestore() {
+        settings.reloadFromPersistence()
+        library.reloadFromPersistence()
+        // The badge trackers keep their own in-memory copies, seeded once at startup.
+        RecentlyUpdatedTracker.shared.loadFromDefaults()
+        library.recentlyUpdatedPaths = Set(RecentlyUpdatedTracker.shared.recentlyUpdated.keys)
+    }
     func updateFilteredApps() { library.updateFilteredApps() }
     func sortedApplications(_ apps: [Application]) -> [Application] { library.sortedApplications(apps) }
     func recordAppLaunch(at path: String) { library.recordAppLaunch(at: path) }

@@ -88,7 +88,7 @@ class SettingsAppearance {
     var showHiddenApps: Bool = false {
         didSet { PreferencesStore.shared.saveShowHiddenApps(showHiddenApps) }
     }
-    var refreshInterval: TimeInterval = 300 {
+    var refreshInterval: TimeInterval = ScanMetrics.refreshIntervalDefault {
         didSet { PreferencesStore.shared.saveRefreshInterval(refreshInterval) }
     }
 
@@ -121,6 +121,17 @@ class SettingsAppearance {
     }
 
     init() {
+        reloadFromPersistence()
+    }
+
+    /// Re-reads every setting from `PreferencesStore` into this live object.
+    ///
+    /// Used by `init`, and again after a backup restore: `BackupManager.apply` writes straight to
+    /// `PreferencesStore`, so without this the restored values sat on disk while the running app
+    /// kept showing the old ones until relaunch. Each assignment trips its own `didSet`, which
+    /// re-saves the value just read — harmless, and it keeps `launchMode`'s side effect of
+    /// re-applying the window mode, which a restore wants anyway.
+    func reloadFromPersistence() {
         loadPersistedPreferences()
         showRecentApps = PreferencesStore.shared.loadRecentAppsEnabled()
         pressFeedbackEnabled = PreferencesStore.shared.loadPressFeedbackEnabled()
