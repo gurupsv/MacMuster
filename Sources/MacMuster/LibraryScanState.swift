@@ -421,13 +421,7 @@ class LibraryScanState {
     }
 
     func sortedApplications(_ apps: [Application]) -> [Application] {
-        if !customOrder.isEmpty {
-            return apps.sorted {
-                let a = customOrder[$0.path], b = customOrder[$1.path]
-                switch (a, b) { case (nil, nil): return false; case (nil, _): return false; case (_, nil): return true; case (let av?, let bv?): return av < bv }
-            }
-        }
-        return ApplicationSorter.sort(apps, by: sortOption)
+        ApplicationSorter.sort(apps, by: sortOption, customOrder: customOrder)
     }
 
     /// Why a refresh is happening. "Always scan" and "rebuild icons" are independent decisions,

@@ -13,12 +13,11 @@ messages and issues.
 | Critical | 1 | 1 | 0 |
 | Security | 4 | 3 | 1 |
 | Performance | 6 | 4 | 2 |
-| Usability | 9 | 5 | 4 |
+| Usability | 9 | 7 | 2 |
 | Other bugs | 9 | 5 | 4 |
-| **Total** | **29** | **18** | **11** |
+| **Total** | **29** | **20** | **9** |
 
-Next up: `UX-6`/`UX-7` (custom order overriding sort, and unstable ordering), then
-`UX-8`/`UX-9` and the remaining `BUG-` items.
+Next up: `UX-8`/`UX-9`, then the remaining `BUG-` and `PERF-` items.
 
 ---
 
@@ -345,7 +344,14 @@ update the model, but `applyCurrentMode()` (wired only to `launchMode`) never re
 
 **Fix:** recompute `backgroundColor` in `applyCurrentMode()` and call it from both setters.
 
-### [ ] UX-6 — One drag permanently disables the sort setting and "Show Folders First"
+### [x] UX-6 — One drag permanently disables the sort setting and "Show Folders First" — **FIXED**
+
+> **Fixed 2026-08-30.** Custom order now positions the apps that have one and everything else
+> follows the configured sort, instead of the sort being switched off wholesale. Folders-first
+> partitions *before* ordering, so the arrangement is no longer computed and then discarded by
+> a whole-list re-sort. No "reset custom order" affordance was needed in the end — the sort
+> menu visibly works again with a drag order present.
+
 
 **Where:** `Sources/MacMuster/LibraryScanState.swift:364`;
 `Sources/MacMuster/LibraryScanState+Display.swift:145-150`
@@ -358,7 +364,17 @@ menu appears broken with no way to recover. `setSortOption` clears `customOrder`
 **Fix:** apply custom order *within* the folders-first partition rather than across it, and add a
 visible "Reset custom order" affordance.
 
-### [ ] UX-7 — Apps without a custom order shuffle between scans
+### [x] UX-7 — Apps without a custom order shuffle between scans — **FIXED**
+
+> **Fixed 2026-08-30.** Same comparator, same root cause as `UX-6`: un-dragged pairs reported
+> as equal and left to an unstable sort. They now fall through to the sort option, and both
+> sort options end in a tiebreak on `path`, so no two distinct apps ever compare equal. The
+> `.installationDate` tiebreak matters more since `BUG-4` — an unreadable mtime resolves to
+> `.distantPast`, so ties are now expected rather than rare.
+>
+> The launch-history comparators (Most Used, Recently Launched) had the same flaw and were
+> given the same tiebreak; equal launch counts are the common case there.
+
 
 **Where:** `Sources/MacMuster/LibraryScanState.swift:365-368`;
 `LibraryScanState+Display.swift:146-149`; `Services/FolderStore.swift:69-77`

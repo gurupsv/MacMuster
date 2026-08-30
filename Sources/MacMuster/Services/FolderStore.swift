@@ -63,23 +63,9 @@ final class FolderStore {
         guard folders.first(where: { $0.id == folderId }) != nil else { return [] }
 
         let containedApps = folders.first(where: { $0.id == folderId })!.appPaths.compactMap { appPathIndex[$0] }
-        var result: [Application] = containedApps.filter { !hiddenAppPaths.contains($0.path) }
+        let result: [Application] = containedApps.filter { !hiddenAppPaths.contains($0.path) }
         
-        if !customOrder.isEmpty {
-            result.sort {
-                let a = customOrder[$0.path], b = customOrder[$1.path]
-                switch (a, b) {
-                case (nil, nil): return false
-                case (nil, _):   return false
-                case (_, nil):   return true
-                case (let av?, let bv?): return av < bv
-                }
-            }
-        } else {
-            result = ApplicationSorter.sort(result, by: sortOption)
-        }
-        
-        return result
+        return ApplicationSorter.sort(result, by: sortOption, customOrder: customOrder)
     }
     
     func getFolderApplication(_ folder: AppFolder, containedApps: [Application], displayCount: Int? = nil) -> Application {
