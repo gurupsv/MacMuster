@@ -11,13 +11,14 @@ messages and issues.
 | Category | Total | Done | Pending |
 |---|---:|---:|---:|
 | Critical | 1 | 1 | 0 |
-| Security | 4 | 2 | 2 |
-| Performance | 6 | 1 | 5 |
+| Security | 4 | 3 | 1 |
+| Performance | 6 | 4 | 2 |
 | Usability | 9 | 5 | 4 |
-| Other bugs | 9 | 4 | 5 |
-| **Total** | **29** | **13** | **16** |
+| Other bugs | 9 | 5 | 4 |
+| **Total** | **29** | **18** | **11** |
 
-Next up: the scanner group (`PERF-2`, `PERF-4`, `PERF-5`, `SEC-2`, `BUG-4`).
+Next up: `UX-6`/`UX-7` (custom order overriding sort, and unstable ordering), then
+`UX-8`/`UX-9` and the remaining `BUG-` items.
 
 ---
 
@@ -76,7 +77,18 @@ does not incidentally protect against this.
 produced by `IconCacheManager.cacheKey`). Belt-and-braces: verify the resolved path is still inside
 `cacheDir` before writing.
 
-### [ ] SEC-2 — Provenance badge is bypassable
+### [x] SEC-2 — Provenance badge is bypassable — **FIXED**
+
+> **Fixed 2026-08-30.** `Application` precomputes `resolvedPath` (lexical `..` removal, then
+> `realpath`) and the trust check runs against that. Both steps are needed: `realpath` returns
+> nil for a path that does not exist, so a traversal string would otherwise fall back to the
+> raw prefix it was built to fake.
+>
+> **This nearly shipped a worse bug.** Resolving paths naively flags Safari as untrusted: on
+> current macOS `/Applications/Safari.app` resolves to
+> `/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app`. The SIP-protected
+> cryptex is now an explicit trusted prefix, with a regression test pinning it.
+
 
 **Where:** `Sources/MacMuster/Types.swift:92-95`
 
@@ -163,7 +175,14 @@ Consequences:
 **Fix:** give `currentBundleModificationTime` a `forceRefresh` parameter (or a separate
 `refreshMtime`) and use it from `pruneDeletedApps`.
 
-### [ ] PERF-2 — `findContainedApps` runs for every discovered app
+### [x] PERF-2 — `findContainedApps` runs for every discovered app — **FIXED**
+
+> **Fixed 2026-08-30.** Dropped the listing of each bundle's own root. Measured across 210
+> bundles in `/Applications`, `/System/Applications` and `/System/Applications/Utilities`:
+> **zero** had a root-level `.app` child, while 2 had one of the nested directories — so that
+> was 210 directory reads per scan that could not succeed. The two nested paths that actually
+> carry apps are still checked, now by enumerating directly instead of `fileExists` first.
+
 
 **Where:** `Sources/MacMuster/Services/ApplicationScanner.swift:56`, `:146-184`
 
@@ -182,7 +201,12 @@ saves it) but forces a full dictionary copy per removal.
 
 **Fix:** collect the paths to remove first, then remove them in a second pass.
 
-### [ ] PERF-4 — Redundant back-to-back `fileExists` calls
+### [x] PERF-4 — Redundant back-to-back `fileExists` calls — **FIXED**
+
+> **Fixed 2026-08-30.** Scanner occurrences removed: `attributesOfItem` already reports a
+> missing path by failing, and `.isDirectoryKey` arrives with the enumeration instead of
+> costing a stat per entry. The `BackupManager` occurrence was done earlier with `CRIT-1`.
+
 
 **Where:** ~~`Sources/MacMuster/Services/BackupManager.swift:285` and `:290`~~ (done); several
 spots in `ApplicationScanner` (pending)
@@ -192,7 +216,18 @@ Each call is a syscall; one `fileExists(atPath:isDirectory:)` answers both quest
 > **Partially fixed 2026-08-29.** The `BackupManager.restore()` occurrence was collapsed into a
 > single stat while fixing `CRIT-1`. The `ApplicationScanner` occurrences remain.
 
-### [ ] PERF-5 — `findAppsInPlainFolder` has no symlink-cycle guard
+### [x] PERF-5 — `findAppsInPlainFolder` has no symlink-cycle guard — **FIXED**
+
+> **Fixed 2026-08-30.** The walk no longer descends through symlinks. Confirmed against the
+> original implementation: a folder containing a link to itself yielded the same app **5
+> times** (`loop/loop/loop/loop/`), and worse, the duplicates pushed the folder over the
+> "2 or more apps" threshold so it surfaced as a synthetic folder instead of the app.
+>
+> No visited-path set: the URL-based `contentsOfDirectory(at:)` will not open a symlinked
+> directory at all (the string-based API it replaced followed it happily), so cycles are
+> structurally impossible. An earlier draft carried a canonical-path set as a backstop — it
+> was unreachable, and sabotage testing is what exposed that it was dead code.
+
 
 **Where:** `Sources/MacMuster/Services/ApplicationScanner.swift:197-215`
 
@@ -390,7 +425,12 @@ Undefined behaviour in SwiftUI; can trigger "Modifying state during view update"
 
 **Fix:** compute from `columnCount` without caching (it is cheap), or move the cache off `@State`.
 
-### [ ] BUG-4 — Apps get a permanent spurious "recently updated" badge
+### [x] BUG-4 — Apps get a permanent spurious "recently updated" badge — **FIXED**
+
+> **Fixed 2026-08-30.** An unreadable mtime now falls back to `.distantPast` rather than
+> `Date()`. The old fallback moved on every scan, so the tracker saw a fresh delta each time
+> and re-badged the app forever — and sorting by installation date shuffled it around too.
+
 
 **Where:** `Sources/MacMuster/Services/ApplicationScanner.swift:55`, `:131`
 
