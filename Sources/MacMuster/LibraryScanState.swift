@@ -170,7 +170,7 @@ class LibraryScanState {
         guard isLoading else { return }
         // Reclaim cache directories from superseded key schemes, which nothing else deletes.
         IconCacheManager.shared.removeSupersededCaches()
-        let allDirs = allScanDirectories
+        let allDirs = currentScanDirectories
         let result = await Task.detached(priority: .userInitiated) {
             ApplicationScanner.shared.scanDirectories(directories: allDirs)
         }.value
@@ -202,6 +202,21 @@ class LibraryScanState {
             allScanDirectories = Self.defaultScanDirectories
         }
     }
+    /// The directories to scan *right now*, with the custom entries re-validated against the
+    /// filesystem as it currently is.
+    ///
+    /// `allScanDirectories` holds the configured set, validated when it was last assigned — on
+    /// add, on remove, and at launch. Scans run every few minutes and on every filesystem event,
+    /// so between assignments a validated directory could be replaced with a symlink and every
+    /// subsequent scan would follow it. Re-filtering here closes that window.
+    ///
+    /// The default directories are never re-validated, deliberately. They are the OS-owned
+    /// install locations, and a check that somehow rejected one would silently empty the
+    /// launcher — a far worse outcome than the narrow case this guards against.
+    var currentScanDirectories: [String] {
+        Self.defaultScanDirectories + customDirectories.filter { ApplicationScanner.isValidCustomDirectory($0) }
+    }
+
     private func resolveCustomDirectoryAccess(for paths: [String]) {
         for path in paths {
             guard let bookmarkData = customDirectoryBookmarks[path] else { continue }
@@ -448,7 +463,7 @@ class LibraryScanState {
         guard !isScanning else { return }
         isScanning = true
         defer { isScanning = false }
-        let allDirs = allScanDirectories
+        let allDirs = currentScanDirectories
         var currentMtimes: [String: Date] = [:]
         for dir in allDirs {
             if let mtime = try? FileManager.default.attributesOfItem(atPath: dir)[.modificationDate] as? Date { currentMtimes[dir] = mtime }

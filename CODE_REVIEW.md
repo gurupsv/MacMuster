@@ -11,11 +11,11 @@ messages and issues.
 | Category | Total | Done | Pending |
 |---|---:|---:|---:|
 | Critical | 1 | 1 | 0 |
-| Security | 4 | 3 | 1 |
+| Security | 4 | 4 | 0 |
 | Performance | 6 | 4 | 2 |
 | Usability | 9 | 7 | 2 |
 | Other bugs | 9 | 5 | 4 |
-| **Total** | **29** | **20** | **9** |
+| **Total** | **29** | **21** | **8** |
 
 Next up: `UX-8`/`UX-9`, then the remaining `BUG-` and `PERF-` items.
 
@@ -116,7 +116,26 @@ it and could lead someone to trust a restored archive.
 
 **Fix:** relabel in comments as corruption detection only. (Fix alongside `CRIT-1`.)
 
-### [ ] SEC-4 — `isValidCustomDirectory` is TOCTOU
+### [x] SEC-4 — `isValidCustomDirectory` is TOCTOU — **FIXED**
+
+> **Fixed 2026-08-30.** Scans now go through `currentScanDirectories`, which re-filters the
+> custom entries against the filesystem as it is at that moment rather than trusting the list
+> validated when it was last assigned. The default directories are deliberately *not*
+> re-validated: a check that somehow rejected one would silently empty the launcher, which is a
+> far worse outcome than the narrow window this closes.
+>
+> Also fixed a false negative found while re-reading the function, and arguably the more
+> user-visible half. The symlink test compared the whole path against `resolvingSymlinksInPath`
+> and rejected any difference, so an ordinary directory reached through a **symlinked ancestor**
+> — an external volume linked from the home folder, say — could not be added, with no
+> explanation given. Now: the path must equal its `standardizedFileURL` (normalizing lexically,
+> without following links, so `..`, doubled and trailing slashes and null-truncated paths are
+> still refused), and `.isSymbolicLinkKey` rejects a link at the final component only.
+>
+> Note `/var` was a red herring: `resolvingSymlinksInPath` deliberately leaves `/private`
+> prefixes alone, so the temp directory never exercised the old check. The first version of the
+> regression test asserted otherwise and failed on its own precondition.
+
 
 **Where:** `Sources/MacMuster/Services/ApplicationScanner.swift:222-241`
 

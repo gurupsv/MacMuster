@@ -245,6 +245,12 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
     /// owned by root, not the current user, so an ownership check would reject legitimate directories.
     /// A path that doesn't exist yet (e.g. an unmounted external volume) is still considered valid —
     /// only a path that exists as something other than a directory (e.g. a plain file) is rejected.
+    ///
+    /// Re-checked before every scan rather than only when the directory is added: the answer can
+    /// change underneath a stored result, and a validated directory that is later replaced with a
+    /// symlink would otherwise be followed for the rest of the session. The checks are a handful
+    /// of syscalls against a list that is normally empty and never long, so paying them per scan
+    /// costs nothing measurable.
     static func isValidCustomDirectory(_ path: String) -> Bool {
         guard path.hasPrefix("/") else { return false }
         let fm = FileManager.default
@@ -254,9 +260,22 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         if exists && !isDir.boolValue { return false }
         guard exists else { return true }
 
-        // Reject symlinks to prevent directory traversal attacks
-        let resolvedPath = (path as NSString).resolvingSymlinksInPath
-        guard resolvedPath == path else { return false }
+        // Require an already-normalized path: no "..", no trailing or doubled slashes, nothing a
+        // null byte truncated. Anything that normalizes to something other than what was passed is
+        // refused rather than silently reinterpreted.
+        //
+        // `standardizedFileURL` normalizes *lexically* and leaves symlinks alone, which is the
+        // whole point. The previous check compared against `resolvingSymlinksInPath`, which does
+        // follow them — so it rejected every directory whose **ancestor** happened to be a symlink.
+        // On macOS that includes anything under /var (a link to /private/var) and any home behind
+        // a link, so ordinary directories were unaddable with no explanation given.
+        guard URL(fileURLWithPath: path).standardizedFileURL.path == path else { return false }
+
+        // Reject a symlink at the path itself — the traversal case actually worth refusing, since
+        // that entry can be swapped for a link pointing somewhere else entirely. `.isSymbolicLinkKey`
+        // describes the final component only, so an ancestor being a link is not held against it.
+        if (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isSymbolicLinkKey]))?
+            .isSymbolicLink == true { return false }
 
         // Reject if world-writable
         guard let attrs = try? fm.attributesOfItem(atPath: path),
