@@ -42,13 +42,32 @@ final class IconService {
             }
         }
 
-        // Fallback 2: If CGContext approach fails, try to resize the icon directly using NSImage
-        let resized = NSImage(size: NSSize(width: pixelSize, height: pixelSize))
-        resized.lockFocus()
-        icon.draw(in: NSRect(x: 0, y: 0, width: pixelSize, height: pixelSize),
-                  from: NSRect.zero, operation: .copy, fraction: 1.0)
-        resized.unlockFocus()
-        return resized
+        // Fallback 2: draw the icon through a CGContext of our own rather than NSImage's
+        // focus stack.
+        //
+        // This used to be `lockFocus`/`unlockFocus`, which AppKit documents as main-thread only —
+        // and this runs on the cooperative pool, reached from `loadOrDecodeIcon` inside a task
+        // group. It is a rarely-taken fallback, so it was a latent corruption/crash rather than a
+        // visible one, but there is no reason to keep it: `NSGraphicsContext` over a bitmap
+        // context does the same drawing with no shared focus state to race on.
+        if let ctx = CGContext(data: nil, width: pixelSize, height: pixelSize,
+                               bitsPerComponent: 8, bytesPerRow: 0,
+                               space: CGColorSpaceCreateDeviceRGB(),
+                               bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+            let graphicsContext = NSGraphicsContext(cgContext: ctx, flipped: false)
+            let previous = NSGraphicsContext.current
+            NSGraphicsContext.current = graphicsContext
+            icon.draw(in: NSRect(x: 0, y: 0, width: pixelSize, height: pixelSize),
+                      from: .zero, operation: .copy, fraction: 1.0)
+            NSGraphicsContext.current = previous
+            if let drawn = ctx.makeImage() {
+                return NSImage(cgImage: drawn, size: NSSize(width: pixelSize, height: pixelSize))
+            }
+        }
+
+        // Fallback 3: hand back the undownscaled system icon. Bigger than asked for, but a real
+        // icon beats a blank one, and every path above having failed is already exceptional.
+        return icon
     }
     
     func generateFolderIcon(_ apps: [Application], for folderId: String? = nil, gridSize: Int = 3) -> NSImage? {

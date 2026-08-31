@@ -12,12 +12,12 @@ messages and issues.
 |---|---:|---:|---:|
 | Critical | 1 | 1 | 0 |
 | Security | 4 | 4 | 0 |
-| Performance | 6 | 4 | 2 |
-| Usability | 9 | 7 | 2 |
-| Other bugs | 9 | 5 | 4 |
-| **Total** | **29** | **21** | **8** |
+| Performance | 6 | 6 | 0 |
+| Usability | 9 | 9 | 0 |
+| Other bugs | 9 | 9 | 0 |
+| **Total** | **29** | **29** | **0** |
 
-Next up: `UX-8`/`UX-9`, then the remaining `BUG-` and `PERF-` items.
+**All findings addressed.** Suite grew 615 -> 710 tests over the course of the work.
 
 ---
 
@@ -210,7 +210,12 @@ scans fire on every filesystem event, not just at launch.
 
 **Fix:** probe nested paths lazily, or gate on a cheap heuristic before enumerating.
 
-### [ ] PERF-3 — O(n²) dictionary pruning in the update tracker
+### [x] PERF-3 — O(n²) dictionary pruning in the update tracker — **FIXED**
+
+> **Fixed 2026-08-31.** Both prune loops replaced with a single `filter`. The old form was
+> *safe* — the `Keys` view holds its own reference, so copy-on-write handed each mutation a
+> fresh buffer — but that is the cost: a full dictionary copy per removed entry.
+
 
 **Where:** `Sources/MacMuster/Services/RecentlyUpdatedTracker.swift:71-76`
 
@@ -254,7 +259,13 @@ an enormous tree. Depth-bounded, so not unbounded, but still a potential multi-s
 
 **Fix:** skip symlinked directories, or track visited canonical paths.
 
-### [ ] PERF-6 — Icons under-rasterized at the largest size
+### [x] PERF-6 — Icons under-rasterized at the largest size — **FIXED**
+
+> **Fixed 2026-08-31.** `iconRasterPixelSizePx` is now derived as `iconSizeExtraLarge * 2`
+> (200 px) rather than a hardcoded 160, so it cannot drift if the largest size changes. One
+> size still serves every setting — the cache is keyed by path and appearance, not size, and
+> downscaling is free where upscaling was what showed.
+
 
 **Where:** `Sources/MacMuster/Constants.swift:116` (`iconRasterPixelSizePx = 160`)
 
@@ -403,7 +414,14 @@ so newly installed apps change position between scans.
 
 **Fix:** add a deterministic tiebreaker (`lowercaseName`).
 
-### [ ] UX-8 — Status badges are invisible to VoiceOver
+### [x] UX-8 — Status badges are invisible to VoiceOver — **FIXED**
+
+> **Fixed 2026-08-31.** Running and recently-updated state is folded into the cell's own
+> `accessibilityLabel`, and the two dead `accessibilityLabel` calls on the decorative overlays
+> are gone — leaving them would invite the same mistake. The badges stay
+> `accessibilityHidden`: separate elements would have VoiceOver announce three or four things
+> per app.
+
 
 **Where:** `Sources/MacMuster/ContentView.swift:766-767` and `:829-830`
 
@@ -413,7 +431,13 @@ running or recently-updated state either, so neither badge is perceivable non-vi
 
 **Fix:** fold both states into `accessibilityLabel(for:)` and keep the decorative overlays hidden.
 
-### [ ] UX-9 — Folders cannot be found by search
+### [x] UX-9 — Folders cannot be found by search — **FIXED**
+
+> **Fixed 2026-08-31.** Root-level search now covers the union — every visible app, wherever
+> it lives, plus the folder entries. Neither list works alone, which is why the old code
+> substituted one for the other and lost half the answer: the candidate list omits apps inside
+> folders, and `visibleApplications` contains no folder entries at all.
+
 
 **Where:** `Sources/MacMuster/LibraryScanState+Display.swift:104-109`
 
@@ -451,7 +475,13 @@ silently discards the original timestamps that were faithfully stored in the arc
 
 **Fix:** add an initializer that preserves both, or decode the folder unchanged.
 
-### [ ] BUG-3 — `gridColumns` mutates `@State` during view-body evaluation
+### [x] BUG-3 — `gridColumns` mutates `@State` during view-body evaluation — **FIXED**
+
+> **Fixed 2026-08-31.** Cache removed rather than relocated. Building the array is a handful
+> of struct allocations; caching it was never worth a documented-undefined-behaviour hazard.
+> Not unit-tested — a state write during view update is a SwiftUI runtime concern, not
+> something a test can observe.
+
 
 **Where:** `Sources/MacMuster/ContentView.swift:26-34`
 
@@ -474,7 +504,13 @@ on every scan and `RecentlyUpdatedTracker` re-badges it forever.
 
 **Fix:** skip apps whose mtime cannot be read rather than substituting `now`.
 
-### [ ] BUG-5 — `lockFocus`/`unlockFocus` called off the main thread
+### [x] BUG-5 — `lockFocus`/`unlockFocus` called off the main thread — **FIXED**
+
+> **Fixed 2026-08-31.** The fallback draws through an `NSGraphicsContext` over a bitmap
+> context — same drawing, no shared focus state to race on — with a final fallback returning
+> the undownscaled system icon rather than nothing. No behavioural test: the fix removes a
+> threading hazard on a rarely-taken path, which a unit test cannot demonstrate.
+
 
 **Where:** `Sources/MacMuster/Services/IconService.swift:46-51`, reached from `:134-142` via the
 cooperative pool in `loadMissingIcons`
@@ -484,7 +520,13 @@ only. Currently a rarely-taken fallback, but a real latent crash/corruption risk
 
 **Fix:** replace the fallback with a `CGContext`-based path (as the primary path already uses).
 
-### [ ] BUG-6 — Misleading name: `getAllAppsIncludingChildFolders` does not recurse
+### [x] BUG-6 — Misleading name: `getAllAppsIncludingChildFolders` does not recurse — **FIXED**
+
+> **Fixed 2026-08-31.** Renamed to `appsInFolder(for:)` across all four call sites. Renamed
+> rather than implemented: `AppFolder` has no child-folder relationship to walk, so nesting is
+> a feature to design, not a bug to fix. Also collapsed a duplicated lookup that searched the
+> folder list twice and force-unwrapped the second result.
+
 
 **Where:** `Sources/MacMuster/Services/FolderStore.swift:56-83`
 
@@ -506,7 +548,16 @@ over it.
 > round trip, Set-ordering stability, corruption/truncation/tamper rejection, legacy decode, and
 > the SEC-1 traversal defence. Suite went 615 → 628, all passing.
 
-### [ ] BUG-8 — Dead code
+### [x] BUG-8 — Dead code — **FIXED**
+
+> **Fixed 2026-08-31.** `loadFolders()` and the `removeObserver(self)` no-op are deleted.
+> `didChangeScreenObserver` went earlier with `UX-1`.
+>
+> The fourth item was **fixed rather than deleted**: `NavigationSelection.launchSelectedApp`
+> passed `appModel: nil`, which skips launch recording. It is unreachable today, so nothing is
+> miscounted — but it was one keybinding away from silently dropping every keyboard-initiated
+> launch out of Recently Launched and Most Used. It now records through the completion handler.
+
 
 - ~~`RunningAppTracker.didChangeScreenObserver`~~ — **removed 2026-08-29** alongside `UX-1`.
 - `LibraryScanState.loadFolders()` — `LibraryScanState.swift:157-159`, never called (the initializer

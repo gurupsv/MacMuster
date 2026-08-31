@@ -189,9 +189,6 @@ class LibraryScanState {
     private func loadHiddenApps() {
         if let paths = PreferencesStore.shared.loadHiddenApps() { hiddenAppPaths = paths }
     }
-    private func loadFolders() {
-        if let savedFolders = PreferencesStore.shared.loadFolders() { folders = savedFolders }
-    }
     private func loadCustomDirectories() {
         customDirectoryBookmarks = PreferencesStore.shared.loadCustomDirectoryBookmarks() ?? [:]
         if let dirs = PreferencesStore.shared.loadCustomDirectories() {
@@ -313,7 +310,6 @@ class LibraryScanState {
         pendingRescanTask = nil
         directoryWatcher?.stop()
         directoryWatcher = nil
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
         // Flush any pending badge state so a quit right after a detected update doesn't lose it.
         RecentlyUpdatedTracker.shared.persist()
         RunningAppTracker.shared.stop()
@@ -661,9 +657,9 @@ class LibraryScanState {
         return folders.first { $0.id == folderId }
     }
 
-    func getAllAppsIncludingChildFolders(for folderId: String) -> [Application] {
+    func appsInFolder(for folderId: String) -> [Application] {
         let effectiveHiddenPaths: Set<String> = (settings?.showHiddenApps ?? false) ? [] : hiddenAppPaths
-        let apps = FolderStore.shared.getAllAppsIncludingChildFolders(for: folderId, appPathIndex: appPathIndex, hiddenAppPaths: effectiveHiddenPaths, customOrder: customOrder, sortOption: sortOption)
+        let apps = FolderStore.shared.appsInFolder(for: folderId, appPathIndex: appPathIndex, hiddenAppPaths: effectiveHiddenPaths, customOrder: customOrder, sortOption: sortOption)
         return apps.filter { !Self.permanentlyHiddenAppPaths.contains($0.path) }
     }
 }

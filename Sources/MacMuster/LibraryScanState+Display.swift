@@ -80,7 +80,7 @@ extension LibraryScanState {
     }
 
     private func getBaseAppsForCurrentContext() -> [Application] {
-        if let folderId = currentFolderId { return getAllAppsIncludingChildFolders(for: folderId) }
+        if let folderId = currentFolderId { return appsInFolder(for: folderId) }
 
         let appsInAnyFolder: Set<String> = {
             if let cached = cachedAppsInAnyFolder { return cached }
@@ -104,8 +104,20 @@ extension LibraryScanState {
     private func applySearchFilter(to apps: [Application], searchTerm: String) -> [Application] {
         guard !searchTerm.isEmpty else { return apps }
         let lower = searchTerm.lowercased()
-        if currentFolderId == nil { return rankedBySearchMatch(visibleApplications, query: lower) }
-        return rankedBySearchMatch(apps, query: lower)
+        guard currentFolderId == nil else { return rankedBySearchMatch(apps, query: lower) }
+
+        // At root level neither list is searchable on its own, which is why this used to substitute
+        // one for the other and lose half the answer.
+        //
+        // `apps` is loose apps plus one entry per folder, so searching it alone never finds an app
+        // that lives *inside* a folder — the reason the substitution was there. But
+        // `visibleApplications` contains every real app and no folder entries at all, so searching
+        // that alone means a folder can never be found by name. Search the union: every app,
+        // wherever it lives, plus the folders themselves.
+        //
+        // No duplicates to worry about — `visibleApplications` holds only real apps and the
+        // entries added here are only folders.
+        return rankedBySearchMatch(visibleApplications + apps.filter(\.isFolder), query: lower)
     }
 
     private func rankedBySearchMatch(_ apps: [Application], query: String) -> [Application] {

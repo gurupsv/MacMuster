@@ -302,7 +302,7 @@ class AppModel {
     func openFolder(_ folderId: String) { library.openFolder(folderId) }
     func closeFolder() { library.closeFolder() }
     var currentFolder: AppFolder? { library.currentFolder }
-    func getAllAppsIncludingChildFolders(for folderId: String) -> [Application] { library.getAllAppsIncludingChildFolders(for: folderId) }
+    func appsInFolder(for folderId: String) -> [Application] { library.appsInFolder(for: folderId) }
     func selectAppUp() { navigation.selectAppUp() }
     func selectAppDown() { navigation.selectAppDown() }
     func selectAppLeft() { navigation.selectAppLeft() }

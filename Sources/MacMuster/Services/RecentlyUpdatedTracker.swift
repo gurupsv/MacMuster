@@ -67,13 +67,15 @@ final class RecentlyUpdatedTracker {
         }
 
         // Prune apps that are gone from the current scan.
+        //
+        // `filter` rather than removing inside `for path in dict.keys`: that loop mutates the very
+        // dictionary it is walking. It is safe — the `Keys` view holds its own reference, so
+        // copy-on-write quietly hands the mutation a fresh buffer — but that is exactly the
+        // problem, because it means copying the whole dictionary on *every* removal. One pass that
+        // keeps what survives is a single copy instead of one per uninstalled app.
         let currentPaths = Set(currentMtimesByPath.keys)
-        for path in knownBundleMtimes.keys where !currentPaths.contains(path) {
-            knownBundleMtimes.removeValue(forKey: path)
-        }
-        for path in recentlyUpdated.keys where !currentPaths.contains(path) {
-            recentlyUpdated.removeValue(forKey: path)
-        }
+        knownBundleMtimes = knownBundleMtimes.filter { currentPaths.contains($0.key) }
+        recentlyUpdated = recentlyUpdated.filter { currentPaths.contains($0.key) }
 
         for path in updatedPaths {
             recentlyUpdated[path] = now
@@ -89,9 +91,8 @@ final class RecentlyUpdatedTracker {
     /// for every app indefinitely.
     func pruneExpired(now: Date = Date()) {
         let cutoff = now.addingTimeInterval(-UpdateMetrics.recentlyUpdatedBadgeSeconds)
-        for (path, detectedAt) in recentlyUpdated where detectedAt < cutoff {
-            recentlyUpdated.removeValue(forKey: path)
-        }
+        // One filtered copy, for the same reason as the pruning in `detectUpdatedApps` above.
+        recentlyUpdated = recentlyUpdated.filter { $0.value >= cutoff }
     }
 
     func isRecentlyUpdated(_ path: String) -> Bool {

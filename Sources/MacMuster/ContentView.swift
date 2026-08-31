@@ -12,9 +12,10 @@ struct ContentView: View {
 
     // Dark mode support — SwiftUI .primary/.secondary handle this automatically; colorScheme removed (Code Review Fix 8: unused)
 
-    // Cache grid columns to avoid allocation on every body render.
-    // Invalidates when columnCount changes.
-    @State private var gridColumnCache: (count: Int, columns: [GridItem])?
+    // No grid-column cache: it used to be @State written from inside `gridColumns`, which `body`
+    // reads — a state mutation during view update, which SwiftUI treats as undefined behaviour and
+    // warns about, and which can provoke another update pass. Building the array is a handful of
+    // struct allocations; caching it was never worth a correctness hazard.
     // Tracks whether keyboard navigation has been used — controls selection ring visibility
     @State private var hasUsedKeyboard: Bool = false
     // Search bar is hidden until the user clicks the search icon or presses /
@@ -24,13 +25,7 @@ struct ContentView: View {
     @State private var showKeyboardHint = false
     
     private var gridColumns: [GridItem] {
-        let count = appModel.columnCount
-        if gridColumnCache?.count == count {
-            return gridColumnCache!.columns
-        }
-        let columns = Array(repeating: GridItem(.flexible(), spacing: LayoutMetrics.gridSpacing), count: count)
-        gridColumnCache = (count, columns)
-        return columns
+        Array(repeating: GridItem(.flexible(), spacing: LayoutMetrics.gridSpacing), count: appModel.columnCount)
     }
     
     var body: some View {
@@ -492,15 +487,31 @@ spacing: LayoutMetrics.gridSpacing
         .help(app.provenanceWarning.map { "\(app.name) — \($0)" } ?? app.name)
     }
 
-    private func accessibilityLabel(for app: Application) -> String {
+    /// The spoken description of one grid cell, including any status the badges convey visually.
+    ///
+    /// The badges themselves stay `accessibilityHidden` — they are decorative overlays, and making
+    /// each its own element would have VoiceOver announce three or four things per app. The status
+    /// has to be folded in here instead, which is what was missing: each badge set an
+    /// `accessibilityLabel` and then immediately applied `accessibilityHidden(true)`, which
+    /// discards it. Running and recently-updated state was therefore invisible non-visually, in an
+    /// app whose README lists screen-reader support as a feature.
+    func accessibilityLabel(for app: Application) -> String {
         if app.isFolder {
             let count = app.containedApps?.count ?? 0
             return String(localized: "\(app.name) folder, \(count) app\(count == 1 ? "" : "s")")
         }
-        if let warning = app.provenanceWarning {
-            return String(localized: "\(app.name), application. \(warning)")
+
+        var description = String(localized: "\(app.name), application")
+        if appModel.runningAppPaths.contains(app.path) {
+            description += String(localized: ", running")
         }
-        return String(localized: "\(app.name), application")
+        if appModel.recentlyUpdatedPaths.contains(app.path) {
+            description += String(localized: ", recently updated")
+        }
+        if let warning = app.provenanceWarning {
+            description += ". " + warning
+        }
+        return description
     }
 
     private func handleAppTap(_ app: Application) {
@@ -763,7 +774,7 @@ struct AppIconView: View {
                             .foregroundStyle(Color.accentColor)
                     }
                     .padding(4)
-                    .accessibilityLabel(Text("Recently updated"))
+                    // Decorative: this state is spoken via accessibilityLabel(for:).
                     .accessibilityHidden(true)
                 }
             }
@@ -826,7 +837,7 @@ struct AppIconView: View {
                     .frame(width: runningDotSize, height: runningDotSize)
                     .overlay(Circle().stroke(Color.white, lineWidth: 1))
                     .padding(4)
-                    .accessibilityLabel(Text("Running"))
+                    // Decorative: this state is spoken via accessibilityLabel(for:).
                     .accessibilityHidden(true)
             }
         }

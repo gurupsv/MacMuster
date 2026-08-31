@@ -53,16 +53,22 @@ final class FolderStore {
         }
     }
     
-    func getAllAppsIncludingChildFolders(
+    /// The apps belonging to one folder, filtered and ordered for display.
+    ///
+    /// Was `getAllAppsIncludingChildFolders`, which promised a traversal it never performed —
+    /// `AppFolder` has no child-folder relationship to walk, only `appPaths`. Renamed rather than
+    /// implemented: folder nesting is a feature to design, not a bug to fix, and a name that
+    /// describes behaviour nobody wrote is the more immediate problem.
+    func appsInFolder(
         for folderId: String,
         appPathIndex: [String: Application],
         hiddenAppPaths: Set<String>,
         customOrder: [String: Int],
         sortOption: ApplicationSorter.SortOption
     ) -> [Application] {
-        guard folders.first(where: { $0.id == folderId }) != nil else { return [] }
+        guard let folder = folders.first(where: { $0.id == folderId }) else { return [] }
 
-        let containedApps = folders.first(where: { $0.id == folderId })!.appPaths.compactMap { appPathIndex[$0] }
+        let containedApps = folder.appPaths.compactMap { appPathIndex[$0] }
         let result: [Application] = containedApps.filter { !hiddenAppPaths.contains($0.path) }
         
         return ApplicationSorter.sort(result, by: sortOption, customOrder: customOrder)

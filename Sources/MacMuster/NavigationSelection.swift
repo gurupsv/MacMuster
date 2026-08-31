@@ -126,7 +126,17 @@ class NavigationSelection {
             library.openFolder(folderId)
             return true
         }
-        ApplicationService.shared.launchApplication(at: app.path, appModel: nil)
+        // Record the launch, so history stays correct whichever path started the app.
+        //
+        // This passed `appModel: nil`, which skips recording entirely. It is unreachable today —
+        // the one production caller guards on `app.isFolder` and the folder branch above returns
+        // first — so nothing is currently miscounted. But it is one keybinding away from silently
+        // dropping every keyboard-initiated launch out of Recently Launched and Most Used, which
+        // is the kind of bug that is noticed months later and never traced back.
+        ApplicationService.shared.launchApplication(at: app.path) { [weak library] success in
+            guard success else { return }
+            library?.recordAppLaunch(at: app.path)
+        }
         return true
     }
 

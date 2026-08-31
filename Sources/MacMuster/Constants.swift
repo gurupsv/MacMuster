@@ -119,7 +119,14 @@ enum IconMetrics {
     static let iconSizeMedium: CGFloat = 64
     static let iconSizeLarge: CGFloat = 80
     static let iconSizeExtraLarge: CGFloat = 100
-    static let iconRasterPixelSizePx = 160
+    /// Pixel size icons are rasterized to, shared by every icon-size setting.
+    ///
+    /// Must cover the largest size at 2x or the biggest icons render soft: Extra Large is 100 pt,
+    /// which is 200 px on a Retina display, and this was 160. Sized to the largest setting rather
+    /// than per-setting because the on-disk cache is keyed by path and appearance, not by size —
+    /// one bitmap serves every setting, and downscaling a larger source is free at draw time
+    /// whereas upscaling a smaller one is what was visible.
+    static let iconRasterPixelSizePx = Int(iconSizeExtraLarge * 2)
 }
 
 // MARK: - Layout Metrics
