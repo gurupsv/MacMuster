@@ -156,14 +156,7 @@ class OverlayWindowManager {
         window?.level = .floating
         window?.isMovableByWindowBackground = false
         window?.isOpaque = false
-        let backgroundColor: NSColor = switch appModel.presentationMode {
-            case .glass:
-                NSColor.black.withAlphaComponent(appModel.overlayOpacity)
-            case .sheet:
-                appModel.settings.tintedBackgroundColor()
-        }
-
-        window?.backgroundColor = backgroundColor
+        applyBackgroundColor()
         window?.hasShadow = false
         
         // Set minimum size for content
@@ -198,6 +191,33 @@ class OverlayWindowManager {
         DispatchQueue.main.asyncAfter(deadline: .now() + WindowMetrics.windowAnimationDelay) {
             NotificationCenter.default.post(name: .launcherDidShow, object: window)
         }
+    }
+
+    /// Paints the launcher's background from the current presentation mode and opacity.
+    ///
+    /// The one place this colour is decided. It used to be computed inline in `setup()` and
+    /// nowhere else, so changing Overlay Opacity or Presentation Mode persisted the new value and
+    /// updated the model while the window on screen kept the colour it was built with — the
+    /// setting appeared to do nothing until the next launch.
+    private func applyBackgroundColor() {
+        guard let appModel else { return }
+        let color: NSColor = switch appModel.presentationMode {
+            case .glass: NSColor.black.withAlphaComponent(appModel.overlayOpacity)
+            case .sheet: appModel.settings.tintedBackgroundColor()
+        }
+        window?.backgroundColor = color
+
+        // The dimming windows on other displays are tied to the same opacity setting.
+        for backgroundWindow in backgroundWindows {
+            backgroundWindow.backgroundColor = NSColor.black.withAlphaComponent(appModel.overlayOpacity)
+        }
+    }
+
+    /// Re-applies appearance settings to the live window. Called from `SettingsAppearance` when
+    /// Overlay Opacity, Presentation Mode, or the tint changes, so the launcher updates in place
+    /// instead of waiting for a relaunch.
+    func refreshAppearance() {
+        applyBackgroundColor()
     }
 
     func applyCurrentMode() {
@@ -264,6 +284,10 @@ class OverlayWindowManager {
             }
             window.contentView?.frame = CGRect(origin: .zero, size: screenFrame.size)
         }
+
+        // Changing styleMask/isOpaque above can reset the window's background, so re-assert it
+        // rather than leaving the colour to whichever branch ran.
+        applyBackgroundColor()
 
         // When the user switches launch mode from Settings, applyWindowMode brings the overlay
         // to front (makeKeyAndOrderFront + NSApp.activate). Re-bring Settings to front so it

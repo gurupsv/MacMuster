@@ -52,6 +52,7 @@ class SettingsAppearance {
             if overlayOpacity < GlowMetrics.overlayOpacityMin { overlayOpacity = GlowMetrics.overlayOpacityMin }
             if overlayOpacity > GlowMetrics.overlayOpacityMax { overlayOpacity = GlowMetrics.overlayOpacityMax }
             PreferencesStore.shared.saveOverlayOpacity(overlayOpacity)
+            OverlayWindowManager.shared.refreshAppearance()
         }
     }
     var showRecentApps: Bool = true {
@@ -88,9 +89,20 @@ class SettingsAppearance {
     var showHiddenApps: Bool = false {
         didSet { PreferencesStore.shared.saveShowHiddenApps(showHiddenApps) }
     }
-    var refreshInterval: TimeInterval = 300 {
-        didSet { PreferencesStore.shared.saveRefreshInterval(refreshInterval) }
+    var refreshInterval: TimeInterval = ScanMetrics.refreshIntervalDefault {
+        didSet {
+            PreferencesStore.shared.saveRefreshInterval(refreshInterval)
+            // The scan timer is built once during the initial load, so without this the new
+            // interval was persisted and then ignored until the next launch. `LibraryScanState`
+            // is not a singleton (unlike `OverlayWindowManager` above), so `AppModel` wires this
+            // up rather than the setting reaching for it directly.
+            onRefreshIntervalChange?()
+        }
     }
+
+    /// Called when `refreshInterval` changes, so the owner can reschedule the live scan timer.
+    /// Set by `AppModel.init`.
+    var onRefreshIntervalChange: (() -> Void)?
 
     enum PresentationMode: String, CaseIterable {
         case glass = "Glass"
@@ -105,11 +117,17 @@ class SettingsAppearance {
     }
 
     var presentationMode: PresentationMode = .glass {
-        didSet { PreferencesStore.shared.savePresentationMode(presentationMode.rawValue) }
+        didSet {
+            PreferencesStore.shared.savePresentationMode(presentationMode.rawValue)
+            OverlayWindowManager.shared.refreshAppearance()
+        }
     }
 
     var tintColor: Color = .blue {
-        didSet { PreferencesStore.shared.saveTintColor(getHexColorValue()) }
+        didSet {
+            PreferencesStore.shared.saveTintColor(getHexColorValue())
+            OverlayWindowManager.shared.refreshAppearance()
+        }
     }
 
     var tintStrength: Double = 0.0 {
@@ -117,10 +135,22 @@ class SettingsAppearance {
             if tintStrength < 0 { tintStrength = 0 }
             if tintStrength > 1 { tintStrength = 1 }
             PreferencesStore.shared.saveTintStrength(tintStrength)
+            OverlayWindowManager.shared.refreshAppearance()
         }
     }
 
     init() {
+        reloadFromPersistence()
+    }
+
+    /// Re-reads every setting from `PreferencesStore` into this live object.
+    ///
+    /// Used by `init`, and again after a backup restore: `BackupManager.apply` writes straight to
+    /// `PreferencesStore`, so without this the restored values sat on disk while the running app
+    /// kept showing the old ones until relaunch. Each assignment trips its own `didSet`, which
+    /// re-saves the value just read — harmless, and it keeps `launchMode`'s side effect of
+    /// re-applying the window mode, which a restore wants anyway.
+    func reloadFromPersistence() {
         loadPersistedPreferences()
         showRecentApps = PreferencesStore.shared.loadRecentAppsEnabled()
         pressFeedbackEnabled = PreferencesStore.shared.loadPressFeedbackEnabled()

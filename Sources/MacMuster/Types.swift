@@ -34,6 +34,12 @@ struct Application: Identifiable, Hashable {
     /// keystroke.
     let lowercasePath: String
 
+    /// `path` with every symlink and `..` component resolved, or `path` itself when it cannot be
+    /// resolved (it no longer exists, or is a synthetic folder entry). Computed once here rather
+    /// than at each use: `isFromTrustedLocation` is read during view rendering, and resolving a
+    /// path per cell per frame would be a syscall on the draw path.
+    let resolvedPath: String
+
     init(id: String,
          name: String,
          path: String,
@@ -54,6 +60,9 @@ struct Application: Identifiable, Hashable {
         self.folderId = folderId
         self.lowercaseName = name.lowercased()
         self.lowercasePath = path.lowercased()
+        // Folder entries carry a UUID in `path`, not a filesystem location, so there is nothing to
+        // canonicalize and nothing to distrust.
+        self.resolvedPath = isFolder ? path : Application.canonicalize(path)
     }
     
     func hash(into hasher: inout Hasher) {
@@ -89,10 +98,28 @@ struct Application: Identifiable, Hashable {
     /// `~/Applications` or any user-added custom directory — could be named/iconed to impersonate
     /// a real app, so callers use this to show a provenance warning rather than trusting name/icon
     /// alone. Folders are synthetic (no real install location) and are never flagged.
+    ///
+    /// Checked against `resolvedPath`, not `path`. A prefix test on the raw path is trivially
+    /// defeated by the two things it most needs to catch: `/Applications/../tmp/Fake.app` has the
+    /// trusted prefix as a string, and a symlink at `/Applications/Fake.app` can point anywhere at
+    /// all. Both read as trusted, which is precisely the impersonation the badge exists to flag.
     var isFromTrustedLocation: Bool {
         guard !isFolder else { return true }
-        return path.hasPrefix("/Applications/") || path.hasPrefix("/System/Applications/")
+        return Self.trustedLocationPrefixes.contains { resolvedPath.hasPrefix($0) }
     }
+
+    /// Locations macOS reserves for vetted installs, matched against the fully resolved path.
+    ///
+    /// The cryptex entry is not optional cleverness: on current macOS, `/Applications/Safari.app`
+    /// resolves to `/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app`, so
+    /// resolving paths without accounting for it would flag Safari — the most recognisable system
+    /// app there is — as untrusted. That volume is SIP-protected and OS-managed, so it carries the
+    /// same vetting as the two classic locations; it is simply where the OS now keeps some of them.
+    static let trustedLocationPrefixes = [
+        "/Applications/",
+        "/System/Applications/",
+        "/System/Volumes/Preboot/Cryptexes/App/System/Applications/",
+    ]
 
     /// F-1: a specific, human-readable explanation of *where* this app actually lives, for the
     /// provenance badge's tooltip. `nil` when the app is trusted (no badge shown, nothing to
@@ -100,7 +127,7 @@ struct Application: Identifiable, Hashable {
     /// message, so the warning is actionable instead of just alarming.
     var provenanceWarning: String? {
         guard !isFromTrustedLocation else { return nil }
-        let containingFolder = (path as NSString).deletingLastPathComponent
+        let containingFolder = (resolvedPath as NSString).deletingLastPathComponent
         let homeApplications = (NSHomeDirectory() as NSString).appendingPathComponent("Applications")
         if containingFolder == homeApplications {
             return String(localized: "Installed in your personal Applications folder (~/Applications), not the system /Applications — verify this app's source.")
@@ -190,6 +217,18 @@ struct AppFolder: Codable, Identifiable, Hashable {
 // MARK: - Application helpers
 
 extension Application {
+    /// Fully resolves `path` for trust decisions.
+    ///
+    /// Two steps, and both are load-bearing. `standardized` removes `..` components lexically,
+    /// which is what catches `/Applications/../tmp/Fake.app` — `realpath` alone cannot, because it
+    /// returns nil for a path that does not exist, and falling back to the raw string would hand
+    /// back the very prefix the traversal was constructed to fake. `canonicalPath` then follows
+    /// symlinks, which is what catches a link sitting at a trusted-looking name.
+    static func canonicalize(_ path: String) -> String {
+        let lexical = URL(fileURLWithPath: path).standardized.path
+        return DirectoryWatcher.canonicalPath(lexical) ?? lexical
+    }
+
     /// Strips trailing `.app` suffix from a path component to derive the display name.
     static func stripAppSuffix(_ item: String) -> String {
         item.hasSuffix(".app") ? String(item.dropLast(4)) : item

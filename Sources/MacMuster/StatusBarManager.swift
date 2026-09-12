@@ -121,6 +121,7 @@ class StatusBarManager: NSObject {
 
         if preview.missingAppPaths.isEmpty {
             BackupManager.shared.apply(preview: preview)
+            appModel?.reloadAfterRestore()
             NSAlert.showInfo(String(localized: "Restore Complete"), String(localized: "All data restored successfully."))
             return
         }
@@ -137,6 +138,7 @@ class StatusBarManager: NSObject {
             let result = await previewPanel.runModal()
             if result == .OK {
                 BackupManager.shared.apply(preview: preview)
+                self.appModel?.reloadAfterRestore()
                 NSAlert.showInfo(String(localized: "Restore Complete"), String(localized: "Data restored. \(skippedCount) app(s) skipped (no longer on disk)."))
             }
         }

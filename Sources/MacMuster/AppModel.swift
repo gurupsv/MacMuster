@@ -31,6 +31,13 @@ class AppModel {
         library.settings = settings
         // Library needs selectedAppIndex for sort-aware position tracking
         library.navigation = navigation
+        // Changing the refresh interval has to rebuild the live scan timer. The setting cannot
+        // reach the library itself — unlike OverlayWindowManager, LibraryScanState is not a
+        // singleton — so the connection is made here. `library` owns the timer and is owned by
+        // self, so this closure captures it weakly to avoid a retain cycle through `settings`.
+        settings.onRefreshIntervalChange = { [weak library] in
+            library?.rescheduleRefreshTimer()
+        }
     }
 
     // MARK: - Delegated Properties
@@ -247,6 +254,19 @@ class AppModel {
     func loadMissingIcons() async { await library.loadMissingIcons() }
     func refreshCachedIcons() async { await library.refreshCachedIcons() }
     func cleanupTimerAndObservers() { library.cleanupTimerAndObservers() }
+
+    /// Pulls freshly-restored state off disk into the live objects the UI reads.
+    ///
+    /// `BackupManager.apply` writes to `PreferencesStore`, `FolderStore` and the badge trackers,
+    /// none of which the running app re-reads on its own — so without this a restore reported
+    /// success and visibly changed nothing until the next launch.
+    func reloadAfterRestore() {
+        settings.reloadFromPersistence()
+        library.reloadFromPersistence()
+        // The badge trackers keep their own in-memory copies, seeded once at startup.
+        RecentlyUpdatedTracker.shared.loadFromDefaults()
+        library.recentlyUpdatedPaths = Set(RecentlyUpdatedTracker.shared.recentlyUpdated.keys)
+    }
     func updateFilteredApps() { library.updateFilteredApps() }
     func sortedApplications(_ apps: [Application]) -> [Application] { library.sortedApplications(apps) }
     func recordAppLaunch(at path: String) { library.recordAppLaunch(at: path) }
@@ -282,7 +302,7 @@ class AppModel {
     func openFolder(_ folderId: String) { library.openFolder(folderId) }
     func closeFolder() { library.closeFolder() }
     var currentFolder: AppFolder? { library.currentFolder }
-    func getAllAppsIncludingChildFolders(for folderId: String) -> [Application] { library.getAllAppsIncludingChildFolders(for: folderId) }
+    func appsInFolder(for folderId: String) -> [Application] { library.appsInFolder(for: folderId) }
     func selectAppUp() { navigation.selectAppUp() }
     func selectAppDown() { navigation.selectAppDown() }
     func selectAppLeft() { navigation.selectAppLeft() }

@@ -63,9 +63,14 @@ class LibraryScanState {
     /// (NSWorkspace launch/terminate notifications); read by `AppIconView` to show a running
     /// dot. `@Observable` propagates changes to the UI. Folder entries (synthetic) are never
     /// added here — they aren't launchable processes.
-    var runningAppPaths: Set<String> = [] {
-        didSet { dataVersion += 1 }
-    }
+    ///
+    /// Deliberately does **not** bump `dataVersion`. That counter invalidates
+    /// `cachedDisplayedApps`, and no display decision reads this set — which apps are shown, in
+    /// what order, and under which category are all independent of whether an app is running.
+    /// The badge is read straight from this property in `AppIconView`, so `@Observable` already
+    /// re-renders the affected cells. Bumping here would recompute the whole grid (filter +
+    /// category + sort over every app) every time *any* app on the system launches or quits.
+    var runningAppPaths: Set<String> = []
     var _recentApps: [Application] = []
     var _mostUsedApps: [Application] = []
     // INVARIANT: every writer of `customOrder` must go through this property (or bump
@@ -121,6 +126,36 @@ class LibraryScanState {
         recentlyUpdatedPaths = Set(RecentlyUpdatedTracker.shared.recentlyUpdated.keys)
     }
 
+    /// Re-reads the persisted library state into this live object, then rebuilds the derived
+    /// views that depend on it.
+    ///
+    /// Used after a backup restore. `BackupManager.apply` writes to `PreferencesStore` and
+    /// `FolderStore`, neither of which feeds back into this object — `folders`' observer pushes
+    /// *to* `FolderStore`, not from it — so the restored library sat on disk while the grid went
+    /// on showing the pre-restore folders, ordering and hidden apps until the next launch.
+    ///
+    /// Does not rescan: a restore changes how the apps on disk are organised, not which apps
+    /// exist. `customDirectories` is the exception — its observer re-points the watcher and
+    /// triggers a rescan on its own when the directory set actually changed.
+    func reloadFromPersistence() {
+        hiddenAppPaths = PreferencesStore.shared.loadHiddenApps() ?? []
+        folders = PreferencesStore.shared.loadFolders() ?? []
+        customOrder = PreferencesStore.shared.loadCustomOrder() ?? [:]
+        currentFolderId = PreferencesStore.shared.loadCurrentFolderId()
+        loadSortOption()
+        loadCustomDirectories()
+
+        cachedAppsInAnyFolder = nil
+        cachedVisibleApps = nil
+        cachedDisplayedApps = nil
+        dataVersion += 1
+        rebuildAppPathIndex()
+        updateRecentApps()
+        updateFilteredApps()
+        // Folder icons are composited from member icons, and membership just changed wholesale.
+        IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex, changedAppPaths: [])
+    }
+
     private func loadCustomOrder() {
         if let order = PreferencesStore.shared.loadCustomOrder() { customOrder = order }
     }
@@ -135,7 +170,7 @@ class LibraryScanState {
         guard isLoading else { return }
         // Reclaim cache directories from superseded key schemes, which nothing else deletes.
         IconCacheManager.shared.removeSupersededCaches()
-        let allDirs = allScanDirectories
+        let allDirs = currentScanDirectories
         let result = await Task.detached(priority: .userInitiated) {
             ApplicationScanner.shared.scanDirectories(directories: allDirs)
         }.value
@@ -154,9 +189,6 @@ class LibraryScanState {
     private func loadHiddenApps() {
         if let paths = PreferencesStore.shared.loadHiddenApps() { hiddenAppPaths = paths }
     }
-    private func loadFolders() {
-        if let savedFolders = PreferencesStore.shared.loadFolders() { folders = savedFolders }
-    }
     private func loadCustomDirectories() {
         customDirectoryBookmarks = PreferencesStore.shared.loadCustomDirectoryBookmarks() ?? [:]
         if let dirs = PreferencesStore.shared.loadCustomDirectories() {
@@ -167,6 +199,21 @@ class LibraryScanState {
             allScanDirectories = Self.defaultScanDirectories
         }
     }
+    /// The directories to scan *right now*, with the custom entries re-validated against the
+    /// filesystem as it currently is.
+    ///
+    /// `allScanDirectories` holds the configured set, validated when it was last assigned — on
+    /// add, on remove, and at launch. Scans run every few minutes and on every filesystem event,
+    /// so between assignments a validated directory could be replaced with a symlink and every
+    /// subsequent scan would follow it. Re-filtering here closes that window.
+    ///
+    /// The default directories are never re-validated, deliberately. They are the OS-owned
+    /// install locations, and a check that somehow rejected one would silently empty the
+    /// launcher — a far worse outcome than the narrow case this guards against.
+    var currentScanDirectories: [String] {
+        Self.defaultScanDirectories + customDirectories.filter { ApplicationScanner.isValidCustomDirectory($0) }
+    }
+
     private func resolveCustomDirectoryAccess(for paths: [String]) {
         for path in paths {
             guard let bookmarkData = customDirectoryBookmarks[path] else { continue }
@@ -181,18 +228,37 @@ class LibraryScanState {
     }
 
     private func setupRefreshTimer() {
-        refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: settings?.refreshInterval ?? 300, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, !self.isScanning else { return }
-                await self.refreshDisplayOrder()
-            }
-        }
+        rescheduleRefreshTimer()
         cacheRefreshTimer?.invalidate()
         cacheRefreshTimer = Timer.scheduledTimer(withTimeInterval: 6 * 60 * 60, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refreshCachedIcons() }
         }
     }
+
+    /// (Re)builds the periodic scan timer at the currently configured interval.
+    ///
+    /// Separate from the six-hourly icon-cache timer so changing the scan interval does not also
+    /// restart that one. Called on initial load and again whenever the user changes the interval
+    /// in Settings — the timer was previously built once and never rebuilt, so a changed interval
+    /// was persisted and then ignored until the next launch.
+    func rescheduleRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: settings?.refreshInterval ?? ScanMetrics.refreshIntervalDefault, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.isScanning else { return }
+                await self.refreshDisplayOrder()
+            }
+        }
+    }
+
+    /// The interval the live scan timer is currently firing at, or nil when it is not scheduled.
+    /// Exposed so a test can assert the timer really was rebuilt rather than just the value stored.
+    var activeRefreshTimerInterval: TimeInterval? { refreshTimer?.timeInterval }
+
+    /// When the six-hourly icon-cache timer next fires. Exposed so a test can assert that
+    /// rescheduling the scan timer leaves this one alone — they used to be rebuilt together, so
+    /// every interval change pushed the cache refresh out by another six hours.
+    var activeCacheRefreshTimerFireDate: Date? { cacheRefreshTimer?.fireDate }
 
     /// Subscribes to filesystem changes in the scanned directories so a newly installed app shows
     /// up in seconds instead of waiting out the refresh interval. The periodic timer stays as a
@@ -244,7 +310,6 @@ class LibraryScanState {
         pendingRescanTask = nil
         directoryWatcher?.stop()
         directoryWatcher = nil
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
         // Flush any pending badge state so a quit right after a detected update doesn't lose it.
         RecentlyUpdatedTracker.shared.persist()
         RunningAppTracker.shared.stop()
@@ -323,11 +388,17 @@ class LibraryScanState {
             var stale: [Application] = []
             for (appPath, cachedMtime) in cachedByPath {
                 guard currentPaths.contains(appPath), let app = appPathIndex[appPath] else { continue }
-                if let currentMtime = IconCacheManager.shared.cachedMtime(for: appPath) {
-                    let cachedSec = Int(cachedMtime.timeIntervalSince1970)
-                    let currentSec = Int(currentMtime.timeIntervalSince1970)
-                    if cachedSec != currentSec { stale.append(app) }
+                // Read the bundle's mtime from disk rather than from the in-memory record. The
+                // record is written *when an icon is cached*, so comparing it against the .meta
+                // file — which stores that same value — compared a number with itself and found
+                // nothing stale, ever. This is the comparison the job exists to make, and it is
+                // on a background thread precisely so the syscalls are affordable.
+                guard let currentMtime = IconCacheManager.shared.currentBundleModificationTime(for: appPath) else {
+                    continue // Bundle vanished between the scan and now; pruning will collect it.
                 }
+                let cachedSec = Int(cachedMtime.timeIntervalSince1970)
+                let currentSec = Int(currentMtime.timeIntervalSince1970)
+                if cachedSec != currentSec { stale.append(app) }
             }
             return stale
         }.value
@@ -361,13 +432,7 @@ class LibraryScanState {
     }
 
     func sortedApplications(_ apps: [Application]) -> [Application] {
-        if !customOrder.isEmpty {
-            return apps.sorted {
-                let a = customOrder[$0.path], b = customOrder[$1.path]
-                switch (a, b) { case (nil, nil): return false; case (nil, _): return false; case (_, nil): return true; case (let av?, let bv?): return av < bv }
-            }
-        }
-        return ApplicationSorter.sort(apps, by: sortOption)
+        ApplicationSorter.sort(apps, by: sortOption, customOrder: customOrder)
     }
 
     /// Why a refresh is happening. "Always scan" and "rebuild icons" are independent decisions,
@@ -394,14 +459,14 @@ class LibraryScanState {
         guard !isScanning else { return }
         isScanning = true
         defer { isScanning = false }
-        let allDirs = allScanDirectories
+        let allDirs = currentScanDirectories
         var currentMtimes: [String: Date] = [:]
         for dir in allDirs {
             if let mtime = try? FileManager.default.attributesOfItem(atPath: dir)[.modificationDate] as? Date { currentMtimes[dir] = mtime }
         }
         if !reason.bypassesStalenessCheck, let cache = scanCache {
             let hasChanged = allDirs.contains { currentMtimes[$0] != cache.dirMtimes[$0] }
-            if !hasChanged && Date().timeIntervalSince(cache.timestamp) < (settings?.refreshInterval ?? 300) * 2 { return }
+            if !hasChanged && Date().timeIntervalSince(cache.timestamp) < (settings?.refreshInterval ?? ScanMetrics.refreshIntervalDefault) * 2 { return }
         }
         let result = await Task.detached(priority: .utility) {
             ApplicationScanner.shared.scanDirectories(directories: allDirs)
@@ -592,9 +657,9 @@ class LibraryScanState {
         return folders.first { $0.id == folderId }
     }
 
-    func getAllAppsIncludingChildFolders(for folderId: String) -> [Application] {
+    func appsInFolder(for folderId: String) -> [Application] {
         let effectiveHiddenPaths: Set<String> = (settings?.showHiddenApps ?? false) ? [] : hiddenAppPaths
-        let apps = FolderStore.shared.getAllAppsIncludingChildFolders(for: folderId, appPathIndex: appPathIndex, hiddenAppPaths: effectiveHiddenPaths, customOrder: customOrder, sortOption: sortOption)
+        let apps = FolderStore.shared.appsInFolder(for: folderId, appPathIndex: appPathIndex, hiddenAppPaths: effectiveHiddenPaths, customOrder: customOrder, sortOption: sortOption)
         return apps.filter { !Self.permanentlyHiddenAppPaths.contains($0.path) }
     }
 }

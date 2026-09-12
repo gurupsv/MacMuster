@@ -1,0 +1,200 @@
+name: Release
+
+# Builds a universal, signed, notarized MacMuster.pkg on tag push and
+# publishes it as a GitHub Release asset. The resulting URL is stable and
+# content-addressed, which is what the Homebrew cask requires.
+#
+# Required repository secrets (configure once under Settings → Secrets and
+# variables → Actions):
+#
+#   P12_BASE64            Developer ID Application certificate (.p12), base64-encoded:
+#                           base64 -i "Developer ID Application.p12" | pbcopy
+#   P12_PASSWORD          Password used when exporting the .p12.
+#   APPLE_ID              Apple ID of the developer account.
+#   APPLE_TEAM_ID         Team ID (10 chars) from developer.apple.com → Membership.
+#   APP_SPECIFIC_PASSWORD  App-specific password for notarytool (appleid.apple.com).
+#
+# Optional:
+#   INSTALLER_P12_BASE64   Developer ID Installer certificate (.p12), base64.
+#                           If absent, the .pkg is built but left unsigned
+#                           (Homebrew will reject it; required for a real release).
+#   INSTALLER_P12_PASSWORD  Password for the installer .p12.
+#
+# Tagging convention: push a tag matching version.txt (e.g. 1.0.3). The tag
+# name is treated as the release version; it must equal the contents of
+# version.txt at the tagged commit, otherwise the Release title will mismatch
+# the bundle version.
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions:
+  contents: write   # required by softprops/action-gh-release to create the Release
+
+jobs:
+  release:
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches version.txt
+        run: |
+          set -e
+          TAG="${GITHUB_REF_NAME}"
+          FILE_VERSION="$(cat version.txt)"
+          if [ "$TAG" != "$FILE_VERSION" ]; then
+            echo "::error::Tag '$TAG' does not match version.txt ('$FILE_VERSION'). Bump version.txt before tagging."
+            exit 1
+          fi
+          echo "Releasing MacMuster $TAG"
+
+      - name: Select Xcode
+        run: |
+          # macos-14 runners ship Xcode 15+; pick the latest installed.
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: Import Developer ID Application certificate
+        env:
+          P12_BASE64: ${{ secrets.P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -e
+          # Create a temporary keychain so the runner's default keychain stays clean.
+          KEYCHAIN="macmuster-build.keychain"
+          KEYCHAIN_PWD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN"
+
+          CERT_PATH="$RUNNER_TEMP/DeveloperID.p12"
+          echo "$P12_BASE64" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" -P "$P12_PASSWORD" -t cert -k "$KEYCHAIN" \
+            -T /usr/bin/codesign -T /usr/bin/productsign
+          rm -f "$CERT_PATH"
+
+          # Let codesign/productsign find it without UI prompts.
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN"
+
+          # Export the exact signing identity string for build_production.sh.
+          # "Developer ID Application: Name (TEAMID)" — strip the hash prefix.
+          IDENTITY="$(security find-identity -p codesigning -v "$KEYCHAIN" | \
+            grep -m1 'Developer ID Application' | sed -E 's/.*"(.*)".*/\1/')"
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No 'Developer ID Application' identity found in imported certificate."
+            exit 1
+          fi
+          echo "DEVELOPER_ID=$IDENTITY" >> "$GITHUB_ENV"
+          echo "SIGNING_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          echo "SIGNING_KEYCHAIN_PWD=$KEYCHAIN_PWD" >> "$GITHUB_ENV"
+
+      - name: Import Developer ID Installer certificate
+        env:
+          INSTALLER_P12_BASE64: ${{ secrets.INSTALLER_P12_BASE64 }}
+          INSTALLER_P12_PASSWORD: ${{ secrets.INSTALLER_P12_PASSWORD }}
+          SIGNING_KEYCHAIN: ${{ env.SIGNING_KEYCHAIN }}
+          SIGNING_KEYCHAIN_PWD: ${{ env.SIGNING_KEYCHAIN_PWD }}
+        run: |
+          set -e
+          if [ -z "$INSTALLER_P12_BASE64" ]; then
+            echo "No installer certificate provided — .pkg will be unsigned (local testing only)."
+            exit 0
+          fi
+          KEYCHAIN="${SIGNING_KEYCHAIN}"
+          security unlock-keychain -p "$SIGNING_KEYCHAIN_PWD" "$KEYCHAIN"
+          CERT_PATH="$RUNNER_TEMP/InstallerID.p12"
+          echo "$INSTALLER_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" -P "$INSTALLER_P12_PASSWORD" -t cert -k "$KEYCHAIN" \
+            -T /usr/bin/productsign
+          rm -f "$CERT_PATH"
+          IDENTITY="$(security find-identity -p codesigning -v "$KEYCHAIN" | \
+            grep -m1 'Developer ID Installer' | sed -E 's/.*"(.*)".*/\1/')"
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No 'Developer ID Installer' identity found."
+            exit 1
+          fi
+          echo "INSTALLER_ID=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Store notarytool credentials
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_SPECIFIC_PASSWORD: ${{ secrets.APP_SPECIFIC_PASSWORD }}
+          SIGNING_KEYCHAIN: ${{ env.SIGNING_KEYCHAIN }}
+          SIGNING_KEYCHAIN_PWD: ${{ env.SIGNING_KEYCHAIN_PWD }}
+        run: |
+          set -e
+          security unlock-keychain -p "$SIGNING_KEYCHAIN_PWD" "$SIGNING_KEYCHAIN"
+          # Keychain profile used by build_production.sh via NOTARY_PROFILE.
+          xcrun notarytool store-credentials "macmuster-notary" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APP_SPECIFIC_PASSWORD" \
+            --keychain "$SIGNING_KEYCHAIN"
+          echo "NOTARY_PROFILE=macmuster-notary" >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize, package
+        env:
+          BUILD_UNIVERSAL: "1"
+          DEVELOPER_ID: ${{ env.DEVELOPER_ID }}
+          INSTALLER_ID: ${{ env.INSTALLER_ID }}
+          NOTARY_PROFILE: ${{ env.NOTARY_PROFILE }}
+          SIGNING_KEYCHAIN: ${{ env.SIGNING_KEYCHAIN }}
+          SIGNING_KEYCHAIN_PWD: ${{ env.SIGNING_KEYCHAIN_PWD }}
+        run: |
+          set -e
+          # Ensure the build-time keychain is unlocked for codesign / productsign / notarytool.
+          security unlock-keychain -p "$SIGNING_KEYCHAIN_PWD" "$SIGNING_KEYCHAIN"
+          ./build_production.sh
+
+      - name: Rename artifact to include version
+        run: |
+          set -e
+          VERSION="$(cat version.txt)"
+          cp "MacMuster.pkg" "MacMuster-${VERSION}.pkg"
+          echo "Artifact: MacMuster-${VERSION}.pkg ($(du -h "MacMuster-${VERSION}.pkg" | cut -f1))"
+
+      - name: Compute sha256
+        id: sha
+        run: |
+          set -e
+          VERSION="$(cat version.txt)"
+          DIGEST="$(shasum -a 256 "MacMuster-${VERSION}.pkg" | awk '{print $1}')"
+          echo "sha256=${DIGEST}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## MacMuster ${VERSION}"
+            echo ""
+            echo "Universal (Apple Silicon + Intel), signed, notarized, and stapled."
+            echo ""
+            echo "**Install via Homebrew (once the cask is published):**"
+            echo '```bash'
+            echo "brew tap gurupsv/macmuster"
+            echo "brew install --cask macmuster"
+            echo '```'
+            echo ""
+            echo "**Install manually:**"
+            echo '```bash'
+            echo "sudo installer -pkg MacMuster-${VERSION}.pkg -target /"
+            echo '```'
+            echo ""
+            echo "**sha256**"
+            echo '```'
+            echo "${DIGEST}"
+            echo '```'
+          } > "$RUNNER_TEMP/release_notes.md"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: MacMuster ${{ github.ref_name }}
+          body_path: ${{ runner.temp }}/release_notes.md
+          fail_on_unmatched_files: true
+          files: MacMuster-${{ github.ref_name }}.pkg

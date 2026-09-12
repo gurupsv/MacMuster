@@ -327,7 +327,10 @@ final class BackupManagerTests: XCTestCase {
         // Clean up any existing v4 cache
         try? FileManager.default.removeItem(at: cacheDir)
 
-        let iconPack = BackupManager.IconPack(entries: ["restore_test_key": Data([0x11, 0x22])])
+        // Keys must look like real cache filenames (64-char lowercase hex) — `restoreIconPack`
+        // rejects anything else, since the key becomes a write path. See BackupIntegrityTests.
+        let restoreTestKey = String(repeating: "a1b2c3d4", count: 8)
+        let iconPack = BackupManager.IconPack(entries: [restoreTestKey: Data([0x11, 0x22])])
         let archive = BackupManager.BackupArchive(
             appFolders: [],
             customOrder: [:],
@@ -358,7 +361,7 @@ final class BackupManagerTests: XCTestCase {
         )
         BackupManager.shared.apply(preview: preview)
 
-        let restoredFile = cacheDir.appendingPathComponent("restore_test_key")
+        let restoredFile = cacheDir.appendingPathComponent(restoreTestKey)
         XCTAssertTrue(FileManager.default.fileExists(atPath: restoredFile.path),
             "Restored icon should be written to the v4 cache directory")
         let restoredData = try Data(contentsOf: restoredFile)

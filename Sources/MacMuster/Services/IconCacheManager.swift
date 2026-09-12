@@ -45,11 +45,27 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     /// time — which matters for icons that scroll back into view and re-hit the cache.
     private let memoryCache = NSCache<NSString, NSImage>()
 
-    /// In-memory mtime cache — avoids repeated fileExists + attributesOfItem syscalls for apps that
-    /// are already in the display order. Cached mtimes are refreshed during pruneDeletedApps so they
-    /// stay accurate and never drift stale without a fresh check.
+    /// The bundle mtime each in-memory image was rendered for, keyed identically to `memoryCache`.
+    ///
+    /// Without it a memory hit cannot be validated, and validating only the disk layer fixes
+    /// nothing: `cachedIcon` returns memory hits before it looks at anything else, and
+    /// `loadMissingIcons(force:)` re-loads through `cachedIcon`. So the six-hourly refresh would
+    /// correctly identify a stale icon and then be handed the same stale image straight back out
+    /// of memory. Recording the mtime here is what lets a memory hit be checked for one `stat`,
+    /// with none of the disk reads the memory layer exists to skip.
+    private let memoryEntryMtime = NSCache<NSString, NSDate>()
+
+    /// Record of the last mtime actually read from disk for each app, written through by
+    /// `currentBundleModificationTime`.
+    ///
+    /// This is a *record*, not a shortcut: nothing reads it in place of a fresh `stat`. Treating
+    /// it as a shortcut is precisely what broke icon invalidation — see
+    /// `currentBundleModificationTime`.
     private let mtimeCache = NSCache<NSString, NSDate>()
 
+    /// The last mtime observed for `appPath`, or nil if none has been observed yet. A pure cache
+    /// read — it never touches the disk, so callers deciding staleness want
+    /// `currentBundleModificationTime` instead.
     func cachedMtime(for appPath: String) -> Date? {
         return mtimeCache.object(forKey: appPath as NSString) as? Date
     }
@@ -96,13 +112,26 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
 
     /// Tries to load a cached icon for the given app path. Returns nil if cache miss or stale.
     ///
-    /// Checks the in-memory cache first (zero I/O on a hit). Only on a memory miss does it fall
-    /// through to the on-disk cache (stat + two disk reads + decode). A disk hit is then promoted
-    /// into the memory cache so subsequent reads for the same path are free.
+    /// Reads the bundle's mtime once, then checks the in-memory cache (no disk I/O on a valid
+    /// hit). Only on a miss — or a hit whose bundle has since changed — does it fall through to
+    /// the on-disk cache (two disk reads + decode). A disk hit is then promoted into the memory
+    /// cache so subsequent reads for the same path cost just the one `stat`.
     func cachedIcon(for appPath: String, appearance: IconAppearance) -> NSImage? {
         let memKey = memoryCacheKey(appPath, appearance: appearance)
+        // One stat up front, shared by the memory and disk checks below. Both layers are caching
+        // "the icon as of some mtime", so neither can be trusted without knowing the current one.
+        let currentMtime = currentBundleModificationTime(for: appPath)
+
         if let memory = memoryCache.object(forKey: memKey) {
-            return memory
+            if let currentMtime,
+               let renderedFor = memoryEntryMtime.object(forKey: memKey) as? Date,
+               datesEqualIgnoringSubsecond(currentMtime, renderedFor) {
+                return memory
+            }
+            // The bundle moved on (or we cannot tell). Drop the entry rather than serve an icon
+            // for a version of the app that no longer exists.
+            memoryCache.removeObject(forKey: memKey)
+            memoryEntryMtime.removeObject(forKey: memKey)
         }
 
         let cacheKey = cacheKey(for: appPath, appearance: appearance)
@@ -115,7 +144,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         }
 
         // Check if cache is fresh (bundle hasn't been modified since cache was written)
-        guard let bundleMtime = currentBundleModificationTime(for: appPath) else {
+        guard let bundleMtime = currentMtime else {
             return nil
         }
 
@@ -140,7 +169,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
                 return nil
             }
             let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
-            memoryCache.setObject(nsImage, forKey: memKey)
+            storeInMemory(nsImage, key: memKey, renderedFor: bundleMtime)
             return nsImage
         } catch {
             // If PNG decode fails, delete corrupted cache entry
@@ -156,11 +185,13 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     /// (so the icon survives relaunch).
     func cacheIcon(_ icon: NSImage, for appPath: String, appearance: IconAppearance) {
         let memKey = memoryCacheKey(appPath, appearance: appearance)
-        memoryCache.setObject(icon, forKey: memKey)
 
+        // Read the mtime before storing, not after: a memory entry with no recorded mtime cannot
+        // be validated on the way back out, so it would be discarded on the next read.
         guard let bundleMtime = currentBundleModificationTime(for: appPath) else {
             return
         }
+        storeInMemory(icon, key: memKey, renderedFor: bundleMtime)
 
         do {
             try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
@@ -239,6 +270,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     /// escape hatch since mtime never changes for a bundle that hasn't been reinstalled.
     func clearAll() {
         memoryCache.removeAllObjects()
+        memoryEntryMtime.removeAllObjects()
         mtimeCache.removeAllObjects()
         try? FileManager.default.removeItem(at: cacheDir)
     }
@@ -253,15 +285,21 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
             mtimeCache.removeObject(forKey: appPath as NSString)
         }
 
-        // Refresh mtime cache for remaining apps so subsequent reads skip fileExists/syscalls
-        for appPath in currentAppPaths {
-            if let mtime = currentBundleModificationTime(for: appPath) {
-                mtimeCache.setObject(NSDate(timeIntervalSinceReferenceDate: mtime.timeIntervalSinceReferenceDate), forKey: appPath as NSString)
-            }
-        }
+        // Deliberately no mtime "refresh" pass over the surviving apps. There used to be one, and
+        // it did nothing: it called `currentBundleModificationTime`, which at the time returned
+        // the cached value, so it wrote each stale entry straight back over itself. Callers now
+        // read the disk directly when they need a current mtime, so there is nothing to pre-warm
+        // and the syscalls this pass cost bought nothing.
     }
 
     // MARK: - Private
+
+    /// The one place an in-memory entry is written, so the image and the mtime it was rendered
+    /// for can never fall out of step.
+    private func storeInMemory(_ image: NSImage, key: NSString, renderedFor mtime: Date) {
+        memoryCache.setObject(image, forKey: key)
+        memoryEntryMtime.setObject(NSDate(timeIntervalSinceReferenceDate: mtime.timeIntervalSinceReferenceDate), forKey: key)
+    }
 
     /// The single definition of how a path and an appearance combine into a cache identity.
     /// Both the memory key and the on-disk filename derive from this, so a variant written
@@ -291,7 +329,9 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     }
 
     private func deleteCache(for appPath: String, appearance: IconAppearance) {
-        memoryCache.removeObject(forKey: variantKey(appPath, appearance: appearance) as NSString)
+        let memKey = variantKey(appPath, appearance: appearance) as NSString
+        memoryCache.removeObject(forKey: memKey)
+        memoryEntryMtime.removeObject(forKey: memKey)
 
         let cacheKey = cacheKey(for: appPath, appearance: appearance)
         let iconURL = cacheDir.appendingPathComponent(cacheKey, isDirectory: false)
@@ -301,18 +341,28 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         try? FileManager.default.removeItem(at: metaURL)
     }
 
-    private func currentBundleModificationTime(for appPath: String) -> Date? {
-        if let cached = mtimeCache.object(forKey: appPath as NSString) as? Date {
-            return cached
-        }
-
-        guard FileManager.default.fileExists(atPath: appPath) else {
+    /// Reads the bundle's modification time **from disk**, refreshing `mtimeCache` with what it
+    /// finds.
+    ///
+    /// This deliberately does not short-circuit on the cached value. It used to, and that made
+    /// the whole staleness mechanism inert: the cache was only ever written by this method, so
+    /// once an entry existed nothing re-read the disk for the rest of the session. Every caller
+    /// that asked "has this bundle changed?" was handed back the same value that was recorded
+    /// when the icon was cached, so the answer was always "no" — an app updated while MacMuster
+    /// was running kept its old icon, and `refreshCachedIcons` could never find anything stale.
+    ///
+    /// A `stat` is on the order of a microsecond, and the paths that call this are already doing
+    /// disk reads or PNG decodes, so there is nothing to buy back by caching the answer.
+    func currentBundleModificationTime(for appPath: String) -> Date? {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: appPath)
+        guard let mtime = attrs?[.modificationDate] as? Date else {
+            // Covers both "no such file" and an unreadable bundle; the separate fileExists check
+            // this used to do first was a second syscall for information attributesOfItem already
+            // reports by failing.
+            mtimeCache.removeObject(forKey: appPath as NSString)
             return nil
         }
-
-        let attrs = try? FileManager.default.attributesOfItem(atPath: appPath)
-        let mtime = attrs?[.modificationDate] as? Date
-        if let mtime { mtimeCache.setObject(NSDate(timeIntervalSinceReferenceDate: mtime.timeIntervalSinceReferenceDate), forKey: appPath as NSString) }
+        mtimeCache.setObject(NSDate(timeIntervalSinceReferenceDate: mtime.timeIntervalSinceReferenceDate), forKey: appPath as NSString)
         return mtime
     }
 

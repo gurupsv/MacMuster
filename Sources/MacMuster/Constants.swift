@@ -20,6 +20,12 @@ enum ScanMetrics {
     static let priorityIconLoadCount = 60
     static let newlyInstalledWindowSeconds: TimeInterval = 14 * 24 * 60 * 60 // 14 days
 
+    /// Fallback rescan interval when none has been stored. Named because it was previously
+    /// spelled out at each use site and one of them drifted: the backup exporter defaulted to
+    /// 30 s, so a backup taken before the user ever touched the setting recorded an interval ten
+    /// times more aggressive than the app's own, and restoring it applied that.
+    static let refreshIntervalDefault: TimeInterval = 300 // 5 minutes
+
     /// How long a watched directory must stay quiet before a filesystem-triggered rescan runs.
     /// An install is a long burst of writes; scanning mid-copy would surface a partial bundle.
     /// Long enough to let a copy finish, short enough that a new app appears while the user is
@@ -48,11 +54,16 @@ enum UpdateMetrics {
     /// which compares mtimes at second granularity for the same reason.
     static let mtimeDeltaEpsilonSeconds: TimeInterval = 1.0
 
-    /// Point size of the "recently updated" sparkles badge overlay.
-    static let recentlyUpdatedBadgeSymbolSize: CGFloat = 11
+    /// Ratio of the "recently updated" sparkles badge's point size to the app icon size, so the
+    /// badge scales with the user's chosen icon size (Settings > Icon Size) instead of staying a
+    /// fixed size that reads as tiny on Extra Large icons or oversized on Small ones. 0.21875
+    /// matches the previous fixed 14pt badge at the Medium (64pt) icon size.
+    static let recentlyUpdatedBadgeSymbolSizeRatio: CGFloat = 0.21875
 
-    /// Diameter of the "running" indicator dot overlay.
-    static let runningDotSize: CGFloat = 8
+    /// Ratio of the "running" indicator dot's diameter to the app icon size, same rationale as
+    /// `recentlyUpdatedBadgeSymbolSizeRatio` above. 0.15625 matches the previous fixed 10pt dot
+    /// at the Medium (64pt) icon size.
+    static let runningDotSizeRatio: CGFloat = 0.15625
 }
 
 // MARK: - Launch Metrics
@@ -108,7 +119,14 @@ enum IconMetrics {
     static let iconSizeMedium: CGFloat = 64
     static let iconSizeLarge: CGFloat = 80
     static let iconSizeExtraLarge: CGFloat = 100
-    static let iconRasterPixelSizePx = 160
+    /// Pixel size icons are rasterized to, shared by every icon-size setting.
+    ///
+    /// Must cover the largest size at 2x or the biggest icons render soft: Extra Large is 100 pt,
+    /// which is 200 px on a Retina display, and this was 160. Sized to the largest setting rather
+    /// than per-setting because the on-disk cache is keyed by path and appearance, not by size —
+    /// one bitmap serves every setting, and downscaling a larger source is free at draw time
+    /// whereas upscaling a smaller one is what was visible.
+    static let iconRasterPixelSizePx = Int(iconSizeExtraLarge * 2)
 }
 
 // MARK: - Layout Metrics

@@ -80,7 +80,7 @@ extension LibraryScanState {
     }
 
     private func getBaseAppsForCurrentContext() -> [Application] {
-        if let folderId = currentFolderId { return getAllAppsIncludingChildFolders(for: folderId) }
+        if let folderId = currentFolderId { return appsInFolder(for: folderId) }
 
         let appsInAnyFolder: Set<String> = {
             if let cached = cachedAppsInAnyFolder { return cached }
@@ -104,8 +104,20 @@ extension LibraryScanState {
     private func applySearchFilter(to apps: [Application], searchTerm: String) -> [Application] {
         guard !searchTerm.isEmpty else { return apps }
         let lower = searchTerm.lowercased()
-        if currentFolderId == nil { return rankedBySearchMatch(visibleApplications, query: lower) }
-        return rankedBySearchMatch(apps, query: lower)
+        guard currentFolderId == nil else { return rankedBySearchMatch(apps, query: lower) }
+
+        // At root level neither list is searchable on its own, which is why this used to substitute
+        // one for the other and lose half the answer.
+        //
+        // `apps` is loose apps plus one entry per folder, so searching it alone never finds an app
+        // that lives *inside* a folder — the reason the substitution was there. But
+        // `visibleApplications` contains every real app and no folder entries at all, so searching
+        // that alone means a folder can never be found by name. Search the union: every app,
+        // wherever it lives, plus the folders themselves.
+        //
+        // No duplicates to worry about — `visibleApplications` holds only real apps and the
+        // entries added here are only folders.
+        return rankedBySearchMatch(visibleApplications + apps.filter(\.isFolder), query: lower)
     }
 
     private func rankedBySearchMatch(_ apps: [Application], query: String) -> [Application] {
@@ -135,33 +147,41 @@ extension LibraryScanState {
     }
 
     private func applyNonSearchOrdering(to apps: [Application], showFoldersFirst: Bool, customOrder: [String: Int], sortOption: ApplicationSorter.SortOption, selectedCategory: AppCategory) -> [Application] {
-        var ordered = apps
-        var folderFirstApplied = false
-        if showFoldersFirst && !ordered.isEmpty {
-            let folderApps = ordered.filter { $0.isFolder }
-            let nonFolderApps = ordered.filter { !$0.isFolder }
-            if !folderApps.isEmpty && !nonFolderApps.isEmpty { ordered = folderApps + nonFolderApps; folderFirstApplied = true }
-        }
-        if !customOrder.isEmpty {
-            return ordered.sorted {
-                let a = customOrder[$0.path], b = customOrder[$1.path]
-                switch (a, b) { case (nil, nil): return false; case (nil, _): return false; case (_, nil): return true; case (let av?, let bv?): return av < bv }
-            }
-        }
-        if folderFirstApplied { return ordered }
+        let ordered = apps
         // Category filtering happens in `applyCategoryFilter`, before this function runs.
+        // The two launch-history categories order by their own history rather than by the
+        // configured sort, so they are handled before the general path below.
         if selectedCategory == .recentlyLaunched {
-            return ordered.sorted {
-                let a = RecentAppsTracker.shared.recentAppLaunchTimes[$0.path], b = RecentAppsTracker.shared.recentAppLaunchTimes[$1.path]
-                switch (a, b) { case (nil, nil): return false; case (nil, _): return false; case (_, nil): return true; case (let av?, let bv?): return av > bv }
+            return ordered.sorted { lhs, rhs in
+                let a = RecentAppsTracker.shared.recentAppLaunchTimes[lhs.path]
+                let b = RecentAppsTracker.shared.recentAppLaunchTimes[rhs.path]
+                switch (a, b) {
+                case let (a?, b?) where a != b: return a > b
+                case (_?, nil): return true
+                case (nil, _?): return false
+                // Same launch instant, or neither launched: still needs a deterministic answer,
+                // or an unstable sort can reorder these between renders.
+                default: return ApplicationSorter.isOrderedBefore(lhs, rhs, by: sortOption)
+                }
             }
         }
         if selectedCategory == .mostUsed {
-            return ordered.sorted {
-                let a = RecentAppsTracker.shared.appLaunchCounts[$0.path], b = RecentAppsTracker.shared.appLaunchCounts[$1.path]
-                switch (a, b) { case (nil, nil): return false; case (nil, _): return false; case (_, nil): return true; case (let av?, let bv?): return av > bv }
+            return ordered.sorted { lhs, rhs in
+                let a = RecentAppsTracker.shared.appLaunchCounts[lhs.path]
+                let b = RecentAppsTracker.shared.appLaunchCounts[rhs.path]
+                switch (a, b) {
+                case let (a?, b?) where a != b: return a > b
+                case (_?, nil): return true
+                case (nil, _?): return false
+                // Equal launch counts are the common case here, so the tiebreak matters more than
+                // it does for timestamps — without it the grid reshuffles on every render.
+                default: return ApplicationSorter.isOrderedBefore(lhs, rhs, by: sortOption)
+                }
             }
         }
-        return sortedApplications(ordered)
+        // One call decides folders-first, drag order and the sort option together. Applying them
+        // in sequence is what broke both: the folders-first arrangement was computed and then
+        // discarded by a whole-list re-sort, and any custom order switched the sort option off.
+        return ApplicationSorter.sort(ordered, by: sortOption, customOrder: customOrder, foldersFirst: showFoldersFirst)
     }
 }
