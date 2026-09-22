@@ -23,6 +23,12 @@ struct ContentView: View {
     @State private var isDraggingAppPath: String? = nil
     @State private var pressedAppPath: String? = nil
     @State private var showKeyboardHint = false
+    // Grid cells are uniform width (columns are `.flexible()` and split the row evenly), so one
+    // shared width — captured off whichever cell last reported its geometry — is enough to turn a
+    // drop's x-position into a leading/center/trailing zone. Used only at drop time; a stale value
+    // from before a window resize just means a drop this instant is misclassified by a few points,
+    // never wrong app or lost data.
+    @State private var gridCellWidth: CGFloat = 0
     
     private var gridColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: LayoutMetrics.gridSpacing), count: appModel.columnCount)
@@ -460,13 +466,62 @@ spacing: LayoutMetrics.gridSpacing
             handleAppTap(app)
         }
         .contextMenu { AppContextMenu(appModel: appModel, app: app, selectedAppPathsForFolder: $selectedAppPathsForFolder, newFolderName: $newFolderName, showCreateFolder: $showCreateFolder) }
+        // Reports this cell's width so a later drop's x-position can be read as a fraction of the
+        // cell rather than raw points — `.background` keeps it out of layout and off the icon's
+        // own hit-testing, and it sits before `.draggable`/`.dropDestination` below so it measures
+        // the exact frame `location` in that drop closure is relative to.
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { gridCellWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, newWidth in gridCellWidth = newWidth }
+            }
+        )
         .draggable(app.path)
         .dropDestination(for: String.self) { items, location in
-            if let droppedPath = items.first {
+            guard let droppedPath = items.first else { return false }
+
+            guard canReorderByDragging else {
+                // Search results and the history tabs (Most Used, Recently Launched) don't have a
+                // stable position to record, and a category filter like "System" would otherwise
+                // persist positions computed from a partial app list, corrupting the full order
+                // the next time "All" is shown. Inside a folder there's nothing sensible to fall
+                // back to either — folders can't nest, so the merge sheet below would only offer a
+                // disabled confirm button — so the drop is simply declined rather than accepted
+                // into a dead end. At the root, the merge-into-folder gesture still works exactly
+                // as before.
+                guard appModel.currentFolderId == nil else { return false }
                 handleDrop(of: droppedPath, onto: app)
                 return true
             }
-            return false
+
+            // Folders are flat — an open folder's contents can never include another folder icon
+            // (see FolderStore.appsInFolder) — so there's no merge gesture to reserve a center
+            // zone for in here. Every drop reorders, split at the midpoint instead of the root
+            // grid's narrower edge thirds, since a wide reorder target is strictly more usable
+            // once merging isn't competing for the same gesture.
+            if appModel.currentFolderId != nil {
+                let fraction = gridCellWidth > 0 ? location.x / gridCellWidth : 0.5
+                let side: ApplicationSorter.ReorderSide = fraction < 0.5 ? .before : .after
+                handleReorderDrop(of: droppedPath, relativeTo: app, side: side)
+                return true
+            }
+
+            if gridCellWidth > 0 {
+                switch ApplicationSorter.dropZone(forXFraction: location.x / gridCellWidth) {
+                case .leadingEdge:
+                    handleReorderDrop(of: droppedPath, relativeTo: app, side: .before)
+                    return true
+                case .trailingEdge:
+                    handleReorderDrop(of: droppedPath, relativeTo: app, side: .after)
+                    return true
+                case .center:
+                    break
+                }
+            }
+
+            handleDrop(of: droppedPath, onto: app)
+            return true
         } isTargeted: { isTargeted in
             if isTargeted {
                 isDraggingAppPath = app.path
@@ -530,6 +585,13 @@ spacing: LayoutMetrics.gridSpacing
             return
         }
 
+        // Merging only makes sense at the root: folders are flat (no nesting), so an app-on-app
+        // drop inside an open folder has nothing to merge into. The dropDestination closure above
+        // already keeps this path from being reached under normal use — this is a backstop so a
+        // future call site can't reopen the dead-end "Create Folder" sheet with its Add button
+        // permanently disabled.
+        guard appModel.currentFolderId == nil else { return }
+
         // The dragged payload is just a raw path string, not an Application, so we can't read
         // `.folderId` off it directly — look it up against known folder ids instead (a folder's
         // `path` is exactly its `AppFolder.id`, see FolderStore.getFolderApplication).
@@ -562,10 +624,41 @@ spacing: LayoutMetrics.gridSpacing
             return
         }
         
-        // Note: True reordering (drop-between) requires more sophisticated drag handling
-        // that detects drop position between items. For now, we prioritize folder creation
-        // as specified in the requirements. Users can reorder apps through settings
-        // or by using the custom order features accessible elsewhere in the UI.
+        // Dropping app-on-folder-icon and folder-on-folder is handled above; every other
+        // center-zone drop lands here, and the only case left is app-on-app, which merges.
+    }
+
+    /// Whether the grid — root or an open folder — is currently showing its natural, un-filtered
+    /// order: the only state in which a drag-to-reorder position is meaningful and safe to
+    /// persist.
+    ///
+    /// Search results order by match rank and the history tabs (Most Used, Recently Launched)
+    /// order by launch stats — both already ignore `customOrder`, so reordering there would look
+    /// like it did nothing. A category filter like "System" is worse than a no-op: `displayedApps`
+    /// would only contain that category's apps, and persisting positions computed from that
+    /// partial list (see `LibraryScanState.updateCustomOrder`) would corrupt the full order the
+    /// next time "All" is shown, not just fail to change it. Category filtering and search both
+    /// stay live while a folder is open, so this applies there too.
+    private var canReorderByDragging: Bool {
+        appModel.searchTerm.isEmpty && appModel.selectedCategory == .all
+    }
+
+    /// Moves `droppedPath` to sit next to `targetApp` in the currently displayed order (the root
+    /// grid's loose apps + folder icons, or one open folder's contents — `getDisplayedApps`
+    /// already resolves which) and persists that as the new custom order.
+    ///
+    /// The mutation is wrapped in `withAnimation` so the grid visibly slides icons into their new
+    /// slots rather than snapping — `updateCustomOrder` only touches `@Observable` state
+    /// (`customOrder`, `dataVersion`), and every icon keeps its identity across the reorder
+    /// (`AppIconView` is `.id(app.path)`-tagged in `gridItemView`), which is exactly what lets
+    /// SwiftUI interpolate each cell's new position instead of a full-grid cross-fade.
+    private func handleReorderDrop(of droppedPath: String, relativeTo targetApp: Application, side: ApplicationSorter.ReorderSide) {
+        let current = appModel.getDisplayedApps()
+        let reordered = ApplicationSorter.reordered(current, moving: droppedPath, toSideOf: targetApp.path, side: side)
+        guard reordered.map(\.path) != current.map(\.path) else { return }
+        withAnimation(appModel.shouldReduceMotion ? nil : .easeInOut(duration: 0.25)) {
+            appModel.updateCustomOrder(from: reordered)
+        }
     }
 
     private var scrollAnchor: UnitPoint? {
@@ -790,11 +883,32 @@ struct AppIconView: View {
         }
     }
     
+    // `LazyVGrid`'s `ForEach` does not reliably re-invoke this cell's content closure once it has
+    // materialized a row for a given identity — a value change elsewhere in the array (an icon
+    // finishing its async decode) does not by itself cause an already-on-screen cell to redraw;
+    // only a fresh scroll-in or a wholesale identity-set change (e.g. opening/closing a folder,
+    // which swaps the whole displayed set) does. `app.icon` alone therefore is not enough despite
+    // `applyLoadedIcons`/`refreshDisplayOrder` writing it into `displayOrder` and bumping
+    // `dataVersion` in the same step — that invalidates `getDisplayedApps()`'s cache, but this
+    // specific cell may never re-run its own body to pick up the new value.
+    //
+    // Reading `appModel.library.appPathIndex` here (an `@Observable`-tracked property, rebuilt on
+    // every icon-load pass) instead of trusting the `app` value snapshot handed down through the
+    // grid establishes a direct Observation dependency: when the index changes, this cell is
+    // invalidated and re-rendered on its own, independent of whatever the lazy grid's diffing
+    // decided. Falls back to `app.icon` for folder tiles, which are synthesized on the fly and
+    // never appear in `appPathIndex` (that only holds real, scanned apps).
+    //
+    // Internal rather than `private` so `AppIconViewTests` can call it directly — this property
+    // *is* the fix, and unlike the SwiftUI redraw it corrects for, its output is plain,
+    // synchronously testable data.
+    var currentIcon: NSImage? {
+        appModel.library.appPathIndex[app.path]?.icon ?? app.icon
+    }
+
     private var iconView: some View {
         ZStack {
-            // Read from appModel.loadedIconsByPath (not just app.icon) so this view reacts as
-            // soon as the icon loads, independent of whether the containing ContentView re-renders.
-            if let icon = appModel.loadedIconsByPath[app.path] ?? app.icon {
+            if let icon = currentIcon {
                 Image(nsImage: icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)

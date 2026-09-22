@@ -121,7 +121,10 @@ final class OverlayWindow: NSWindow {
 class OverlayWindowManager {
     static let shared = OverlayWindowManager()
 
-    private var window: OverlayWindow?
+    // Read-only outside this file so a test can grab the real instance to assert
+    // `shouldHandleKeyEvent(keyWindow:)` treats it as the overlay's own window; every assignment
+    // still lives here.
+    private(set) var window: OverlayWindow?
     private var backgroundWindows: [NSWindow] = []
     private weak var appModel: AppModel?
     private var savedPresentationOptions: NSApplication.PresentationOptions?
@@ -476,17 +479,26 @@ class OverlayWindowManager {
         let arrowKeyCodes: Set<UInt16> = Set([KeyCodes.leftArrow, KeyCodes.rightArrow, KeyCodes.downArrow, KeyCodes.upArrow])
 
         combinedKeyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            // This is a *local* monitor, so it fires for keyDown in every window this app owns —
+            // not only the overlay. The overlay window stays alive (just not key) behind the
+            // Settings window while Settings is open, so without this guard every arrow key was
+            // swallowed here whenever the search field happened to be empty — dead arrow-key text
+            // editing and slider adjustment in Settings, regardless of which window the user was
+            // actually typing into. Bail out to whatever the truly-key window's own responder
+            // chain would otherwise do.
+            guard let self, self.shouldHandleKeyEvent(keyWindow: NSApp.keyWindow) else { return event }
+
             // Handle arrow keys first — consume when search is empty
             if arrowKeyCodes.contains(event.keyCode) {
-                if let appModel = self?.appModel, !appModel.searchTerm.isEmpty {
+                if let appModel = self.appModel, !appModel.searchTerm.isEmpty {
                     return event // Search has content - pass to TextField for cursor movement
                 }
-                _ = self?.handleKeyDown(event)
+                _ = self.handleKeyDown(event)
                 return nil // Consume the event (prevent TextField from seeing it)
             }
 
             // Always run selection collapse on every keyDown
-            self?.collapseSearchFieldSelectionIfSelectAll()
+            self.collapseSearchFieldSelectionIfSelectAll()
             return event
         }
     }
@@ -545,6 +557,21 @@ class OverlayWindowManager {
     /// detect the full-string-selected state there, we collapse it to a cursor at the end, and
     /// the incoming keystroke appends instead of replacing.
     ///
+
+    /// Whether the combined keyDown monitor should act on an event, given which window is
+    /// currently key. The monitor is a *local* one, so AppKit runs it for every keyDown this app
+    /// receives in any of its own windows — not just the overlay. Without this check, the monitor
+    /// swallowed arrow keys (and collapsed search-field selection based on the overlay's own,
+    /// possibly stale, first responder) even while a completely different window — the Settings
+    /// window, say — was the one actually key.
+    ///
+    /// Split out so the decision is unit-testable with synthetic windows, without a live event
+    /// loop or a real key window — the same reasoning `isFullSelection` below was split out for.
+    /// Unlike `isFullSelection`, this reads `window` (main-actor-isolated storage), so it stays on
+    /// the class's own `@MainActor` isolation rather than being marked `nonisolated`.
+    func shouldHandleKeyEvent(keyWindow: NSWindow?) -> Bool {
+        keyWindow === window
+    }
 
     /// Detects AppKit's auto-select-all (whole string highlighted) and collapses it to a cursor
     /// at the end so the next keystroke appends. A manual selection or cursor is left untouched.

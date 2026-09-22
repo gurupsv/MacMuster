@@ -328,8 +328,10 @@ final class BackupManager {
     func apply(preview: BackupPreview) {
         let archive = preview.archive
 
-        // Sanitize custom directories — only those that exist on disk are applied
-        let validCustomDirectories = archive.customDirectories.filter { FileManager.default.fileExists(atPath: $0) }
+        // Sanitize custom directories through the same validator the folder picker and every
+        // rescan use — not just an existence check, which a crafted/tampered archive could set to
+        // "/" and pass (it exists, is a directory) while turning every scan into a full-disk crawl.
+        let validCustomDirectories = archive.customDirectories.filter { ApplicationScanner.isValidCustomDirectory($0) }
 
         // Clean up folders before applying restored data
         FolderStore.shared.folders.removeAll()

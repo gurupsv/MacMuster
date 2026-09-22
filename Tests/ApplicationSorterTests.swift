@@ -133,4 +133,84 @@ final class ApplicationSorterTests: XCTestCase {
         let sorted = ApplicationSorter.sort(apps, by: .installationDate)
         XCTAssertEqual(sorted.count, 3)
     }
+
+    // MARK: - Drag-to-Reorder: dropZone(forXFraction:)
+
+    func testDropZoneLeadingEdge() {
+        XCTAssertEqual(ApplicationSorter.dropZone(forXFraction: 0.0), .leadingEdge)
+        XCTAssertEqual(ApplicationSorter.dropZone(forXFraction: 0.24), .leadingEdge)
+    }
+
+    func testDropZoneTrailingEdge() {
+        XCTAssertEqual(ApplicationSorter.dropZone(forXFraction: 0.76), .trailingEdge)
+        XCTAssertEqual(ApplicationSorter.dropZone(forXFraction: 1.0), .trailingEdge)
+    }
+
+    func testDropZoneCenter() {
+        XCTAssertEqual(ApplicationSorter.dropZone(forXFraction: 0.5), .center)
+        XCTAssertEqual(ApplicationSorter.dropZone(forXFraction: 0.25), .center)
+        XCTAssertEqual(ApplicationSorter.dropZone(forXFraction: 0.75), .center)
+    }
+
+    // MARK: - Drag-to-Reorder: reordered(_:moving:toSideOf:side:)
+
+    func testReorderedMovesAppBeforeTarget() {
+        let apps = [
+            makeApp(name: "Alpha", installationDate: Date()),
+            makeApp(name: "Beta", installationDate: Date()),
+            makeApp(name: "Gamma", installationDate: Date()),
+        ]
+
+        let result = ApplicationSorter.reordered(apps, moving: "/Applications/Gamma.app", toSideOf: "/Applications/Alpha.app", side: .before)
+
+        XCTAssertEqual(result.map(\.name), ["Gamma", "Alpha", "Beta"])
+    }
+
+    func testReorderedMovesAppAfterTarget() {
+        let apps = [
+            makeApp(name: "Alpha", installationDate: Date()),
+            makeApp(name: "Beta", installationDate: Date()),
+            makeApp(name: "Gamma", installationDate: Date()),
+        ]
+
+        let result = ApplicationSorter.reordered(apps, moving: "/Applications/Alpha.app", toSideOf: "/Applications/Beta.app", side: .after)
+
+        XCTAssertEqual(result.map(\.name), ["Beta", "Alpha", "Gamma"])
+    }
+
+    func testReorderedMovingAppTowardTheEndOfTheList() {
+        let apps = [
+            makeApp(name: "Alpha", installationDate: Date()),
+            makeApp(name: "Beta", installationDate: Date()),
+            makeApp(name: "Gamma", installationDate: Date()),
+        ]
+
+        let result = ApplicationSorter.reordered(apps, moving: "/Applications/Alpha.app", toSideOf: "/Applications/Gamma.app", side: .after)
+
+        XCTAssertEqual(result.map(\.name), ["Beta", "Gamma", "Alpha"])
+    }
+
+    func testReorderedIsNoOpWhenDroppedOnItself() {
+        let apps = [
+            makeApp(name: "Alpha", installationDate: Date()),
+            makeApp(name: "Beta", installationDate: Date()),
+        ]
+
+        let result = ApplicationSorter.reordered(apps, moving: "/Applications/Alpha.app", toSideOf: "/Applications/Alpha.app", side: .before)
+
+        XCTAssertEqual(result.map(\.name), ["Alpha", "Beta"],
+            "Dropping an icon on itself should not change the order")
+    }
+
+    func testReorderedReturnsUnchangedWhenMovedPathIsUnknown() {
+        let apps = [
+            makeApp(name: "Alpha", installationDate: Date()),
+            makeApp(name: "Beta", installationDate: Date()),
+        ]
+
+        let result = ApplicationSorter.reordered(apps, moving: "/Applications/Ghost.app", toSideOf: "/Applications/Alpha.app", side: .before)
+
+        XCTAssertEqual(result.map(\.name), ["Alpha", "Beta"],
+            "A path that isn't in the list should leave the array untouched rather than crash")
+    }
 }

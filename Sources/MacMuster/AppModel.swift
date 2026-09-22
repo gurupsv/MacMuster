@@ -54,10 +54,6 @@ class AppModel {
         get { library.displayOrder }
         set { library.displayOrder = newValue }
     }
-    var loadedIconsByPath: [String: NSImage] {
-        get { library.loadedIconsByPath }
-        set { library.loadedIconsByPath = newValue }
-    }
     var hiddenAppPaths: Set<String> {
         get { library.hiddenAppPaths }
         set { library.hiddenAppPaths = newValue }

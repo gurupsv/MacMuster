@@ -162,14 +162,28 @@ final class AppModelTests: XCTestCase {
         let app2 = Application(id: "/Applications/App2.app", name: "App2", path: "/Applications/App2.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         let app3 = Application(id: "/Applications/App3.app", name: "App3", path: "/Applications/App3.app", icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
         appModel.setApplications([app1, app2, app3])
-        
+
         // Reverse the order
         let reversedApps = [app3, app2, app1]
         appModel.updateCustomOrder(from: reversedApps)
-        
-        XCTAssertEqual(appModel.displayOrder.map { $0.path }, [app3.path, app2.path, app1.path])
+
+        // The drag order lives in `customOrder`/`getDisplayedApps()`, not in `displayOrder` —
+        // that stays the full scanned catalog regardless of what subset was reordered. See
+        // `testUpdateCustomOrderWithPartialSubsetDoesNotShrinkTheFullCatalog` for the regression
+        // this guards against: `updateCustomOrder` used to overwrite `displayOrder` with whatever
+        // was passed in, which silently discarded every app not on screen at drop time.
+        XCTAssertEqual(Set(appModel.displayOrder.map(\.path)), Set([app1.path, app2.path, app3.path]),
+            "displayOrder should still hold the full catalog after a reorder")
+        XCTAssertEqual(appModel.customOrder[app3.path], 0)
+        XCTAssertEqual(appModel.customOrder[app2.path], 1)
+        XCTAssertEqual(appModel.customOrder[app1.path], 2)
+        XCTAssertEqual(
+            appModel.getDisplayedApps().map(\.path),
+            [app3.path, app2.path, app1.path],
+            "The actually-displayed order should reflect the drag"
+        )
     }
-    
+
     // MARK: - Sorted Applications Tests
     
     func testSortedApplicationsByName() {

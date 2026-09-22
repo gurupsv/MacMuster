@@ -187,10 +187,15 @@ final class ApplicationScannerTests: XCTestCase {
             "Double slash resolves differently — rejected as symlink-equivalent")
     }
 
-    func testCustomDirectoryWithOnlySlash() {
-        // Root directory "/" should be valid (hasPrefix("/") holds, it exists and is a directory).
-        XCTAssertTrue(ApplicationScanner.isValidCustomDirectory("/"),
-            "Root directory should be valid")
+    func testCustomDirectoryWithOnlySlashIsRejected() {
+        // The filesystem root passes every other check (absolute, exists, a real directory, not a
+        // symlink, not world-writable) — it needs an explicit rule of its own, since scanning it
+        // walks every top-level directory on the machine on every timer tick and filesystem event.
+        // A crafted/tampered backup archive can set `customDirectories` to exactly this, bypassing
+        // the folder picker a manual add goes through (see BackupManager.apply), so this can't be
+        // left to the folder picker to prevent by convention alone.
+        XCTAssertFalse(ApplicationScanner.isValidCustomDirectory("/"),
+            "The filesystem root must never be accepted as a custom scan directory")
     }
 
     func testCustomDirectoryWithSpaces() {

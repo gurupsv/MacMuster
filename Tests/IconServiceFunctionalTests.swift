@@ -247,6 +247,50 @@ final class IconServiceFunctionalTests: XCTestCase {
             "Finder app should load icons")
     }
 
+    // MARK: - Bounded Decode Concurrency (memory regression)
+
+    /// Regression for the unbounded decode fan-out: one task per path let a full-library
+    /// re-decode (theme toggle, "Refresh Now") rasterize every icon simultaneously, spiking
+    /// memory by hundreds of MB. The batch now keeps at most `maxConcurrentIconDecodes`
+    /// decodes in flight. Completeness is the observable contract — the windowed scheduler
+    /// must refill and drain until every requested icon has come back.
+    func testLoadMissingIconsCompletesEveryItemWhenBatchExceedsInFlightLimit() async throws {
+        let paths = [
+            "/System/Applications/Calculator.app",
+            "/System/Applications/Calendar.app",
+            "/System/Applications/Notes.app",
+            "/System/Library/CoreServices/Finder.app",
+        ].filter { FileManager.default.fileExists(atPath: $0) }
+        try XCTSkipIf(paths.isEmpty, "No stock system apps found on this machine")
+
+        // Far beyond the in-flight cap, so the windowed scheduler must refill several times.
+        let batchSize = 100
+        let apps = (0..<batchSize).map { makeApp("App\($0)", path: paths[$0 % paths.count]) }
+
+        let results = await service.loadMissingIcons(for: apps)
+
+        XCTAssertEqual(results.count, batchSize,
+            "Every requested path must come back even when the batch is larger than the in-flight cap")
+    }
+
+    /// The cap boundary itself: batches of exactly the cap, and one over, must both complete.
+    /// The one-over case is where a naive "launch the window once and drain" scheduler would
+    /// deadlock (the group is complete while an item is still unlaunched).
+    func testLoadMissingIconsCompletesAtAndJustAboveTheInFlightLimit() async throws {
+        let paths = [
+            "/System/Applications/Calculator.app",
+            "/System/Applications/Calendar.app",
+        ].filter { FileManager.default.fileExists(atPath: $0) }
+        try XCTSkipIf(paths.isEmpty, "No stock system apps found on this machine")
+
+        for batchSize in [IconMetrics.maxConcurrentIconDecodes, IconMetrics.maxConcurrentIconDecodes + 1] {
+            let apps = (0..<batchSize).map { makeApp("App\($0)", path: paths[$0 % paths.count]) }
+            let results = await service.loadMissingIcons(for: apps)
+            XCTAssertEqual(results.count, batchSize,
+                "A batch of \(batchSize) (the in-flight cap, and one over) must complete without deadlock")
+        }
+    }
+
     // MARK: - Edge Cases
 
     func testUpdateIconsInPlaceWithNoLoadedIcons() {

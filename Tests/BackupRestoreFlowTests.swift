@@ -36,6 +36,7 @@ final class BackupRestoreFlowTests: XCTestCase {
         hiddenAppPaths: Set<String> = [],
         customOrder: [String: Int] = [:],
         refreshInterval: Double = ScanMetrics.refreshIntervalDefault,
+        customDirectories: [String] = [],
         icons: BackupManager.IconPack = BackupManager.IconPack(entries: [:])
     ) -> BackupManager.BackupArchive {
         BackupManager.BackupArchive(
@@ -47,7 +48,7 @@ final class BackupRestoreFlowTests: XCTestCase {
             showFoldersFirst: false,
             refreshInterval: refreshInterval,
             currentFolderId: nil,
-            customDirectories: [],
+            customDirectories: customDirectories,
             glowEnabled: false,
             glowColor: "#ffffff",
             glowIntensity: 0.5,
@@ -157,6 +158,56 @@ final class BackupRestoreFlowTests: XCTestCase {
         appModel.reloadAfterRestore()
 
         XCTAssertEqual(appModel.settings.refreshInterval, 900, "A restored refresh interval should reach the live settings")
+    }
+
+    /// Security regression: a crafted/tampered archive setting an unrealistic `refreshInterval`
+    /// (the Settings picker only ever offers 300/900/1800/3600) must not reach the live scan
+    /// scheduler unclamped — an interval like 0.001s reschedules the rescan timer to fire roughly
+    /// 1000×/second, and the staleness guard in `refreshDisplayOrder` (which skips a rescan when
+    /// less than `refreshInterval * 2` has passed) never kicks in at that interval either.
+    func testRestoredRefreshIntervalBelowThePickersRangeIsClamped() {
+        apply(makeArchive(refreshInterval: 0.001))
+        appModel.reloadAfterRestore()
+
+        XCTAssertEqual(appModel.settings.refreshInterval, ScanMetrics.refreshIntervalMin,
+            "An unrealistically small restored interval should clamp to the picker's minimum, not reach the scheduler as-is")
+    }
+
+    func testRestoredRefreshIntervalAboveThePickersRangeIsClamped() {
+        apply(makeArchive(refreshInterval: 999_999))
+        appModel.reloadAfterRestore()
+
+        XCTAssertEqual(appModel.settings.refreshInterval, ScanMetrics.refreshIntervalMax,
+            "An unrealistically large restored interval should clamp to the picker's maximum")
+    }
+
+    // MARK: - Security: a crafted archive must not smuggle in the filesystem root as a scan directory
+
+    /// A crafted/tampered backup can set `customDirectories` to anything, including `"/"` — which
+    /// exists, is a directory, isn't a symlink, and isn't world-writable, so a plain existence
+    /// check (what `BackupManager.apply` used to run) waves it through. Scanning `/` walks every
+    /// top-level directory on the machine — /System, /Library, /Users — on every refresh timer
+    /// tick and filesystem event.
+    func testRestoredCustomDirectoriesRejectsTheFilesystemRoot() {
+        apply(makeArchive(customDirectories: ["/"]))
+        appModel.reloadAfterRestore()
+
+        XCTAssertFalse(appModel.customDirectories.contains("/"),
+            "The filesystem root must never survive a restore into customDirectories")
+        XCTAssertFalse(appModel.allScanDirectories.contains("/"),
+            "The filesystem root must never reach the actual set of directories a scan walks")
+    }
+
+    func testRestoredCustomDirectoriesKeepsValidEntriesAlongsideARejectedRoot() {
+        // /Applications always exists on macOS and is one of the default scan directories anyway,
+        // but the point here is that one bad entry ("/") must not take a legitimate one down with
+        // it — each path is validated independently.
+        apply(makeArchive(customDirectories: ["/", "/Applications"]))
+        appModel.reloadAfterRestore()
+
+        XCTAssertFalse(appModel.customDirectories.contains("/"))
+        XCTAssertTrue(appModel.customDirectories.contains("/Applications"),
+            "A rejected entry should not cause an otherwise-valid one to be dropped too")
     }
 
     // MARK: - UX-3: the title-bar close button must not hang the restore flow

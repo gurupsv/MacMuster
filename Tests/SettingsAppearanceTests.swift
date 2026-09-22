@@ -17,6 +17,42 @@ final class SettingsAppearanceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "recentAppLaunchTimes")
         UserDefaults.standard.removeObject(forKey: "appLaunchCounts")
         UserDefaults.standard.removeObject(forKey: "showHiddenApps")
+        UserDefaults.standard.removeObject(forKey: "refreshInterval")
+    }
+
+    // MARK: - Refresh Interval Clamping (security regression)
+
+    /// The Settings picker only ever offers 300/900/1800/3600s. A value outside that range —
+    /// from a crafted backup, or a direct `PreferencesStore` write — must not reach the live scan
+    /// scheduler: an interval like 0.001s reschedules the rescan timer to fire ~1000×/second.
+    func testLoadRefreshIntervalBelowRangeClampsToMinimum() {
+        UserDefaults.standard.set(0.001, forKey: "refreshInterval")
+        let settings = SettingsAppearance()
+        XCTAssertEqual(settings.refreshInterval, ScanMetrics.refreshIntervalMin)
+    }
+
+    func testLoadRefreshIntervalAboveRangeClampsToMaximum() {
+        UserDefaults.standard.set(999_999.0, forKey: "refreshInterval")
+        let settings = SettingsAppearance()
+        XCTAssertEqual(settings.refreshInterval, ScanMetrics.refreshIntervalMax)
+    }
+
+    func testLoadRefreshIntervalWithinRangeIsUnchanged() {
+        UserDefaults.standard.set(900.0, forKey: "refreshInterval")
+        let settings = SettingsAppearance()
+        XCTAssertEqual(settings.refreshInterval, 900)
+    }
+
+    func testSetRefreshIntervalClampsBelowRange() {
+        let settings = SettingsAppearance()
+        settings.setRefreshInterval(0.001)
+        XCTAssertEqual(settings.refreshInterval, ScanMetrics.refreshIntervalMin)
+    }
+
+    func testSetRefreshIntervalClampsAboveRange() {
+        let settings = SettingsAppearance()
+        settings.setRefreshInterval(999_999)
+        XCTAssertEqual(settings.refreshInterval, ScanMetrics.refreshIntervalMax)
     }
 
     func testLaunchModeDefaultIsWindow() {

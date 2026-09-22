@@ -43,7 +43,19 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     /// derivation, 5 file-existence/stat syscalls, two disk reads (meta + icon), the JSON decode,
     /// and the `CGImageSource` PNG deserialization that the disk path would otherwise do every
     /// time — which matters for icons that scroll back into view and re-hit the cache.
-    private let memoryCache = NSCache<NSString, NSImage>()
+    ///
+    /// Cost-limited in *pixels* (width × height per stored image), not entries: the cache holds
+    /// two variants per app after a theme toggle, and an unbounded cache is what let the old
+    /// variant's bitmaps stay resident indefinitely. The limit is generous enough to hold every
+    /// decoded icon at once for large libraries at the fixed raster size (200×200 = 40k per
+    /// image; a 400-app library is 16M), while still capping pathological growth. Eviction under
+    /// pressure is safe: a miss simply falls through to the on-disk cache, and staleness is
+    /// validated by `memoryEntryMtime` + one `stat` on the way back out either way.
+    private let memoryCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.totalCostLimit = IconMetrics.memoryCachePixelLimit
+        return cache
+    }()
 
     /// The bundle mtime each in-memory image was rendered for, keyed identically to `memoryCache`.
     ///
@@ -275,6 +287,28 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         try? FileManager.default.removeItem(at: cacheDir)
     }
 
+    /// Drops the in-memory icons rendered under `appearance` for the given app paths.
+    ///
+    /// When the system theme toggles, every model icon is re-decoded under the new appearance,
+    /// so the old variant's bitmaps serve nothing and would otherwise stay resident until
+    /// memory pressure evicts them — roughly doubling in-memory icon memory across a toggle.
+    /// Only the memory layer is touched: the on-disk entries stay (they are keyed per
+    /// appearance), so toggling back re-reads the old variant from disk instead of rasterizing
+    /// it again.
+    ///
+    /// NSCache offers no key enumeration, so the caller supplies the app paths — the full
+    /// scanned catalog — rather than the cache discovering its own keys. A decode for the old
+    /// appearance that was already in flight when the toggle landed can still re-populate a
+    /// memory entry after this runs; that race is bounded to one decode batch, and the entry
+    /// is still mtime-validated on its way back out.
+    func evictMemoryVariants(for appPaths: [String], appearance: IconAppearance) {
+        for appPath in appPaths {
+            let memKey = variantKey(appPath, appearance: appearance) as NSString
+            memoryCache.removeObject(forKey: memKey)
+            memoryEntryMtime.removeObject(forKey: memKey)
+        }
+    }
+
     /// Deletes cache entries for apps that no longer exist on disk.
     func pruneDeletedApps(currentAppPaths: Set<String>) {
         // Enumerate across *all* appearances, not just the current one — otherwise a deleted
@@ -297,7 +331,8 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     /// The one place an in-memory entry is written, so the image and the mtime it was rendered
     /// for can never fall out of step.
     private func storeInMemory(_ image: NSImage, key: NSString, renderedFor mtime: Date) {
-        memoryCache.setObject(image, forKey: key)
+        let cost = Int(image.size.width * image.size.height)
+        memoryCache.setObject(image, forKey: key, cost: max(cost, 1))
         memoryEntryMtime.setObject(NSDate(timeIntervalSinceReferenceDate: mtime.timeIntervalSinceReferenceDate), forKey: key)
     }
 

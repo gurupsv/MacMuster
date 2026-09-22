@@ -305,7 +305,8 @@ final class LibraryScanStateDisplayTests: XCTestCase {
         let app3 = makeApp("App3", path: "/Applications/App3.app")
         library.setApplications([app1, app2, app3])
 
-        // Set custom order via updateCustomOrder which also updates displayOrder
+        // Set custom order via updateCustomOrder (displayOrder is untouched by this — the passed
+        // order only feeds customOrder's indices; see LibraryScanStateEdgeCaseTests)
         let reordered = [app3, app1, app2]
         library.updateCustomOrder(from: reordered)
 

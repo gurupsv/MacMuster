@@ -26,6 +26,13 @@ enum ScanMetrics {
     /// times more aggressive than the app's own, and restoring it applied that.
     static let refreshIntervalDefault: TimeInterval = 300 // 5 minutes
 
+    /// The bounds of the Settings picker's four options (5 min / 15 min / 30 min / 1 hour).
+    /// A restored backup or a direct `PreferencesStore` write can carry any `TimeInterval` the
+    /// picker itself never offers — clamping to this range at load keeps an interval like 0.001s
+    /// (rescan timer firing ~1000×/sec) from ever reaching the live scan scheduler.
+    static let refreshIntervalMin: TimeInterval = 300
+    static let refreshIntervalMax: TimeInterval = 3600
+
     /// How long a watched directory must stay quiet before a filesystem-triggered rescan runs.
     /// An install is a long burst of writes; scanning mid-copy would surface a partial bundle.
     /// Long enough to let a copy finish, short enough that a new app appears while the user is
@@ -127,6 +134,29 @@ enum IconMetrics {
     /// one bitmap serves every setting, and downscaling a larger source is free at draw time
     /// whereas upscaling a smaller one is what was visible.
     static let iconRasterPixelSizePx = Int(iconSizeExtraLarge * 2)
+
+    /// Ceiling on concurrent icon decodes within one `loadMissingIcons` batch.
+    ///
+    /// Unbounded, a full-library batch (theme toggle, "Refresh Now") rasterizes every icon
+    /// simultaneously — hundreds of 200×200×4-byte bitmaps plus ImageIO buffers at once, a
+    /// transient multi-hundred-MB spike. Twelve in flight keeps first-launch icon fill fast
+    /// (the performance tests require ≫serial) while bounding that spike.
+    static let maxConcurrentIconDecodes = 12
+
+    /// Total-cost ceiling of `IconCacheManager`'s in-memory icon cache, in *pixels* of source
+    /// bitmap (width × height), so the unit is appearance- and color-depth-independent.
+    ///
+    /// One rasterized icon is `iconRasterPixelSizePx²` = 40,000 units, so this holds every
+    /// icon of a 500-app library in both light and dark variants (40,000 × 2 × 500 = 40M)
+    /// with room to spare — an eviction is an exceptional event, not the normal mode. The
+    /// real memory this maps to is bounded (≤ 40M pixels × 4 B ≈ 160 MB worst case, typically
+    /// far less, since most app icons compress to a fraction of a full raster at rest).
+    static let memoryCachePixelLimit = 40_000_000
+
+    /// Total-cost ceiling of `IconService`'s folder-icon cache, in pixels. Folder icons are
+    /// 120×120 = 14,400, so this holds ~340 folders — far beyond any realistic library — while
+    /// still preventing unbounded growth if a library holds thousands of folders.
+    static let folderIconCachePixelLimit = 5_000_000
 }
 
 // MARK: - Layout Metrics

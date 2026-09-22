@@ -253,6 +253,15 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
     /// costs nothing measurable.
     static func isValidCustomDirectory(_ path: String) -> Bool {
         guard path.hasPrefix("/") else { return false }
+
+        // The filesystem root passes every other check here — absolute, a real directory, not a
+        // symlink, not world-writable — but scanning it walks every top-level directory on the
+        // machine (/System, /Library, /Users, ...) on every timer tick and filesystem event. A
+        // backup archive can set this directly (`BackupManager.apply`), bypassing the folder
+        // picker a manual add goes through, so this needs to be a blanket rule rather than
+        // something the permission/symlink checks below happen to catch.
+        guard path != "/" else { return false }
+
         let fm = FileManager.default
 
         var isDir: ObjCBool = false

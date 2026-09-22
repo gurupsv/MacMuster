@@ -4,7 +4,15 @@ import AppKit
 @MainActor
 final class IconService {
     static let shared = IconService()
-    private let folderIconCache = NSCache<NSString, NSImage>()
+
+    /// Composited folder icons, regenerated whenever a member app's icon changes. Cost-limited
+    /// in pixels like `IconCacheManager`'s cache so an unusual number of folders cannot grow it
+    /// without bound; a folder icon is 120×120, so this holds up to ~340 folders.
+    private let folderIconCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.totalCostLimit = IconMetrics.folderIconCachePixelLimit
+        return cache
+    }()
     private init() {}
     
     /// Rasterizes an app icon to a fixed-size bitmap on a background thread.
@@ -114,7 +122,7 @@ final class IconService {
 
         // Store to cache so subsequent calls hit the fast path
         if let folderId = folderId {
-            folderIconCache.setObject(image, forKey: folderId as NSString)
+            folderIconCache.setObject(image, forKey: folderId as NSString, cost: Int(iconSize * iconSize))
         }
         return image
     }
@@ -130,17 +138,30 @@ final class IconService {
         let appearance = IconAppearance.current
 
         // Each icon loads from cache (instant) or decodes+downscales (background).
-        // Fan the batch out across the cooperative thread pool instead of one at a time.
+        // Fan the batch out across the cooperative thread pool instead of one at a time — but
+        // no more than `maxConcurrentIconDecodes` in flight at once. Unbounded fan-out (one
+        // task per path) is what spiked memory by hundreds of MB during a full-library
+        // re-decode: every icon's 200×200×4-byte raster plus its ImageIO buffers existed
+        // simultaneously. A fixed in-flight cap bounds that burst to one small batch's worth
+        // while keeping far more parallelism than a serial load, so first-launch icon fill
+        // stays fast (see IconServicePerformanceTests).
+        let inFlightLimit = min(IconMetrics.maxConcurrentIconDecodes, missingPaths.count)
         return await withTaskGroup(of: (String, NSImage).self) { group in
-            for path in missingPaths {
-                group.addTask(priority: .userInitiated) {
-                    (path, Self.loadOrDecodeIcon(path, appearance: appearance))
+            var iterator = missingPaths.makeIterator()
+            func enqueueBatch() {
+                for _ in 0..<inFlightLimit {
+                    guard let path = iterator.next() else { return }
+                    group.addTask(priority: .userInitiated) {
+                        (path, Self.loadOrDecodeIcon(path, appearance: appearance))
+                    }
                 }
             }
+            enqueueBatch()
             var results: [(String, NSImage)] = []
             results.reserveCapacity(missingPaths.count)
-            for await pair in group {
+            while let pair = await group.next() {
                 results.append(pair)
+                enqueueBatch()
             }
             return results
         }

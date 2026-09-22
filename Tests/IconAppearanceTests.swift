@@ -208,4 +208,37 @@ final class IconAppearanceTests: XCTestCase {
         XCTAssertTrue(IconCacheManager.shared.allCachedAppPaths().isEmpty,
             "clearAll should leave no entries on disk")
     }
+
+    // MARK: - Appearance Eviction (memory regression)
+
+    /// Regression for the theme-toggle memory double-holding: after `handleAppearanceChange`
+    /// re-decodes every icon under the new appearance, the old variant's bitmaps had nothing
+    /// to serve but stayed resident in the in-memory cache until pressure evicted them.
+    /// `evictMemoryVariants` is the release valve — it must drop the named variant from memory
+    /// while leaving the on-disk entry intact, so toggling back re-reads rather than
+    /// re-rasterizing.
+    func testEvictMemoryVariantsDropsOnlyTheNamedAppearanceFromMemory() throws {
+        try requireCalculator()
+        IconCacheManager.shared.cacheIcon(swatch(.red), for: calculator, appearance: .light)
+        IconCacheManager.shared.cacheIcon(swatch(.blue), for: calculator, appearance: .dark)
+
+        IconCacheManager.shared.evictMemoryVariants(for: [calculator], appearance: .light)
+
+        XCTAssertNotNil(IconCacheManager.shared.cachedIcon(for: calculator, appearance: .dark),
+            "The surviving variant must stay in memory — eviction is per appearance")
+        XCTAssertNotNil(IconCacheManager.shared.cachedIcon(for: calculator, appearance: .light),
+            "The evicted variant must fall through to the on-disk entry, which eviction leaves intact")
+    }
+
+    func testEvictMemoryVariantsPreservesDiskEntries() throws {
+        try requireCalculator()
+        IconCacheManager.shared.cacheIcon(swatch(.red), for: calculator, appearance: .light)
+
+        IconCacheManager.shared.evictMemoryVariants(for: [calculator], appearance: .light)
+
+        XCTAssertTrue(IconCacheManager.shared.allCachedAppPaths().contains(calculator),
+            "Eviction touches the memory layer only — the on-disk entry must survive so a toggle back re-reads instead of re-rasterizing")
+        XCTAssertEqual(IconCacheManager.shared.cachedAppPaths(appearance: .light).map(\.appPath), [calculator],
+            "The light variant's disk entry must still be listed")
+    }
 }

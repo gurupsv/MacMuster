@@ -114,11 +114,23 @@ class StatusBarManager: NSObject {
 
         guard openPanel.runModal() == .OK, let url = openPanel.url else { return }
 
-        guard let preview = BackupManager.shared.restore(from: url) else {
-            NSAlert.showError(String(localized: "Invalid Archive"), String(localized: "The selected file is not a valid MacMuster backup."))
+        // A MacMuster backup is tried first since it's the common case; a file that isn't one
+        // (wrong shape, missing checksum wrapper) falls through to the Launchie import format
+        // rather than being rejected outright.
+        if let preview = BackupManager.shared.restore(from: url) {
+            restoreMacMusterBackup(preview)
             return
         }
 
+        if let preview = LaunchieImporter.shared.parse(from: url) {
+            importLaunchieBackup(preview)
+            return
+        }
+
+        NSAlert.showError(String(localized: "Invalid Archive"), String(localized: "The selected file is not a valid MacMuster or Launchie backup."))
+    }
+
+    private func restoreMacMusterBackup(_ preview: BackupManager.BackupPreview) {
         if preview.missingAppPaths.isEmpty {
             BackupManager.shared.apply(preview: preview)
             appModel?.reloadAfterRestore()
@@ -140,6 +152,32 @@ class StatusBarManager: NSObject {
                 BackupManager.shared.apply(preview: preview)
                 self.appModel?.reloadAfterRestore()
                 NSAlert.showInfo(String(localized: "Restore Complete"), String(localized: "Data restored. \(skippedCount) app(s) skipped (no longer on disk)."))
+            }
+        }
+    }
+
+    private func importLaunchieBackup(_ preview: LaunchieImporter.ImportPreview) {
+        if preview.missingPaths.isEmpty {
+            LaunchieImporter.shared.apply(preview: preview)
+            appModel?.reloadAfterRestore()
+            NSAlert.showInfo(String(localized: "Import Complete"), String(localized: "Folders imported from Launchie successfully."))
+            return
+        }
+
+        let skippedCount = preview.missingCount
+
+        let previewPanel = RestorePreviewPanel(
+            folderCount: preview.folderCount,
+            appCount: preview.appCount,
+            missingCount: skippedCount,
+            missingPaths: preview.missingPaths
+        )
+        Task { @MainActor in
+            let result = await previewPanel.runModal()
+            if result == .OK {
+                LaunchieImporter.shared.apply(preview: preview)
+                self.appModel?.reloadAfterRestore()
+                NSAlert.showInfo(String(localized: "Import Complete"), String(localized: "Folders imported. \(skippedCount) app(s) skipped (no longer on disk)."))
             }
         }
     }

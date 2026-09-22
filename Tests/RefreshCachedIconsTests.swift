@@ -106,7 +106,6 @@ final class RefreshCachedIconsTests: XCTestCase {
         let loadedIcons = await IconService.shared.loadMissingIcons(for: [app])
         if let (_, icon) = loadedIcons.first {
             library.displayOrder[0].icon = icon
-            library.loadedIconsByPath[path] = icon
         }
 
         XCTAssertNotNil(library.displayOrder[0].icon, "Icon should be pre-loaded")
@@ -148,5 +147,84 @@ final class RefreshCachedIconsTests: XCTestCase {
 
         // The app still exists and is in displayOrder, so it should still be cached
         XCTAssertNotNil(IconCacheManager.shared.cachedIcon(for: path1, appearance: .light), "pruneDeletedApps should keep cache for existing app")
+    }
+
+    // MARK: - loadMissingIcons reaches the grid without a separate loadedIconsByPath dictionary
+
+    /// Regression test: `loadedIconsByPath` used to be a second dictionary holding the exact same
+    /// `NSImage` instances as `displayOrder[i].icon` — a strong reference to every decoded icon
+    /// for the whole session, immune to the `IconCacheManager` NSCache's own eviction, and never
+    /// actually read for anything `displayOrder` didn't already provide. This confirms its removal
+    /// didn't also remove icon propagation: `loadMissingIcons` must still land the decoded icon in
+    /// `displayOrder` (what `getDisplayedApps()` — and so the grid — renders from) and bump
+    /// `dataVersion` so a cached `getDisplayedApps()` result is invalidated.
+    func testLoadMissingIconsUpdatesDisplayOrderAndBumpsDataVersion() async throws {
+        guard FileManager.default.fileExists(atPath: "/System/Applications/Calculator.app") else {
+            throw XCTSkip("Calculator.app not found on this machine")
+        }
+        let path = "/System/Applications/Calculator.app"
+        let app = Application(
+            id: path, name: "Calculator", path: path, icon: nil, installationDate: Date(),
+            isFolder: false, containedApps: nil
+        )
+        library.setApplications([app])
+        XCTAssertNil(library.displayOrder[0].icon, "Precondition: no icon loaded yet")
+
+        let versionBefore = library.dataVersion
+        await library.loadMissingIcons()
+
+        XCTAssertNotNil(library.displayOrder[0].icon,
+            "The loaded icon should land directly in displayOrder")
+        XCTAssertGreaterThan(library.dataVersion, versionBefore,
+            "dataVersion must bump so a cached getDisplayedApps() result is invalidated")
+
+        let displayed = library.getDisplayedApps(
+            searchTerm: "", showFoldersFirst: false, customOrder: [:],
+            sortOption: .name, selectedCategory: .all, columnCount: 4)
+        XCTAssertNotNil(displayed.first(where: { $0.path == path })?.icon,
+            "The icon reaches whatever getDisplayedApps() returns, which is what the grid renders")
+    }
+
+    /// Regression test for blank icons on the first page after a cold launch.
+    ///
+    /// `displayOrder`'s raw scan order interleaves loose apps with every app tucked away inside a
+    /// folder. A folder with enough members can fill the whole priority batch with apps that are
+    /// not visible on the root page at all, pushing the loose apps actually on screen out to a
+    /// later, sequentially-awaited chunk — the icon shows blank until something else (opening and
+    /// leaving a folder) forces the background loop to catch up. `priorityIconLoadOrder()` must
+    /// pick from what the root page would actually display, not raw scan order.
+    func testPriorityIconLoadOrderFavorsVisibleAppsOverHiddenFolderMembers() {
+        // Named so raw alphabetical scan order sorts every folder member before the loose apps.
+        let folderMembers = (0..<(ScanMetrics.priorityIconLoadCount + 5)).map { index in
+            Application(
+                id: "/tmp/AAA-Member-\(index).app", name: "AAA-Member-\(index)",
+                path: "/tmp/AAA-Member-\(index).app", icon: nil, installationDate: Date(),
+                isFolder: false, containedApps: nil
+            )
+        }
+        let looseApps = (0..<3).map { index in
+            Application(
+                id: "/tmp/ZZZ-Loose-\(index).app", name: "ZZZ-Loose-\(index)",
+                path: "/tmp/ZZZ-Loose-\(index).app", icon: nil, installationDate: Date(),
+                isFolder: false, containedApps: nil
+            )
+        }
+        library.setApplications(folderMembers + looseApps)
+        _ = library.createFolder(name: "Folder", appPaths: folderMembers.map(\.path))
+
+        XCTAssertLessThan(
+            Array(library.displayOrder.prefix(ScanMetrics.priorityIconLoadCount)).filter { app in
+                looseApps.contains { $0.path == app.path }
+            }.count,
+            looseApps.count,
+            "Precondition: raw displayOrder's prefix does not already contain every loose app"
+        )
+
+        let prioritized = library.priorityIconLoadOrder()
+        let prioritizedPaths = Set(prioritized.map(\.path))
+        for looseApp in looseApps {
+            XCTAssertTrue(prioritizedPaths.contains(looseApp.path),
+                "\(looseApp.name) is visible on the root page and must be in the priority batch")
+        }
     }
 }
