@@ -95,7 +95,7 @@ final class DirectoryWatcher {
     }
 
     private func handleEvents(_ paths: [String]) {
-        guard paths.contains(where: { !Self.isInsideAppBundle($0) }) else { return }
+        guard paths.contains(where: { !Self.isInsideAppBundle($0) && !Self.isDotfileChurn($0) }) else { return }
         onChange()
     }
 
@@ -128,5 +128,20 @@ final class DirectoryWatcher {
         // install this watcher exists to catch.
         let components = (path as NSString).pathComponents.filter { $0 != "/" }
         return components.dropLast().contains { $0.hasSuffix(".app") }
+    }
+
+    /// True when the changed item itself is a dotfile — `.DS_Store`, `.Spotlight-V100`,
+    /// `.fseventsd`, `.localized`, and the like.
+    ///
+    /// Finder and the OS write these constantly from routine, install-unrelated activity — merely
+    /// opening `/Applications` in Finder updates `.DS_Store` there — and every one triggers a full
+    /// rescan of every scan directory a second later, since a filesystem-triggered refresh
+    /// deliberately bypasses the mtime staleness guard (an install into an existing subdirectory
+    /// leaves the parent's own mtime untouched, so that guard can't be trusted to skip *those*).
+    /// Safe to filter unconditionally: `ApplicationScanner` only ever picks up entries whose name
+    /// ends in ".app", so a change confined to a dotfile can never be the install/removal this
+    /// watcher exists to catch.
+    static func isDotfileChurn(_ path: String) -> Bool {
+        (path as NSString).lastPathComponent.hasPrefix(".")
     }
 }

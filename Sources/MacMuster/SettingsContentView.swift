@@ -165,6 +165,8 @@ case .appDirectories:
                       DockSettingsPanel(showInDock: $showInDock)
                   case .folders:
                       FoldersSettingsPanel(appModel: appModel)
+                  case .backup:
+                      BackupSettingsPanel()
                  }
             }
             .padding(.horizontal, SettingsLayoutMetrics.contentPaddingHorizontal)
@@ -196,6 +198,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
      case appDirectories
      case dock
      case folders
+     case backup
 
      var id: String { rawValue }
 
@@ -207,6 +210,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
          case .appDirectories: return "App Directories"
          case .dock: return "Dock"
          case .folders: return "Folders"
+         case .backup: return "Backup & Restore"
          }
      }
 
@@ -218,6 +222,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
          case .appDirectories: return "folder.badge.plus"
          case .dock: return "rectangle.on.rectangle"
          case .folders: return "folder"
+         case .backup: return "clock.arrow.circlepath"
          }
      }
 }
@@ -1642,5 +1647,72 @@ struct DockSettingsPanel: View {
             .background(Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: SettingsLayoutMetrics.sectionContentCornerRadius))
         }
+        // `showInDock` starts as a hardcoded `true` in SettingsContentView regardless of what was
+        // last saved — without this, the toggle showed "on" even after the user had hidden the
+        // Dock icon (and AppDelegate now honors the persisted value at launch, so the two could
+        // visibly disagree: dock icon absent, toggle showing enabled).
+        .onAppear {
+            showInDock = PreferencesStore.shared.loadShowInDock()
+        }
+    }
+}
+
+// MARK: - Backup Settings Panel
+
+struct BackupSettingsPanel: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sectionContentSpacing) {
+            Text("Backup & Restore")
+                .font(.system(size: 15, weight: .semibold))
+            Text("Save your folders, layout, and settings to a file, or restore them from a previous backup. Restoring also accepts a settings export from Launchie.")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 0) {
+                backupRow(
+                    icon: "square.and.arrow.up",
+                    title: "Export Backup",
+                    subtitle: "Save folders, layout, and settings to a file"
+                ) {
+                    StatusBarManager.shared.exportBackup()
+                }
+
+                Divider()
+                    .padding(.horizontal, SettingsLayoutMetrics.sectionContentPadding)
+
+                backupRow(
+                    icon: "square.and.arrow.down",
+                    title: "Restore Backup",
+                    subtitle: "Restore from a MacMuster backup or a Launchie export"
+                ) {
+                    StatusBarManager.shared.restoreBackup()
+                }
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: SettingsLayoutMetrics.sectionContentCornerRadius))
+        }
+    }
+
+    private func backupRow(icon: String, title: String, subtitle: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(SettingsLayoutMetrics.sectionContentPadding)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

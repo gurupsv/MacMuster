@@ -45,6 +45,30 @@ final class DirectoryWatcherTests: XCTestCase {
         XCTAssertTrue(DirectoryWatcher.isInsideAppBundle("/Applications/Foo.app/Contents/"))
     }
 
+    /// Performance regression: opening `/Applications` in Finder alone writes `.DS_Store` there,
+    /// and — since a filesystem-triggered refresh deliberately bypasses the mtime staleness guard
+    /// — every such write used to trigger a full rescan of every scan directory about a second
+    /// later. None of these can ever be the install/removal this watcher exists to catch, since
+    /// `ApplicationScanner` only ever picks up entries whose name ends in ".app".
+    func testDotfileChurnIsFilteredOut() {
+        XCTAssertTrue(DirectoryWatcher.isDotfileChurn("/Applications/.DS_Store"))
+        XCTAssertTrue(DirectoryWatcher.isDotfileChurn("/Applications/.Spotlight-V100"))
+        XCTAssertTrue(DirectoryWatcher.isDotfileChurn("/Applications/.localized"))
+    }
+
+    func testRealBundleChangesAreNotMistakenForDotfileChurn() {
+        XCTAssertFalse(DirectoryWatcher.isDotfileChurn("/Applications"))
+        XCTAssertFalse(DirectoryWatcher.isDotfileChurn("/Applications/Foo.app"))
+        XCTAssertFalse(DirectoryWatcher.isDotfileChurn("/Applications/SomeVendor/Foo.app"))
+    }
+
+    /// A dotfile nested *inside* an unrelated directory (not the changed item's own name) must
+    /// still be judged on its own last component, not tripped up by an ancestor.
+    func testDotfileChurnOnlyLooksAtTheChangedItemsOwnName() {
+        XCTAssertFalse(DirectoryWatcher.isDotfileChurn("/Users/name/.hidden/RealApp.app"),
+            "The changed item here is RealApp.app, not the dot-prefixed ancestor directory")
+    }
+
     // MARK: - Live FSEvents delivery
 
     /// End-to-end: an app bundle appearing must actually wake the watcher. Testing the filter

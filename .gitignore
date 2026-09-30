@@ -88,12 +88,6 @@ xcuserdata/
 # SwiftSyntax
 .swift-syntax
 
-# SwiftLint
-.swiftlint.yml
-.swiftlint
-
-# SwiftFormat
-.swiftformat
 
 # Carthage
 Carthage/

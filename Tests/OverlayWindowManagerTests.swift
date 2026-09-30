@@ -63,6 +63,33 @@ final class OverlayWindowManagerTests: XCTestCase {
         XCTAssertEqual(notificationName.rawValue, "launcherDidShow")
     }
 
+    // MARK: - Combined Key Event Monitor Scoping (Settings-window arrow-key regression)
+
+    /// Regression test: the combined keyDown monitor is a *local* one, so AppKit ran it for every
+    /// keyDown in any of this app's windows — including the Settings window, which stays open
+    /// (just not key) behind the overlay. Without this check, arrow keys and text-field selection
+    /// handling meant for the overlay's search field fired regardless of which window was
+    /// actually key, making arrow-key editing and slider adjustment in Settings dead whenever the
+    /// overlay's search field happened to be empty.
+    func testShouldHandleKeyEventIsTrueWhenOverlayIsKeyWindow() {
+        XCTAssertTrue(manager.shouldHandleKeyEvent(keyWindow: manager.window),
+            "The monitor should act on events while the overlay itself is the key window")
+    }
+
+    func testShouldHandleKeyEventIsFalseForADifferentWindow() {
+        let settingsWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 100, height: 100),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+
+        XCTAssertFalse(manager.shouldHandleKeyEvent(keyWindow: settingsWindow),
+            "The monitor must not act on events while a different window (e.g. Settings) is key")
+    }
+
+    func testShouldHandleKeyEventIsFalseWhenNoWindowIsKey() {
+        XCTAssertFalse(manager.shouldHandleKeyEvent(keyWindow: nil),
+            "No key window at all should not be treated as the overlay being key")
+    }
+
     // MARK: - Search Field Selection Collapse (first-keystroke fix)
 
     func testCollapseSelectionMovesCursorToEndClearingSelectAll() {

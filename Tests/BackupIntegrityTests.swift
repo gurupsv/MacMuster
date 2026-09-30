@@ -194,7 +194,7 @@ final class BackupIntegrityTests: XCTestCase {
 
     // MARK: - SEC-1: restore must not write outside the cache directory
 
-    func testRestoreIgnoresTraversalKeysAndWritesNothingOutsideCache() throws {
+    func testRestoreIgnoresTraversalKeysAndWritesNothingOutsideCache() async throws {
         // The end-to-end proof for SEC-1: drive a hostile archive through the real restore path
         // and assert nothing lands outside the cache directory.
         let escapeTargets = [
@@ -222,7 +222,7 @@ final class BackupIntegrityTests: XCTestCase {
             missingAppPaths: []
         )
 
-        BackupManager.shared.apply(preview: preview)
+        await BackupManager.shared.apply(preview: preview)
 
         for target in escapeTargets {
             XCTAssertFalse(FileManager.default.fileExists(atPath: target.standardizedFileURL.path),
@@ -238,7 +238,7 @@ final class BackupIntegrityTests: XCTestCase {
         try? FileManager.default.removeItem(at: restored)
     }
 
-    func testHostileKeysSurviveTheFullEncodeDecodeRestorePath() throws {
+    func testHostileKeysSurviveTheFullEncodeDecodeRestorePath() async throws {
         // Belt and braces: the hostile key must be refused even when it arrives the way a real
         // attack would — inside a well-formed, correctly-checksummed archive file.
         let escape = cacheDir.appendingPathComponent("../../../macmuster-sec1-roundtrip.txt").standardizedFileURL
@@ -253,7 +253,7 @@ final class BackupIntegrityTests: XCTestCase {
         guard let decoded = BackupManager.decodeArchive(from: data) else {
             return XCTFail("A well-formed hostile archive should still decode — it is rejected at write time, not parse time")
         }
-        BackupManager.shared.apply(
+        await BackupManager.shared.apply(
             preview: BackupManager.BackupPreview(archive: decoded, validAppPaths: [], missingAppPaths: [])
         )
 

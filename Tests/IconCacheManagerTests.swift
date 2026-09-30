@@ -178,6 +178,38 @@ final class IconCacheManagerTests: XCTestCase {
         XCTAssertNil(IconCacheManager.shared.cachedIcon(for: path, appearance: .light), "clearAll should evict the in-memory cache")
     }
 
+    /// `clearAll` moves the cache directory aside and deletes it in the background, so the main
+    /// actor never waits on a recursive delete. The live cache must still be empty the moment it
+    /// returns, and the moved-aside copy must not linger.
+    func testClearAllEmptiesTheLiveCacheImmediatelyAndReclaimsTheDiscardedCopy() throws {
+        guard FileManager.default.fileExists(atPath: "/System/Applications/Calculator.app") else {
+            throw XCTSkip("Calculator.app not found on this machine")
+        }
+        let path = "/System/Applications/Calculator.app"
+        let icon = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
+            NSColor.green.setFill()
+            rect.fill()
+            return true
+        }
+        IconCacheManager.shared.cacheIcon(icon, for: path, appearance: .light)
+        XCTAssertFalse(IconCacheManager.shared.cachedAppPaths(appearance: .light).isEmpty,
+            "Precondition: something is cached on disk")
+
+        IconCacheManager.shared.clearAll()
+
+        XCTAssertTrue(IconCacheManager.shared.cachedAppPaths(appearance: .light).isEmpty,
+            "The live cache directory must be empty as soon as clearAll returns")
+        let parent = try XCTUnwrap(FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first)
+            .appendingPathComponent("MacMuster", isDirectory: true)
+        let deadline = Date().addingTimeInterval(5)
+        func discardedCopies() -> [String] {
+            ((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [])
+                .filter { $0.hasPrefix("icons-v4-discarded-") }
+        }
+        while !discardedCopies().isEmpty && Date() < deadline { usleep(20_000) }
+        XCTAssertTrue(discardedCopies().isEmpty, "The moved-aside cache should be deleted in the background")
+    }
+
     func testClearAllRemovesDiskCacheForRealApp() throws {
         guard FileManager.default.fileExists(atPath: "/System/Applications/Calculator.app") else {
             throw XCTSkip("Calculator.app not found on this machine")

@@ -1,11 +1,30 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// Handles icon loading, folder icon composition, and caching.
 @MainActor
 final class IconService {
     static let shared = IconService()
-    private let folderIconCache = NSCache<NSString, NSImage>()
+
+    /// Composited folder icons, regenerated whenever a member app's icon changes. Cost-limited
+    /// in pixels like `IconCacheManager`'s cache so an unusual number of folders cannot grow it
+    /// without bound; a folder icon is 120×120, so this holds up to ~340 folders.
+    private let folderIconCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.totalCostLimit = IconMetrics.folderIconCachePixelLimit
+        return cache
+    }()
     private init() {}
+
+    /// Drawn in a folder composite for a member whose icon has not been decoded yet.
+    ///
+    /// The composite used to fall back to `NSWorkspace.icon(forFile:)` per unloaded member, and
+    /// the drawing handler runs lazily on the main thread at paint time — about 13 ms per folder,
+    /// so a screen of folders right after a theme toggle or cache reset hitched for well over
+    /// 100 ms. The generic icon is resolved once and shared. The placeholder never sticks: every
+    /// member's icon is loaded with the rest of the library, and `refreshFolderIcons` redraws
+    /// the folder as those icons land.
+    private lazy var pendingMemberIcon: NSImage = NSWorkspace.shared.icon(for: .applicationBundle)
     
     /// Rasterizes an app icon to a fixed-size bitmap on a background thread.
     /// Forces decode + downscale once, so SwiftUI just blits a small bitmap on the main thread.
@@ -91,19 +110,19 @@ final class IconService {
         let rowCount = Int(ceil(Double(drawnCount) / Double(effectiveGrid)))
         let rowBlockOffsetY = (iconSize - CGFloat(rowCount) * cellSize) / 2
 
+        let placeholder = pendingMemberIcon
         // Use NSImage(size:flipped:drawingHandler:) instead of lockFocus/unlockFocus — safer and more modern.
         let image = NSImage(size: size, flipped: false) { rect -> Bool in
             let clipPath = NSBezierPath(roundedRect: rect, xRadius: 20, yRadius: 20)
             clipPath.addClip()
 
-            let workspace = NSWorkspace.shared
             for index in 0..<drawnCount {
                 let row = index / effectiveGrid
                 let col = index % effectiveGrid
                 // Center a trailing partial row horizontally; full rows span the width.
                 let itemsInRow = row == rowCount - 1 ? drawnCount - row * effectiveGrid : effectiveGrid
                 let rowOffsetX = (iconSize - CGFloat(itemsInRow) * cellSize) / 2
-                let icon = apps[index].icon ?? workspace.icon(forFile: apps[index].path)
+                let icon = apps[index].icon ?? placeholder
                 let cellRect = NSRect(x: rowOffsetX + CGFloat(col) * cellSize,
                                       y: rowBlockOffsetY + CGFloat(rowCount - 1 - row) * cellSize,
                                       width: cellSize, height: cellSize)
@@ -114,7 +133,7 @@ final class IconService {
 
         // Store to cache so subsequent calls hit the fast path
         if let folderId = folderId {
-            folderIconCache.setObject(image, forKey: folderId as NSString)
+            folderIconCache.setObject(image, forKey: folderId as NSString, cost: Int(iconSize * iconSize))
         }
         return image
     }
@@ -130,17 +149,30 @@ final class IconService {
         let appearance = IconAppearance.current
 
         // Each icon loads from cache (instant) or decodes+downscales (background).
-        // Fan the batch out across the cooperative thread pool instead of one at a time.
+        // Fan the batch out across the cooperative thread pool instead of one at a time — but
+        // no more than `maxConcurrentIconDecodes` in flight at once. Unbounded fan-out (one
+        // task per path) is what spiked memory by hundreds of MB during a full-library
+        // re-decode: every icon's 200×200×4-byte raster plus its ImageIO buffers existed
+        // simultaneously. A fixed in-flight cap bounds that burst to one small batch's worth
+        // while keeping far more parallelism than a serial load, so first-launch icon fill
+        // stays fast (see IconServicePerformanceTests).
+        let inFlightLimit = min(IconMetrics.maxConcurrentIconDecodes, missingPaths.count)
         return await withTaskGroup(of: (String, NSImage).self) { group in
-            for path in missingPaths {
-                group.addTask(priority: .userInitiated) {
-                    (path, Self.loadOrDecodeIcon(path, appearance: appearance))
+            var iterator = missingPaths.makeIterator()
+            func enqueueBatch() {
+                for _ in 0..<inFlightLimit {
+                    guard let path = iterator.next() else { return }
+                    group.addTask(priority: .userInitiated) {
+                        (path, Self.loadOrDecodeIcon(path, appearance: appearance))
+                    }
                 }
             }
+            enqueueBatch()
             var results: [(String, NSImage)] = []
             results.reserveCapacity(missingPaths.count)
-            for await pair in group {
+            while let pair = await group.next() {
                 results.append(pair)
+                enqueueBatch()
             }
             return results
         }
@@ -186,7 +218,11 @@ final class IconService {
     /// regenerated — the previous behavior evicted and regenerated *every* folder on every icon
     /// batch, which was O(folders × icon-load-passes) even when none of a folder's members changed.
     /// Pass an empty set to regenerate all folders (e.g. on a full reload where icons were reset).
-    func refreshFolderIcons(folders: [AppFolder], appPathIndex: [String: Application], changedAppPaths: Set<String>) {
+    /// Returns the regenerated composites keyed by folder id, so callers can push them to the
+    /// folder tiles on screen.
+    @discardableResult
+    func refreshFolderIcons(folders: [AppFolder], appPathIndex: [String: Application], changedAppPaths: Set<String>) -> [String: NSImage] {
+        var regenerated: [String: NSImage] = [:]
         for folder in folders {
             // Skip folders whose member app icons weren't touched in this batch.
             if !changedAppPaths.isEmpty {
@@ -196,7 +232,8 @@ final class IconService {
 
             folderIconCache.removeObject(forKey: folder.id as NSString)
             let apps = folder.appPaths.compactMap { appPathIndex[$0] }
-            _ = generateFolderIcon(apps, for: folder.id)
+            regenerated[folder.id] = generateFolderIcon(apps, for: folder.id)
         }
+        return regenerated
     }
 }

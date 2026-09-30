@@ -2,6 +2,19 @@ import Foundation
 import AppKit
 import Observation
 
+/// The icon one grid cell draws, observable on its own.
+///
+/// `@Observable` tracks whole properties, so a cell that reads its icon out of `appPathIndex`
+/// depends on the *entire* index: every icon batch that lands — about seven on a cold launch of
+/// a 400-app library — invalidated and re-rendered every visible cell, not just the ones whose
+/// icons arrived. One slot per path narrows that dependency to the cell's own icon.
+@MainActor
+@Observable
+final class IconSlot {
+    var icon: NSImage?
+    init(icon: NSImage?) { self.icon = icon }
+}
+
 /// Manages the application library: scanning, folders, icon caching, smart categories, and display ordering.
 @MainActor
 @Observable
@@ -9,7 +22,6 @@ class LibraryScanState {
     var isLoading = true
     var displayOrder: [Application] = []
     var appPathIndex: [String: Application] = [:]
-    var loadedIconsByPath: [String: NSImage] = [:]
     var dataVersion: Int = 0
 
     private struct ScanCache {
@@ -86,7 +98,6 @@ class LibraryScanState {
         didSet { dataVersion += 1; PreferencesStore.shared.saveSortOption(sortOption.rawValue) }
     }
 
-    private var cachedVisibleApps: (version: Int, apps: [Application])?
     /// Everything about a `getDisplayedApps` request that changes its answer.
     ///
     /// The cache used to key on `dataVersion` alone and ignore the arguments entirely. That held
@@ -102,6 +113,11 @@ class LibraryScanState {
         let selectedCategory: AppCategory
     }
     var cachedDisplayedApps: (query: DisplayQuery, apps: [Application])?
+    /// Per-path icon holders read by `AppIconView`; see `IconSlot`. One per indexed app, kept in
+    /// step by `rebuildAppPathIndex`; folder tiles get theirs on first request. Ignored by
+    /// Observation itself — the slots are the observable part, and handing one out must not
+    /// count as a mutation.
+    @ObservationIgnored private var iconSlots: [String: IconSlot] = [:]
     var isScanning = false
     private var refreshTimer: Timer?
     private var cacheRefreshTimer: Timer?
@@ -146,14 +162,13 @@ class LibraryScanState {
         loadCustomDirectories()
 
         cachedAppsInAnyFolder = nil
-        cachedVisibleApps = nil
         cachedDisplayedApps = nil
         dataVersion += 1
         rebuildAppPathIndex()
         updateRecentApps()
         updateFilteredApps()
         // Folder icons are composited from member icons, and membership just changed wholesale.
-        IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex, changedAppPaths: [])
+        regenerateFolderIcons(changedAppPaths: [])
     }
 
     private func loadCustomOrder() {
@@ -192,8 +207,13 @@ class LibraryScanState {
     private func loadCustomDirectories() {
         customDirectoryBookmarks = PreferencesStore.shared.loadCustomDirectoryBookmarks() ?? [:]
         if let dirs = PreferencesStore.shared.loadCustomDirectories() {
+            // `customDirectories`'s own `didSet` already computes `allScanDirectories` as
+            // `defaultScanDirectories + validated` — assigning it again here with the raw,
+            // unvalidated `dirs` overwrote that with whatever was persisted, unchecked. A crafted
+            // backup archive (or a directory that became invalid since it was saved, e.g. turned
+            // into a symlink) would reach `DirectoryWatcher` and every scan with no validation at
+            // all, even though `currentScanDirectories` re-validates on every read elsewhere.
             customDirectories = dirs
-            allScanDirectories = Self.defaultScanDirectories + dirs
             resolveCustomDirectoryAccess(for: dirs)
         } else {
             allScanDirectories = Self.defaultScanDirectories
@@ -324,13 +344,21 @@ class LibraryScanState {
             updated.icon = nil
             return updated
         }
+        // The icons now being discarded were rendered under the *previous* appearance, whose
+        // memory-cache entries nothing will serve again until the theme toggles back. Evict
+        // them rather than leaving their bitmaps resident alongside the new variants (the
+        // on-disk copies stay, so toggling back re-reads instead of re-rasterizing).
+        let current = IconAppearance.current
+        IconCacheManager.shared.evictMemoryVariants(
+            for: displayOrder.map(\.path),
+            appearance: current == .dark ? .light : .dark
+        )
         rebuildAppPathIndex()
         dataVersion += 1
 
         // Evict folder icons so they regenerate with the new app icons.
-        IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex, changedAppPaths: [])
+        regenerateFolderIcons(changedAppPaths: [])
 
-        cachedVisibleApps = nil
         cachedDisplayedApps = nil
 
         // Re-load and decode all icons under the new appearance.
@@ -339,11 +367,36 @@ class LibraryScanState {
         }
     }
 
+    /// The apps to decode icons for first, ahead of the rest of `displayOrder`.
+    ///
+    /// `displayOrder`'s own prefix is the raw scan order, which includes every app tucked away
+    /// inside a folder — invisible until that folder is opened. On a library with folders, those
+    /// hidden members can fill most of the priority batch, pushing the loose apps actually on
+    /// screen into a later, sequentially-awaited chunk: blank icons on first launch until
+    /// something (e.g. opening and leaving a folder) forces enough of the background loop to
+    /// catch up. Prioritize by what `getDisplayedApps()` would put on the root page right now
+    /// instead, topping up with raw scan order if that page has fewer apps than the batch size.
+    func priorityIconLoadOrder() -> [Application] {
+        let rootApps = getDisplayedApps(searchTerm: "", showFoldersFirst: settings?.showFoldersFirst ?? false,
+                                        customOrder: customOrder, sortOption: sortOption,
+                                        selectedCategory: .all, columnCount: settings?.columnCount ?? 4)
+        let visiblePaths = Set(rootApps.prefix(ScanMetrics.priorityIconLoadCount).map(\.path))
+        var priorityApps = displayOrder.filter { visiblePaths.contains($0.path) }
+        if priorityApps.count < ScanMetrics.priorityIconLoadCount {
+            let claimed = Set(priorityApps.map(\.path))
+            priorityApps.append(contentsOf: displayOrder.lazy
+                .filter { !claimed.contains($0.path) }
+                .prefix(ScanMetrics.priorityIconLoadCount - priorityApps.count))
+        }
+        return priorityApps
+    }
+
     func loadMissingIcons() async {
-        let priorityApps = Array(displayOrder.prefix(ScanMetrics.priorityIconLoadCount))
+        let priorityApps = priorityIconLoadOrder()
         let priorityIcons = await IconService.shared.loadMissingIcons(for: priorityApps)
         if !priorityIcons.isEmpty { applyLoadedIcons(priorityIcons) }
-        let remainingApps = Array(displayOrder.dropFirst(ScanMetrics.priorityIconLoadCount))
+        let prioritizedPaths = Set(priorityApps.map(\.path))
+        let remainingApps = displayOrder.filter { !prioritizedPaths.contains($0.path) }
         guard !remainingApps.isEmpty else { return }
         // Load remaining apps in chunks, applying each chunk immediately so icons fill progressively
         // instead of appearing in one late pop. Keeping chunk size at 60 (≈3 applies) balances
@@ -355,15 +408,70 @@ class LibraryScanState {
         }
     }
 
+    /// Lands a batch of decoded icons without disturbing anything else.
+    ///
+    /// Only icons changed, so only icons are touched: the index entries for the batch are patched
+    /// rather than the index rebuilt, each affected cell is signalled through its own `IconSlot`,
+    /// and a warm `getDisplayedApps` result is patched in place instead of being thrown away.
+    /// `dataVersion` deliberately does not move — which apps are shown, and in what order, is
+    /// independent of their icons, and bumping it recomputed the whole display (filter, folder
+    /// composites, sort) once per batch.
     private func applyLoadedIcons(_ loadedIcons: [(String, NSImage)]) {
         displayOrder = IconService.shared.updateIconsInPlace(for: displayOrder, with: loadedIcons)
-        for (path, icon) in loadedIcons { loadedIconsByPath[path] = icon }
-        rebuildAppPathIndex()
-        dataVersion += 1
-        cachedVisibleApps = nil
-        cachedDisplayedApps = nil
-        let changedPaths = Set(loadedIcons.map(\.0))
-        IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex, changedAppPaths: changedPaths)
+        // Duplicate paths carry the same decoded icon, so either wins.
+        let iconsByPath = Dictionary(loadedIcons, uniquingKeysWith: { first, _ in first })
+        var index = appPathIndex
+        for (path, icon) in iconsByPath where index[path] != nil {
+            index[path]?.icon = icon
+            publishIcon(icon, for: path)
+        }
+        appPathIndex = index
+        let folderIcons = regenerateFolderIcons(changedAppPaths: Set(iconsByPath.keys))
+        patchCachedDisplayedIcons(appIcons: iconsByPath, folderIcons: folderIcons)
+    }
+
+    /// Regenerates folder composites and pushes each to its tile's `IconSlot`. Every composite
+    /// regeneration goes through here, so a folder tile's slot never lags the composite cache.
+    @discardableResult
+    private func regenerateFolderIcons(changedAppPaths: Set<String>) -> [String: NSImage] {
+        let folderIcons = IconService.shared.refreshFolderIcons(
+            folders: folders, appPathIndex: appPathIndex, changedAppPaths: changedAppPaths)
+        for (folderId, icon) in folderIcons { publishIcon(icon, for: folderId) }
+        return folderIcons
+    }
+
+    /// Carries freshly-loaded icons into a warm `getDisplayedApps` result, so a batch of icons
+    /// does not cost a full display recompute. Folder tiles are matched by folder id, real apps
+    /// by path.
+    private func patchCachedDisplayedIcons(appIcons: [String: NSImage], folderIcons: [String: NSImage]) {
+        guard var cached = cachedDisplayedApps else { return }
+        var patched = false
+        for i in cached.apps.indices {
+            let app = cached.apps[i]
+            let icon = app.isFolder ? app.folderId.flatMap { folderIcons[$0] } : appIcons[app.path]
+            guard let icon else { continue }
+            cached.apps[i].icon = icon
+            patched = true
+        }
+        if patched { cachedDisplayedApps = cached }
+    }
+
+    /// The observable icon holder for `path`. A path absent from `appPathIndex` (a folder tile,
+    /// or an app not scanned yet) gets an empty one, and `AppIconView` falls back to its own
+    /// `app.icon`. Never reads an observed property, so calling this from a view body adds no
+    /// dependency beyond the slot itself.
+    func iconSlot(for path: String) -> IconSlot {
+        if let slot = iconSlots[path] { return slot }
+        let slot = IconSlot(icon: nil)
+        iconSlots[path] = slot
+        return slot
+    }
+
+    /// Pushes `icon` to the cell showing `path`, if any cell has asked for it. Writes only on an
+    /// actual change so an unchanged icon never invalidates its cell.
+    private func publishIcon(_ icon: NSImage?, for path: String) {
+        guard let slot = iconSlots[path], slot.icon !== icon else { return }
+        slot.icon = icon
     }
 
     func refreshCachedIcons() async {
@@ -409,8 +517,20 @@ class LibraryScanState {
     }
 
     private func rebuildAppPathIndex() {
-        appPathIndex.removeAll(keepingCapacity: true)
-        for app in displayOrder { appPathIndex[app.path] = app }
+        var index: [String: Application] = [:]
+        index.reserveCapacity(displayOrder.count)
+        for app in displayOrder { index[app.path] = app }
+        appPathIndex = index
+        // Keep every indexed path's slot in step with the rebuilt index. Paths no longer indexed
+        // are left alone: folder tiles' slots are fed by `publishIcon` from the folder
+        // composites, not from here.
+        for (path, app) in index {
+            if let slot = iconSlots[path] {
+                if slot.icon !== app.icon { slot.icon = app.icon }
+            } else {
+                iconSlots[path] = IconSlot(icon: app.icon)
+            }
+        }
     }
 
     /// Runs recently-updated detection against the current `displayOrder` and pushes the
@@ -476,7 +596,6 @@ class LibraryScanState {
         let freshApps: [Application]
         if reason.rebuildsIcons {
             IconCacheManager.shared.clearAll()
-            loadedIconsByPath.removeAll()
             freshApps = result.apps
         } else {
             // Two entries for one path would mean the same icon twice, so either wins.
@@ -494,8 +613,6 @@ class LibraryScanState {
         dataVersion += 1
         self.updateFilteredApps()
         await self.loadMissingIcons()
-        let currentPaths = Set(displayOrder.map(\.path))
-        loadedIconsByPath = loadedIconsByPath.filter { currentPaths.contains($0.key) }
         self.updateRecentApps()
         updateRecentlyUpdatedBadges()
     }
@@ -560,12 +677,28 @@ class LibraryScanState {
         updateRecentApps()
         updateFilteredApps()
     }
+    /// Records a new drag order for the apps in `apps`, and only those apps.
+    ///
+    /// `apps` is deliberately *not* assumed to be the full catalog — unlike `setApplications`,
+    /// which this otherwise resembles. Every call site hands this the apps that were on screen
+    /// at drop time: the root grid's loose apps + folder icons, or one open folder's contents,
+    /// never the whole library. Writing that subset into `displayOrder` — which every other part
+    /// of the app (`visibleApplications`, `appPathIndex`, icon-load priority, the Hidden Apps
+    /// panel) treats as the complete scanned catalog — used to silently discard every app not on
+    /// screen at drop time, until the next rescan rebuilt it. The fix is simply not touching
+    /// `displayOrder` here: `getDisplayedApps` already recomputes from `customOrder` against the
+    /// untouched full catalog, which is all a reorder needs.
+    ///
+    /// Builds the new order in a local copy and assigns it once. Writing `customOrder[path]`
+    /// per app fired the property's observer — a `dataVersion` bump plus a full-dictionary encode
+    /// and `UserDefaults` write — once per app on screen, stalling each drop for tens to hundreds
+    /// of milliseconds on a large grid. The single assignment runs the observer exactly once,
+    /// which covers both the `dataVersion` bump and the persist.
     func updateCustomOrder(from apps: [Application]) {
-        for (index, app) in apps.enumerated() { customOrder[app.path] = index }
-        displayOrder = apps
-        dataVersion += 1
+        var updated = customOrder
+        for (index, app) in apps.enumerated() { updated[app.path] = index }
+        customOrder = updated
         updateFilteredApps()
-        PreferencesStore.shared.saveCustomOrder(customOrder)
     }
 
     func removeCustomDirectory(_ path: String) {
@@ -580,15 +713,21 @@ class LibraryScanState {
         if let bookmarkData { customDirectoryBookmarks[path] = bookmarkData; PreferencesStore.shared.saveCustomDirectoryBookmarks(customDirectoryBookmarks) }
     }
 
+    /// The catalog with permanently-hidden and user-hidden apps filtered out.
+    ///
+    /// Deliberately **not** cached (a cache used to sit here): the work is one linear pass over
+    /// `displayOrder` with O(1) set lookups, and it only runs on a `getDisplayedApps` cache miss
+    /// or a handful of model mutations — never per icon. The cache it replaced retained a second
+    /// full-array copy of the library (each entry carrying its `NSImage`) purely to skip that
+    /// pass, which is a poor trade for the memory it held. Correctness is keyed on `dataVersion`,
+    /// which `hiddenAppPaths` and `showHiddenApps` (via `AppModel`) both bump, so nothing needs
+    /// the extra invalidation the cache demanded either.
     var visibleApplications: [Application] {
-        if let c = cachedVisibleApps, c.version == dataVersion { return c.apps }
-        let apps = displayOrder.filter {
+        displayOrder.filter {
             guard !Self.permanentlyHiddenAppPaths.contains($0.path) else { return false }
             if settings?.showHiddenApps ?? false { return true }
             return !hiddenAppPaths.contains($0.path)
         }
-        cachedVisibleApps = (dataVersion, apps)
-        return apps
     }
 
     func getFolderApplication(_ folder: AppFolder) -> Application {

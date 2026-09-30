@@ -8,7 +8,11 @@ final class CustomDirectoryValidationTests: XCTestCase {
 
     private var root: URL!
 
-    override func setUpWithError() throws {
+    // These are the `async` overrides on purpose. The synchronous `setUpWithError()` is
+    // nonisolated, so assigning the `@MainActor` property `root` from it warns under strict
+    // concurrency; the async form inherits the class's main-actor isolation. Every other
+    // `@MainActor` suite in this directory uses the async form for the same reason.
+    override func setUp() async throws {
         // Deliberately under the system temp directory, which lives behind /var -> /private/var.
         // That symlinked *ancestor* is the false-negative case this fix is about.
         root = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -16,7 +20,7 @@ final class CustomDirectoryValidationTests: XCTestCase {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         if let root { try? FileManager.default.removeItem(at: root) }
         root = nil
     }

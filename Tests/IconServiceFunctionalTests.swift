@@ -32,9 +32,14 @@ final class IconServiceFunctionalTests: XCTestCase {
         let app = makeApp("FakeApp", path: "/Applications/FakeApp.app")
         let result = await service.loadMissingIcons(for: [app])
 
-        // When a bundle doesn't exist, it's silently skipped and not included in results
-        // This is graceful degradation — missing apps don't break the icon load
-        XCTAssert(true, "loadMissingIcons should handle missing bundles gracefully")
+        // A missing bundle is not dropped from the batch: the loader returns one entry per
+        // requested path, and `NSWorkspace.icon(forFile:)` hands back the shared generic icon for
+        // a path that does not exist. What matters is that a missing bundle degrades to a
+        // placeholder instead of crashing or misaligning the result with the request.
+        XCTAssertEqual(result.count, 1,
+            "A missing bundle should still yield one entry, keeping results aligned with the request")
+        XCTAssertEqual(result[0].0, app.path,
+            "The fallback entry should still be keyed by the requested path")
     }
 
     func testLoadMissingIconsWithForceReloadsEvenIfCached() async {
@@ -166,10 +171,11 @@ final class IconServiceFunctionalTests: XCTestCase {
     func testGenerateFolderIconWithEmptyAppsArray() {
         let folderIcon = service.generateFolderIcon([], for: "folder1")
 
-        // Empty apps array may result in nil or a placeholder icon
-        // Either behavior is acceptable
-        XCTAssert(true,
-            "generateFolderIcon should handle empty apps array without crashing")
+        // Empty apps array may result in nil or a placeholder icon; either is acceptable, so the
+        // assertion admits both rather than pinning one. What it does rule out is a malformed
+        // zero-sized image, which would paint as an empty cell.
+        XCTAssertTrue(folderIcon == nil || (folderIcon?.size.width ?? 0) > 0,
+            "generateFolderIcon should return nil or a usable placeholder for an empty apps array")
     }
 
     func testGenerateFolderIconWithSingleApp() {
@@ -245,6 +251,52 @@ final class IconServiceFunctionalTests: XCTestCase {
 
         XCTAssertFalse(result1.isEmpty,
             "Finder app should load icons")
+        XCTAssertFalse(result2.isEmpty,
+            "Safari app should load icons — the second concurrent call must not be starved")
+    }
+
+    // MARK: - Bounded Decode Concurrency (memory regression)
+
+    /// Regression for the unbounded decode fan-out: one task per path let a full-library
+    /// re-decode (theme toggle, "Refresh Now") rasterize every icon simultaneously, spiking
+    /// memory by hundreds of MB. The batch now keeps at most `maxConcurrentIconDecodes`
+    /// decodes in flight. Completeness is the observable contract — the windowed scheduler
+    /// must refill and drain until every requested icon has come back.
+    func testLoadMissingIconsCompletesEveryItemWhenBatchExceedsInFlightLimit() async throws {
+        let paths = [
+            "/System/Applications/Calculator.app",
+            "/System/Applications/Calendar.app",
+            "/System/Applications/Notes.app",
+            "/System/Library/CoreServices/Finder.app",
+        ].filter { FileManager.default.fileExists(atPath: $0) }
+        try XCTSkipIf(paths.isEmpty, "No stock system apps found on this machine")
+
+        // Far beyond the in-flight cap, so the windowed scheduler must refill several times.
+        let batchSize = 100
+        let apps = (0..<batchSize).map { makeApp("App\($0)", path: paths[$0 % paths.count]) }
+
+        let results = await service.loadMissingIcons(for: apps)
+
+        XCTAssertEqual(results.count, batchSize,
+            "Every requested path must come back even when the batch is larger than the in-flight cap")
+    }
+
+    /// The cap boundary itself: batches of exactly the cap, and one over, must both complete.
+    /// The one-over case is where a naive "launch the window once and drain" scheduler would
+    /// deadlock (the group is complete while an item is still unlaunched).
+    func testLoadMissingIconsCompletesAtAndJustAboveTheInFlightLimit() async throws {
+        let paths = [
+            "/System/Applications/Calculator.app",
+            "/System/Applications/Calendar.app",
+        ].filter { FileManager.default.fileExists(atPath: $0) }
+        try XCTSkipIf(paths.isEmpty, "No stock system apps found on this machine")
+
+        for batchSize in [IconMetrics.maxConcurrentIconDecodes, IconMetrics.maxConcurrentIconDecodes + 1] {
+            let apps = (0..<batchSize).map { makeApp("App\($0)", path: paths[$0 % paths.count]) }
+            let results = await service.loadMissingIcons(for: apps)
+            XCTAssertEqual(results.count, batchSize,
+                "A batch of \(batchSize) (the in-flight cap, and one over) must complete without deadlock")
+        }
     }
 
     // MARK: - Edge Cases

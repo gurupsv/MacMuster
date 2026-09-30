@@ -163,6 +163,8 @@ final class NavigationSelectionTests: XCTestCase {
 
         // Only the immediate clear bumps (empty string). Non-empty debounces.
         let versionAfterRapidChanges = library.dataVersion
+        XCTAssertEqual(versionAfterRapidChanges, versionBefore,
+            "Non-empty search terms should debounce, not bump dataVersion on every keystroke")
 
         // Wait for the debounce to complete (150ms).
         try? await Task.sleep(nanoseconds: 200_000_000)

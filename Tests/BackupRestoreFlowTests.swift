@@ -36,6 +36,7 @@ final class BackupRestoreFlowTests: XCTestCase {
         hiddenAppPaths: Set<String> = [],
         customOrder: [String: Int] = [:],
         refreshInterval: Double = ScanMetrics.refreshIntervalDefault,
+        customDirectories: [String] = [],
         icons: BackupManager.IconPack = BackupManager.IconPack(entries: [:])
     ) -> BackupManager.BackupArchive {
         BackupManager.BackupArchive(
@@ -47,7 +48,7 @@ final class BackupRestoreFlowTests: XCTestCase {
             showFoldersFirst: false,
             refreshInterval: refreshInterval,
             currentFolderId: nil,
-            customDirectories: [],
+            customDirectories: customDirectories,
             glowEnabled: false,
             glowColor: "#ffffff",
             glowIntensity: 0.5,
@@ -63,8 +64,8 @@ final class BackupRestoreFlowTests: XCTestCase {
         )
     }
 
-    private func apply(_ archive: BackupManager.BackupArchive, validAppPaths: Set<String> = []) {
-        BackupManager.shared.apply(
+    private func apply(_ archive: BackupManager.BackupArchive, validAppPaths: Set<String> = []) async {
+        await BackupManager.shared.apply(
             preview: BackupManager.BackupPreview(
                 archive: archive, validAppPaths: validAppPaths, missingAppPaths: []
             )
@@ -73,9 +74,9 @@ final class BackupRestoreFlowTests: XCTestCase {
 
     // MARK: - UX-2: a restore must reach the live UI, not just disk
 
-    func testRestoredFoldersReachTheLiveLibrary() {
+    func testRestoredFoldersReachTheLiveLibrary() async {
         let folder = AppFolder(name: "Restored", appPaths: [])
-        apply(makeArchive(appFolders: [folder]))
+        await apply(makeArchive(appFolders: [folder]))
 
         XCTAssertTrue(appModel.folders.isEmpty, "Precondition: apply() alone writes to disk, not to the live model")
 
@@ -85,19 +86,19 @@ final class BackupRestoreFlowTests: XCTestCase {
         XCTAssertEqual(appModel.folders.first?.name, "Restored", "The restored folder should be the one from the archive")
     }
 
-    func testRestoredSettingsReachTheLiveModel() {
+    func testRestoredSettingsReachTheLiveModel() async {
         appModel.settings.iconSize = .small
         appModel.settings.fontSize = 12.0
 
-        apply(makeArchive())
+        await apply(makeArchive())
         appModel.reloadAfterRestore()
 
         XCTAssertEqual(appModel.settings.iconSize, .large, "Restored icon size should reach the live settings")
         XCTAssertEqual(appModel.settings.fontSize, 16.0, "Restored font size should reach the live settings")
     }
 
-    func testRestoredHiddenAppsAndOrderingReachTheLiveLibrary() {
-        apply(makeArchive(
+    func testRestoredHiddenAppsAndOrderingReachTheLiveLibrary() async {
+        await apply(makeArchive(
             hiddenAppPaths: ["/Applications/Hidden.app"],
             customOrder: ["/Applications/First.app": 0]
         ))
@@ -108,13 +109,13 @@ final class BackupRestoreFlowTests: XCTestCase {
         XCTAssertEqual(appModel.sortOption, .installationDate, "Restored sort option should reach the live library")
     }
 
-    func testReloadReplacesPreRestoreStateRatherThanMergingWithIt() {
+    func testReloadReplacesPreRestoreStateRatherThanMergingWithIt() async {
         // A restore is a replacement. Folders and hidden apps that existed before must not
         // survive it just because the archive happens not to mention them.
         appModel.library.folders = [AppFolder(name: "Pre-existing", appPaths: [])]
         appModel.library.hiddenAppPaths = ["/Applications/WasHidden.app"]
 
-        apply(makeArchive())
+        await apply(makeArchive())
         appModel.reloadAfterRestore()
 
         XCTAssertTrue(appModel.folders.isEmpty, "A restore from an archive with no folders should clear existing ones")
@@ -123,7 +124,7 @@ final class BackupRestoreFlowTests: XCTestCase {
 
     // MARK: - BUG-2: folder timestamps survive a restore
 
-    func testRestorePreservesFolderTimestamps() throws {
+    func testRestorePreservesFolderTimestamps() async throws {
         // Build a folder with timestamps well in the past, the way a real archive carries them.
         let original = AppFolder(name: "Old", appPaths: ["/Applications/Gone.app"])
         let json = try JSONEncoder().encode(original)
@@ -131,7 +132,7 @@ final class BackupRestoreFlowTests: XCTestCase {
         let past = Date(timeIntervalSince1970: 1_600_000_000)
         decoded.modifiedAt = past
 
-        apply(makeArchive(appFolders: [decoded]), validAppPaths: [])
+        await apply(makeArchive(appFolders: [decoded]), validAppPaths: [])
         appModel.reloadAfterRestore()
 
         let restored = try XCTUnwrap(appModel.folders.first, "The folder should be restored")
@@ -152,11 +153,61 @@ final class BackupRestoreFlowTests: XCTestCase {
             "A fresh SettingsAppearance should start at the shared default")
     }
 
-    func testRestoredRefreshIntervalReachesTheLiveSettings() {
-        apply(makeArchive(refreshInterval: 900))
+    func testRestoredRefreshIntervalReachesTheLiveSettings() async {
+        await apply(makeArchive(refreshInterval: 900))
         appModel.reloadAfterRestore()
 
         XCTAssertEqual(appModel.settings.refreshInterval, 900, "A restored refresh interval should reach the live settings")
+    }
+
+    /// Security regression: a crafted/tampered archive setting an unrealistic `refreshInterval`
+    /// (the Settings picker only ever offers 300/900/1800/3600) must not reach the live scan
+    /// scheduler unclamped — an interval like 0.001s reschedules the rescan timer to fire roughly
+    /// 1000×/second, and the staleness guard in `refreshDisplayOrder` (which skips a rescan when
+    /// less than `refreshInterval * 2` has passed) never kicks in at that interval either.
+    func testRestoredRefreshIntervalBelowThePickersRangeIsClamped() async {
+        await apply(makeArchive(refreshInterval: 0.001))
+        appModel.reloadAfterRestore()
+
+        XCTAssertEqual(appModel.settings.refreshInterval, ScanMetrics.refreshIntervalMin,
+            "An unrealistically small restored interval should clamp to the picker's minimum, not reach the scheduler as-is")
+    }
+
+    func testRestoredRefreshIntervalAboveThePickersRangeIsClamped() async {
+        await apply(makeArchive(refreshInterval: 999_999))
+        appModel.reloadAfterRestore()
+
+        XCTAssertEqual(appModel.settings.refreshInterval, ScanMetrics.refreshIntervalMax,
+            "An unrealistically large restored interval should clamp to the picker's maximum")
+    }
+
+    // MARK: - Security: a crafted archive must not smuggle in the filesystem root as a scan directory
+
+    /// A crafted/tampered backup can set `customDirectories` to anything, including `"/"` — which
+    /// exists, is a directory, isn't a symlink, and isn't world-writable, so a plain existence
+    /// check (what `BackupManager.apply` used to run) waves it through. Scanning `/` walks every
+    /// top-level directory on the machine — /System, /Library, /Users — on every refresh timer
+    /// tick and filesystem event.
+    func testRestoredCustomDirectoriesRejectsTheFilesystemRoot() async {
+        await apply(makeArchive(customDirectories: ["/"]))
+        appModel.reloadAfterRestore()
+
+        XCTAssertFalse(appModel.customDirectories.contains("/"),
+            "The filesystem root must never survive a restore into customDirectories")
+        XCTAssertFalse(appModel.allScanDirectories.contains("/"),
+            "The filesystem root must never reach the actual set of directories a scan walks")
+    }
+
+    func testRestoredCustomDirectoriesKeepsValidEntriesAlongsideARejectedRoot() async {
+        // /Applications always exists on macOS and is one of the default scan directories anyway,
+        // but the point here is that one bad entry ("/") must not take a legitimate one down with
+        // it — each path is validated independently.
+        await apply(makeArchive(customDirectories: ["/", "/Applications"]))
+        appModel.reloadAfterRestore()
+
+        XCTAssertFalse(appModel.customDirectories.contains("/"))
+        XCTAssertTrue(appModel.customDirectories.contains("/Applications"),
+            "A rejected entry should not cause an otherwise-valid one to be dropped too")
     }
 
     // MARK: - UX-3: the title-bar close button must not hang the restore flow
@@ -196,7 +247,7 @@ final class BackupRestoreFlowTests: XCTestCase {
 
     // MARK: - BUG-9: the icon pack must be usable after restore
 
-    func testIconPackCarriesMetaSidecarsSoRestoredIconsAreUsable() throws {
+    func testIconPackCarriesMetaSidecarsSoRestoredIconsAreUsable() async throws {
         // cachedIcon requires both the bitmap and its .meta sidecar. The pack used to skip the
         // sidecars, so every restored icon was ignored and re-decoded — the biggest part of a
         // backup, carried for nothing.
@@ -215,13 +266,13 @@ final class BackupRestoreFlowTests: XCTestCase {
         let key = IconCacheManager.shared.cacheKey(for: bundlePath, appearance: .light)
 
         // Export, then wipe the on-disk cache and restore from the archive.
-        let exported = BackupManager.shared.readIconPack()
+        let exported = BackupManager.readIconPack()
         XCTAssertNotNil(exported[key], "The pack should carry the icon bitmap")
         XCTAssertNotNil(exported[key + BackupManager.iconMetaSuffix],
             "The pack should carry the .meta sidecar — without it the restored bitmap can never be read back")
 
         try FileManager.default.removeItem(at: cacheDir)
-        apply(makeArchive(icons: BackupManager.IconPack(entries: exported)))
+        await apply(makeArchive(icons: BackupManager.IconPack(entries: exported)))
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: cacheDir.appendingPathComponent(key).path),
             "The bitmap should be restored")

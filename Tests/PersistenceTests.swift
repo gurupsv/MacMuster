@@ -40,6 +40,7 @@ final class PersistenceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "recentAppsEnabled")
         UserDefaults.standard.removeObject(forKey: "pressFeedbackEnabled")
         UserDefaults.standard.removeObject(forKey: "showHiddenApps")
+        UserDefaults.standard.removeObject(forKey: "showInDock")
         // Schema v2 keys — clear so the recently-updated badge state doesn't leak between tests.
         UserDefaults.standard.removeObject(forKey: "knownBundleMtimes")
         UserDefaults.standard.removeObject(forKey: "recentlyUpdatedPaths")
@@ -758,5 +759,26 @@ final class PersistenceTests: XCTestCase {
         UserDefaults.standard.set("not-json", forKey: "recentlyUpdatedPaths")
         XCTAssertNil(PreferencesStore.shared.loadRecentlyUpdatedPaths(),
             "Corrupt data should decode to nil, not crash")
+    }
+
+    // MARK: - Show in Dock Persistence Tests
+
+    func testLoadShowInDockWithNoDataDefaultsToTrue() {
+        // Matches the app's pre-existing behavior (NSApp.setActivationPolicy(.regular) at
+        // launch): a user who has never touched the toggle should see the Dock icon.
+        XCTAssertTrue(PreferencesStore.shared.loadShowInDock(),
+            "An unset preference should default to showing the Dock icon")
+    }
+
+    func testSaveAndLoadShowInDockRoundTripsFalse() {
+        PreferencesStore.shared.saveShowInDock(false)
+        XCTAssertFalse(PreferencesStore.shared.loadShowInDock(),
+            "A saved 'false' should be read back as false, not fall through to the true default")
+    }
+
+    func testSaveAndLoadShowInDockRoundTripsTrue() {
+        PreferencesStore.shared.saveShowInDock(false)
+        PreferencesStore.shared.saveShowInDock(true)
+        XCTAssertTrue(PreferencesStore.shared.loadShowInDock())
     }
 }

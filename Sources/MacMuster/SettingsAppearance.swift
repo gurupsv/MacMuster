@@ -172,7 +172,9 @@ class SettingsAppearance {
         }
         if let weight = PreferencesStore.shared.loadFontWeight() { fontWeight = weight }
         if let iconRaw = PreferencesStore.shared.loadIconSize() { iconSize = IconSize(rawValue: iconRaw) ?? .medium }
-        if let interval = PreferencesStore.shared.loadRefreshInterval() { refreshInterval = interval }
+        if let interval = PreferencesStore.shared.loadRefreshInterval() {
+            refreshInterval = max(ScanMetrics.refreshIntervalMin, min(ScanMetrics.refreshIntervalMax, interval))
+        }
         showFoldersFirst = PreferencesStore.shared.loadShowFoldersFirst()
         showHiddenApps = PreferencesStore.shared.loadShowHiddenApps()
         hasShownLauncher = PreferencesStore.shared.loadHasShownLauncher()
@@ -214,7 +216,9 @@ class SettingsAppearance {
     func setFontWeight(_ weight: String) { fontWeight = weight }
     func setColumnCount(_ count: Int) { columnCount = count }
     func setIconSize(_ size: IconSize) { iconSize = size }
-    func setRefreshInterval(_ interval: TimeInterval) { refreshInterval = interval }
+    func setRefreshInterval(_ interval: TimeInterval) {
+        refreshInterval = max(ScanMetrics.refreshIntervalMin, min(ScanMetrics.refreshIntervalMax, interval))
+    }
 
     func tintedBackgroundColor() -> NSColor {
         guard tintStrength > 0 else { return NSColor.black.withAlphaComponent(overlayOpacity) }

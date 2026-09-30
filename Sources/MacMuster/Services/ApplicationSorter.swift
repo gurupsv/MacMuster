@@ -6,6 +6,62 @@ class ApplicationSorter {
         case installationDate = "Installation Date"
     }
 
+    // MARK: - Drag-to-Reorder
+
+    /// Where a dragged app lands relative to the icon it was dropped on.
+    enum ReorderSide {
+        case before
+        case after
+    }
+
+    /// Which of the three horizontal thirds of a grid cell a drop landed in, given the drop's
+    /// x-position as a fraction of the cell's width (0 = leading edge, 1 = trailing edge).
+    ///
+    /// The outer quarters mean "reorder next to this icon"; the center half keeps the existing
+    /// "merge into a folder" gesture unchanged — the same edge-vs-center split Launchpad and
+    /// Finder's icon view use, so dragging doesn't need a new mode or a modifier key to be
+    /// discoverable.
+    enum DropZone {
+        case leadingEdge
+        case center
+        case trailingEdge
+    }
+
+    static func dropZone(forXFraction fraction: CGFloat) -> DropZone {
+        if fraction < 0.25 { return .leadingEdge }
+        if fraction > 0.75 { return .trailingEdge }
+        return .center
+    }
+
+    /// Moves `movedPath` to sit immediately before or after `targetPath` within `apps`, preserving
+    /// everyone else's relative order. Returns `apps` unchanged if either path isn't present, or if
+    /// they're the same path (dropping an icon on itself).
+    ///
+    /// This only reorders the array handed to it — callers decide *which* array that is (the root
+    /// grid's loose apps + folder icons, or one folder's contents), and persisting the result is a
+    /// separate step (`LibraryScanState.updateCustomOrder`). Kept free of `Application`'s other
+    /// fields and of any app/AppKit dependency so the reorder math is directly unit-testable.
+    static func reordered(
+        _ apps: [Application],
+        moving movedPath: String,
+        toSideOf targetPath: String,
+        side: ReorderSide
+    ) -> [Application] {
+        guard movedPath != targetPath else { return apps }
+        var result = apps
+        guard let fromIndex = result.firstIndex(where: { $0.path == movedPath }) else { return apps }
+        let moved = result.remove(at: fromIndex)
+        guard let targetIndex = result.firstIndex(where: { $0.path == targetPath }) else {
+            // Target vanished from `apps` (shouldn't happen outside a stale drag payload) — put
+            // the moved app back where it came from rather than silently dropping it.
+            result.insert(moved, at: min(fromIndex, result.count))
+            return result
+        }
+        let insertIndex = side == .before ? targetIndex : targetIndex + 1
+        result.insert(moved, at: insertIndex)
+        return result
+    }
+
     static func sort(_ applications: [Application], by option: SortOption) -> [Application] {
         applications.sorted { isOrderedBefore($0, $1, by: option) }
     }

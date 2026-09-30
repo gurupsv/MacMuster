@@ -203,6 +203,52 @@ final class LibraryScanStateEdgeCaseTests: XCTestCase {
             "updateCustomOrder should bump dataVersion")
     }
 
+    /// Regression test for a per-drop main-thread stall: writing `customOrder[path]` per app
+    /// fired the property's observer — a `dataVersion` bump plus a full encode-and-persist —
+    /// once per app on screen. One drop must run that observer exactly once.
+    func testUpdateCustomOrderRunsTheObserverOnceRegardlessOfAppCount() {
+        let apps = (0..<50).map { makeApp("App\($0)", path: "/Applications/App\($0).app") }
+        library.setApplications(apps)
+
+        let versionBefore = library.dataVersion
+        library.updateCustomOrder(from: apps.reversed())
+
+        XCTAssertEqual(library.dataVersion, versionBefore + 1,
+            "A drop must bump dataVersion (and persist) once, not once per app")
+        XCTAssertEqual(PreferencesStore.shared.loadCustomOrder(), library.customOrder,
+            "The single write must still persist the full new order")
+    }
+
+    /// Regression test for the bug where reordering apps made the whole grid "go out of order"
+    /// until MacMuster restarted.
+    ///
+    /// Every real caller (drag-to-reorder in `ContentView`) hands `updateCustomOrder` the apps
+    /// that were on screen at drop time — the root grid's loose apps + folder icons, or one open
+    /// folder's contents — never the full catalog. `updateCustomOrder` used to write that partial
+    /// list straight into `displayOrder`, which `visibleApplications`, `appPathIndex`, and
+    /// everything else treat as the complete set of installed apps. Reordering a folder with 5
+    /// apps in a 60-app library silently shrank the whole library to those 5 until the next
+    /// rescan (e.g. on relaunch) rebuilt `displayOrder` from disk — which is exactly why a
+    /// restart "fixed" it and why the drag order itself was never actually lost.
+    func testUpdateCustomOrderWithPartialSubsetDoesNotShrinkTheFullCatalog() {
+        let app1 = makeApp("App1", path: "/Applications/App1.app")
+        let app2 = makeApp("App2", path: "/Applications/App2.app")
+        let app3 = makeApp("App3", path: "/Applications/App3.app")
+        library.setApplications([app1, app2, app3])
+
+        // Reorder only two of the three apps — the shape of a folder-scoped or root-scoped
+        // reorder, where `getDisplayedApps()` (what a real drop reorders) never equals the full
+        // catalog once folders exist.
+        library.updateCustomOrder(from: [app2, app1])
+
+        XCTAssertEqual(library.displayOrder.count, 3,
+            "The full catalog must survive a reorder confined to a subset of it")
+        XCTAssertEqual(Set(library.displayOrder.map(\.path)), Set([app1.path, app2.path, app3.path]),
+            "No app should disappear from the catalog just because it wasn't part of the reorder")
+        XCTAssertEqual(library.visibleApplications.count, 3,
+            "visibleApplications derives from displayOrder, so it must not shrink either")
+    }
+
     // MARK: - recordAppLaunch
 
     func testRecordAppLaunchUpdatesRecentAppsTracker() {
@@ -346,7 +392,7 @@ final class LibraryScanStateEdgeCaseTests: XCTestCase {
             "Hidden app should not be in visible list")
     }
 
-    func testVisibleApplicationsCacheByDataVersion() {
+    func testVisibleApplicationsReturnsConsistentResults() {
         let app = makeApp("Test")
         library.setApplications([app])
 
