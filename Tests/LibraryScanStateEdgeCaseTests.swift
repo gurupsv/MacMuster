@@ -203,6 +203,22 @@ final class LibraryScanStateEdgeCaseTests: XCTestCase {
             "updateCustomOrder should bump dataVersion")
     }
 
+    /// Regression test for a per-drop main-thread stall: writing `customOrder[path]` per app
+    /// fired the property's observer — a `dataVersion` bump plus a full encode-and-persist —
+    /// once per app on screen. One drop must run that observer exactly once.
+    func testUpdateCustomOrderRunsTheObserverOnceRegardlessOfAppCount() {
+        let apps = (0..<50).map { makeApp("App\($0)", path: "/Applications/App\($0).app") }
+        library.setApplications(apps)
+
+        let versionBefore = library.dataVersion
+        library.updateCustomOrder(from: apps.reversed())
+
+        XCTAssertEqual(library.dataVersion, versionBefore + 1,
+            "A drop must bump dataVersion (and persist) once, not once per app")
+        XCTAssertEqual(PreferencesStore.shared.loadCustomOrder(), library.customOrder,
+            "The single write must still persist the full new order")
+    }
+
     /// Regression test for the bug where reordering apps made the whole grid "go out of order"
     /// until MacMuster restarted.
     ///

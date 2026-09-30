@@ -887,23 +887,21 @@ struct AppIconView: View {
     // materialized a row for a given identity — a value change elsewhere in the array (an icon
     // finishing its async decode) does not by itself cause an already-on-screen cell to redraw;
     // only a fresh scroll-in or a wholesale identity-set change (e.g. opening/closing a folder,
-    // which swaps the whole displayed set) does. `app.icon` alone therefore is not enough despite
-    // `applyLoadedIcons`/`refreshDisplayOrder` writing it into `displayOrder` and bumping
-    // `dataVersion` in the same step — that invalidates `getDisplayedApps()`'s cache, but this
-    // specific cell may never re-run its own body to pick up the new value.
+    // which swaps the whole displayed set) does. `app.icon` alone therefore is not enough.
     //
-    // Reading `appModel.library.appPathIndex` here (an `@Observable`-tracked property, rebuilt on
-    // every icon-load pass) instead of trusting the `app` value snapshot handed down through the
-    // grid establishes a direct Observation dependency: when the index changes, this cell is
-    // invalidated and re-rendered on its own, independent of whatever the lazy grid's diffing
-    // decided. Falls back to `app.icon` for folder tiles, which are synthesized on the fly and
-    // never appear in `appPathIndex` (that only holds real, scanned apps).
+    // Reading the icon from `appModel.library.iconSlot(for:)` instead of trusting the `app`
+    // value snapshot handed down through the grid establishes a direct Observation dependency on
+    // *this path's* icon: when it changes, this cell alone is invalidated and re-rendered,
+    // independent of whatever the lazy grid's diffing decided. (It used to read `appPathIndex`,
+    // which fixed the staleness but made every cell depend on the whole index, so each icon
+    // batch re-rendered the entire grid.) Falls back to `app.icon` while the slot is empty —
+    // e.g. a folder tile before its composite is first regenerated.
     //
     // Internal rather than `private` so `AppIconViewTests` can call it directly — this property
     // *is* the fix, and unlike the SwiftUI redraw it corrects for, its output is plain,
     // synchronously testable data.
     var currentIcon: NSImage? {
-        appModel.library.appPathIndex[app.path]?.icon ?? app.icon
+        appModel.library.iconSlot(for: app.path).icon ?? app.icon
     }
 
     private var iconView: some View {

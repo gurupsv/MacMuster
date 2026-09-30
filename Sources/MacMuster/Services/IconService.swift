@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// Handles icon loading, folder icon composition, and caching.
 @MainActor
@@ -14,6 +15,16 @@ final class IconService {
         return cache
     }()
     private init() {}
+
+    /// Drawn in a folder composite for a member whose icon has not been decoded yet.
+    ///
+    /// The composite used to fall back to `NSWorkspace.icon(forFile:)` per unloaded member, and
+    /// the drawing handler runs lazily on the main thread at paint time — about 13 ms per folder,
+    /// so a screen of folders right after a theme toggle or cache reset hitched for well over
+    /// 100 ms. The generic icon is resolved once and shared. The placeholder never sticks: every
+    /// member's icon is loaded with the rest of the library, and `refreshFolderIcons` redraws
+    /// the folder as those icons land.
+    private lazy var pendingMemberIcon: NSImage = NSWorkspace.shared.icon(for: .applicationBundle)
     
     /// Rasterizes an app icon to a fixed-size bitmap on a background thread.
     /// Forces decode + downscale once, so SwiftUI just blits a small bitmap on the main thread.
@@ -99,19 +110,19 @@ final class IconService {
         let rowCount = Int(ceil(Double(drawnCount) / Double(effectiveGrid)))
         let rowBlockOffsetY = (iconSize - CGFloat(rowCount) * cellSize) / 2
 
+        let placeholder = pendingMemberIcon
         // Use NSImage(size:flipped:drawingHandler:) instead of lockFocus/unlockFocus — safer and more modern.
         let image = NSImage(size: size, flipped: false) { rect -> Bool in
             let clipPath = NSBezierPath(roundedRect: rect, xRadius: 20, yRadius: 20)
             clipPath.addClip()
 
-            let workspace = NSWorkspace.shared
             for index in 0..<drawnCount {
                 let row = index / effectiveGrid
                 let col = index % effectiveGrid
                 // Center a trailing partial row horizontally; full rows span the width.
                 let itemsInRow = row == rowCount - 1 ? drawnCount - row * effectiveGrid : effectiveGrid
                 let rowOffsetX = (iconSize - CGFloat(itemsInRow) * cellSize) / 2
-                let icon = apps[index].icon ?? workspace.icon(forFile: apps[index].path)
+                let icon = apps[index].icon ?? placeholder
                 let cellRect = NSRect(x: rowOffsetX + CGFloat(col) * cellSize,
                                       y: rowBlockOffsetY + CGFloat(rowCount - 1 - row) * cellSize,
                                       width: cellSize, height: cellSize)
@@ -207,7 +218,11 @@ final class IconService {
     /// regenerated — the previous behavior evicted and regenerated *every* folder on every icon
     /// batch, which was O(folders × icon-load-passes) even when none of a folder's members changed.
     /// Pass an empty set to regenerate all folders (e.g. on a full reload where icons were reset).
-    func refreshFolderIcons(folders: [AppFolder], appPathIndex: [String: Application], changedAppPaths: Set<String>) {
+    /// Returns the regenerated composites keyed by folder id, so callers can push them to the
+    /// folder tiles on screen.
+    @discardableResult
+    func refreshFolderIcons(folders: [AppFolder], appPathIndex: [String: Application], changedAppPaths: Set<String>) -> [String: NSImage] {
+        var regenerated: [String: NSImage] = [:]
         for folder in folders {
             // Skip folders whose member app icons weren't touched in this batch.
             if !changedAppPaths.isEmpty {
@@ -217,7 +232,8 @@ final class IconService {
 
             folderIconCache.removeObject(forKey: folder.id as NSString)
             let apps = folder.appPaths.compactMap { appPathIndex[$0] }
-            _ = generateFolderIcon(apps, for: folder.id)
+            regenerated[folder.id] = generateFolderIcon(apps, for: folder.id)
         }
+        return regenerated
     }
 }

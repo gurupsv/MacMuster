@@ -2,6 +2,19 @@ import Foundation
 import AppKit
 import Observation
 
+/// The icon one grid cell draws, observable on its own.
+///
+/// `@Observable` tracks whole properties, so a cell that reads its icon out of `appPathIndex`
+/// depends on the *entire* index: every icon batch that lands — about seven on a cold launch of
+/// a 400-app library — invalidated and re-rendered every visible cell, not just the ones whose
+/// icons arrived. One slot per path narrows that dependency to the cell's own icon.
+@MainActor
+@Observable
+final class IconSlot {
+    var icon: NSImage?
+    init(icon: NSImage?) { self.icon = icon }
+}
+
 /// Manages the application library: scanning, folders, icon caching, smart categories, and display ordering.
 @MainActor
 @Observable
@@ -100,6 +113,11 @@ class LibraryScanState {
         let selectedCategory: AppCategory
     }
     var cachedDisplayedApps: (query: DisplayQuery, apps: [Application])?
+    /// Per-path icon holders read by `AppIconView`; see `IconSlot`. One per indexed app, kept in
+    /// step by `rebuildAppPathIndex`; folder tiles get theirs on first request. Ignored by
+    /// Observation itself — the slots are the observable part, and handing one out must not
+    /// count as a mutation.
+    @ObservationIgnored private var iconSlots: [String: IconSlot] = [:]
     var isScanning = false
     private var refreshTimer: Timer?
     private var cacheRefreshTimer: Timer?
@@ -150,7 +168,7 @@ class LibraryScanState {
         updateRecentApps()
         updateFilteredApps()
         // Folder icons are composited from member icons, and membership just changed wholesale.
-        IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex, changedAppPaths: [])
+        regenerateFolderIcons(changedAppPaths: [])
     }
 
     private func loadCustomOrder() {
@@ -339,7 +357,7 @@ class LibraryScanState {
         dataVersion += 1
 
         // Evict folder icons so they regenerate with the new app icons.
-        IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex, changedAppPaths: [])
+        regenerateFolderIcons(changedAppPaths: [])
 
         cachedDisplayedApps = nil
 
@@ -390,13 +408,70 @@ class LibraryScanState {
         }
     }
 
+    /// Lands a batch of decoded icons without disturbing anything else.
+    ///
+    /// Only icons changed, so only icons are touched: the index entries for the batch are patched
+    /// rather than the index rebuilt, each affected cell is signalled through its own `IconSlot`,
+    /// and a warm `getDisplayedApps` result is patched in place instead of being thrown away.
+    /// `dataVersion` deliberately does not move — which apps are shown, and in what order, is
+    /// independent of their icons, and bumping it recomputed the whole display (filter, folder
+    /// composites, sort) once per batch.
     private func applyLoadedIcons(_ loadedIcons: [(String, NSImage)]) {
         displayOrder = IconService.shared.updateIconsInPlace(for: displayOrder, with: loadedIcons)
-        rebuildAppPathIndex()
-        dataVersion += 1
-        cachedDisplayedApps = nil
-        let changedPaths = Set(loadedIcons.map(\.0))
-        IconService.shared.refreshFolderIcons(folders: folders, appPathIndex: appPathIndex, changedAppPaths: changedPaths)
+        // Duplicate paths carry the same decoded icon, so either wins.
+        let iconsByPath = Dictionary(loadedIcons, uniquingKeysWith: { first, _ in first })
+        var index = appPathIndex
+        for (path, icon) in iconsByPath where index[path] != nil {
+            index[path]?.icon = icon
+            publishIcon(icon, for: path)
+        }
+        appPathIndex = index
+        let folderIcons = regenerateFolderIcons(changedAppPaths: Set(iconsByPath.keys))
+        patchCachedDisplayedIcons(appIcons: iconsByPath, folderIcons: folderIcons)
+    }
+
+    /// Regenerates folder composites and pushes each to its tile's `IconSlot`. Every composite
+    /// regeneration goes through here, so a folder tile's slot never lags the composite cache.
+    @discardableResult
+    private func regenerateFolderIcons(changedAppPaths: Set<String>) -> [String: NSImage] {
+        let folderIcons = IconService.shared.refreshFolderIcons(
+            folders: folders, appPathIndex: appPathIndex, changedAppPaths: changedAppPaths)
+        for (folderId, icon) in folderIcons { publishIcon(icon, for: folderId) }
+        return folderIcons
+    }
+
+    /// Carries freshly-loaded icons into a warm `getDisplayedApps` result, so a batch of icons
+    /// does not cost a full display recompute. Folder tiles are matched by folder id, real apps
+    /// by path.
+    private func patchCachedDisplayedIcons(appIcons: [String: NSImage], folderIcons: [String: NSImage]) {
+        guard var cached = cachedDisplayedApps else { return }
+        var patched = false
+        for i in cached.apps.indices {
+            let app = cached.apps[i]
+            let icon = app.isFolder ? app.folderId.flatMap { folderIcons[$0] } : appIcons[app.path]
+            guard let icon else { continue }
+            cached.apps[i].icon = icon
+            patched = true
+        }
+        if patched { cachedDisplayedApps = cached }
+    }
+
+    /// The observable icon holder for `path`. A path absent from `appPathIndex` (a folder tile,
+    /// or an app not scanned yet) gets an empty one, and `AppIconView` falls back to its own
+    /// `app.icon`. Never reads an observed property, so calling this from a view body adds no
+    /// dependency beyond the slot itself.
+    func iconSlot(for path: String) -> IconSlot {
+        if let slot = iconSlots[path] { return slot }
+        let slot = IconSlot(icon: nil)
+        iconSlots[path] = slot
+        return slot
+    }
+
+    /// Pushes `icon` to the cell showing `path`, if any cell has asked for it. Writes only on an
+    /// actual change so an unchanged icon never invalidates its cell.
+    private func publishIcon(_ icon: NSImage?, for path: String) {
+        guard let slot = iconSlots[path], slot.icon !== icon else { return }
+        slot.icon = icon
     }
 
     func refreshCachedIcons() async {
@@ -442,8 +517,20 @@ class LibraryScanState {
     }
 
     private func rebuildAppPathIndex() {
-        appPathIndex.removeAll(keepingCapacity: true)
-        for app in displayOrder { appPathIndex[app.path] = app }
+        var index: [String: Application] = [:]
+        index.reserveCapacity(displayOrder.count)
+        for app in displayOrder { index[app.path] = app }
+        appPathIndex = index
+        // Keep every indexed path's slot in step with the rebuilt index. Paths no longer indexed
+        // are left alone: folder tiles' slots are fed by `publishIcon` from the folder
+        // composites, not from here.
+        for (path, app) in index {
+            if let slot = iconSlots[path] {
+                if slot.icon !== app.icon { slot.icon = app.icon }
+            } else {
+                iconSlots[path] = IconSlot(icon: app.icon)
+            }
+        }
     }
 
     /// Runs recently-updated detection against the current `displayOrder` and pushes the
@@ -601,11 +688,17 @@ class LibraryScanState {
     /// screen at drop time, until the next rescan rebuilt it. The fix is simply not touching
     /// `displayOrder` here: `getDisplayedApps` already recomputes from `customOrder` against the
     /// untouched full catalog, which is all a reorder needs.
+    ///
+    /// Builds the new order in a local copy and assigns it once. Writing `customOrder[path]`
+    /// per app fired the property's observer — a `dataVersion` bump plus a full-dictionary encode
+    /// and `UserDefaults` write — once per app on screen, stalling each drop for tens to hundreds
+    /// of milliseconds on a large grid. The single assignment runs the observer exactly once,
+    /// which covers both the `dataVersion` bump and the persist.
     func updateCustomOrder(from apps: [Application]) {
-        for (index, app) in apps.enumerated() { customOrder[app.path] = index }
-        dataVersion += 1
+        var updated = customOrder
+        for (index, app) in apps.enumerated() { updated[app.path] = index }
+        customOrder = updated
         updateFilteredApps()
-        PreferencesStore.shared.saveCustomOrder(customOrder)
     }
 
     func removeCustomDirectory(_ path: String) {

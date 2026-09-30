@@ -156,9 +156,11 @@ final class RefreshCachedIconsTests: XCTestCase {
     /// for the whole session, immune to the `IconCacheManager` NSCache's own eviction, and never
     /// actually read for anything `displayOrder` didn't already provide. This confirms its removal
     /// didn't also remove icon propagation: `loadMissingIcons` must still land the decoded icon in
-    /// `displayOrder` (what `getDisplayedApps()` — and so the grid — renders from) and bump
-    /// `dataVersion` so a cached `getDisplayedApps()` result is invalidated.
-    func testLoadMissingIconsUpdatesDisplayOrderAndBumpsDataVersion() async throws {
+    /// `displayOrder`, in the cell's `IconSlot`, and in a warm `getDisplayedApps()` result.
+    ///
+    /// It must do that *without* bumping `dataVersion`: an icon batch changes no display
+    /// decision, and the bump used to throw away and recompute the whole display once per batch.
+    func testLoadMissingIconsReachesTheGridWithoutInvalidatingTheDisplay() async throws {
         guard FileManager.default.fileExists(atPath: "/System/Applications/Calculator.app") else {
             throw XCTSkip("Calculator.app not found on this machine")
         }
@@ -169,20 +171,27 @@ final class RefreshCachedIconsTests: XCTestCase {
         )
         library.setApplications([app])
         XCTAssertNil(library.displayOrder[0].icon, "Precondition: no icon loaded yet")
+        let slot = library.iconSlot(for: path)
+        XCTAssertNil(slot.icon, "Precondition: the cell's slot is empty")
+        // Warm the display cache, as the grid would have before icons arrive.
+        _ = library.getDisplayedApps(
+            searchTerm: "", showFoldersFirst: false, customOrder: [:],
+            sortOption: .name, selectedCategory: .all, columnCount: 4)
 
         let versionBefore = library.dataVersion
         await library.loadMissingIcons()
 
         XCTAssertNotNil(library.displayOrder[0].icon,
             "The loaded icon should land directly in displayOrder")
-        XCTAssertGreaterThan(library.dataVersion, versionBefore,
-            "dataVersion must bump so a cached getDisplayedApps() result is invalidated")
+        XCTAssertNotNil(slot.icon, "The loaded icon should reach the cell's own IconSlot")
+        XCTAssertEqual(library.dataVersion, versionBefore,
+            "An icon batch must not bump dataVersion — no display decision depends on icons")
 
         let displayed = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: [:],
             sortOption: .name, selectedCategory: .all, columnCount: 4)
         XCTAssertNotNil(displayed.first(where: { $0.path == path })?.icon,
-            "The icon reaches whatever getDisplayedApps() returns, which is what the grid renders")
+            "The warm display result is patched with the icon rather than served stale")
     }
 
     /// Regression test for blank icons on the first page after a cold launch.

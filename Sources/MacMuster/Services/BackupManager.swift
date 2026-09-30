@@ -163,7 +163,12 @@ final class BackupManager {
 
     // MARK: - Export
 
-    func export() -> URL? {
+    /// Prompts for a destination and writes a backup there.
+    ///
+    /// Only the save panel and the preference reads run on the main actor. Reading the icon
+    /// pack (every cached bitmap and sidecar), encoding it (~25 MB of base64 JSON), hashing and
+    /// writing all run off it — together they froze the UI for about half a second.
+    func export() async -> URL? {
         let jsonType = UniformTypeIdentifiers.UTType.json
 
         let panel = NSSavePanel()
@@ -217,7 +222,7 @@ final class BackupManager {
         let recentlyUpdatedPaths = PreferencesStore.shared.loadRecentlyUpdatedPaths() ?? [:]
 
         // Icon pack — read PNGs from disk cache and encode as base64 Data
-        let iconEntries = readIconPack()
+        let iconEntries = await Task.detached(priority: .userInitiated) { Self.readIconPack() }.value
 
         let archive = BackupArchive(
             schemaVersion: 2,
@@ -254,12 +259,15 @@ final class BackupManager {
             icons: IconPack(entries: iconEntries)
         )
 
-        do {
-            try Self.encodeArchive(archive).write(to: url)
-            return url
-        } catch {
-            return nil
-        }
+        let written = await Task.detached(priority: .userInitiated) { () -> Bool in
+            do {
+                try Self.encodeArchive(archive).write(to: url)
+                return true
+            } catch {
+                return false
+            }
+        }.value
+        return written ? url : nil
     }
 
     // MARK: - Encoding / Decoding
@@ -295,9 +303,16 @@ final class BackupManager {
 
     // MARK: - Restore
 
-    func restore(from url: URL) -> BackupPreview? {
+    /// Reads, verifies and decodes the backup at `url`, and checks its app paths against disk.
+    /// All of it runs off the main actor: the read, checksum and decode of a full backup cost
+    /// close to 100 ms.
+    func restore(from url: URL) async -> BackupPreview? {
+        await Task.detached(priority: .userInitiated) { Self.makePreview(from: url) }.value
+    }
+
+    nonisolated private static func makePreview(from url: URL) -> BackupPreview? {
         guard let data = try? Data(contentsOf: url),
-              let archive = Self.decodeArchive(from: data) else {
+              let archive = decodeArchive(from: data) else {
             return nil // Not a backup, or failed integrity verification.
         }
 
@@ -325,7 +340,10 @@ final class BackupManager {
 
     // MARK: - Apply Restore
 
-    func apply(preview: BackupPreview) {
+    /// Writes the restored state. Preferences and folders are written on the main actor (they are
+    /// cheap, and `FolderStore` lives there); the icon pack — around 900 files — is written off
+    /// it. Returns once everything, icons included, is on disk.
+    func apply(preview: BackupPreview) async {
         let archive = preview.archive
 
         // Sanitize custom directories through the same validator the folder picker and every
@@ -395,7 +413,8 @@ final class BackupManager {
         PreferencesStore.shared.saveRecentlyUpdatedPaths(archive.recentlyUpdatedPaths)
 
         // Restore icon cache — write PNGs from archive to disk cache
-        restoreIconPack(from: archive.icons)
+        let icons = archive.icons
+        await Task.detached(priority: .userInitiated) { Self.restoreIconPack(from: icons) }.value
     }
 
     // MARK: - Private
@@ -431,7 +450,7 @@ final class BackupManager {
     /// Reads the on-disk icon cache into pack entries. Internal rather than private so a test can
     /// assert what an export actually carries — the bug this guards against (a pack missing its
     /// `.meta` sidecars) is invisible from the outside until a restore silently does nothing.
-    func readIconPack() -> [String: Data] {
+    nonisolated static func readIconPack() -> [String: Data] {
         let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("MacMuster/icons-v4", isDirectory: true)
 
@@ -451,7 +470,7 @@ final class BackupManager {
             // nothing. Take both halves, accepting only names the cache itself could have
             // written so the archive can never carry a key `restoreIconPack` would refuse.
             let name = fileURL.lastPathComponent
-            guard Self.isValidIconPackKey(name) else { continue }
+            guard isValidIconPackKey(name) else { continue }
 
             do {
                 entries[name] = try Data(contentsOf: fileURL)
@@ -463,13 +482,13 @@ final class BackupManager {
         // A bitmap without its sidecar can never be read back, and a sidecar without its bitmap
         // is dead weight. Ship only complete pairs rather than bytes that cannot be used.
         return entries.filter { key, _ in
-            key.hasSuffix(Self.iconMetaSuffix)
-                ? entries[String(key.dropLast(Self.iconMetaSuffix.count))] != nil
-                : entries[key + Self.iconMetaSuffix] != nil
+            key.hasSuffix(iconMetaSuffix)
+                ? entries[String(key.dropLast(iconMetaSuffix.count))] != nil
+                : entries[key + iconMetaSuffix] != nil
         }
     }
 
-    private func restoreIconPack(from iconPack: IconPack) {
+    nonisolated private static func restoreIconPack(from iconPack: IconPack) {
         let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("MacMuster/icons-v4", isDirectory: true)
 
@@ -481,7 +500,7 @@ final class BackupManager {
 
         for (key, imageData) in iconPack.entries {
             // The key comes from an untrusted file and is about to become a write path.
-            guard Self.isValidIconPackKey(key) else { continue }
+            guard isValidIconPackKey(key) else { continue }
 
             let iconURL = cacheDir.appendingPathComponent(key, isDirectory: false)
 

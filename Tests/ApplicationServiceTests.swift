@@ -19,6 +19,15 @@ final class ApplicationServiceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "appLaunchCounts")
     }
 
+    /// Polls instead of sleeping a fixed interval: `openApplication` completion latency varies
+    /// widely on loaded CI runners (0.77 s observed vs. a 100 ms fixed wait).
+    private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
     func testServiceIsSingleton() {
         let service1 = ApplicationService.shared
         let service2 = ApplicationService.shared
@@ -42,7 +51,7 @@ final class ApplicationServiceTests: XCTestCase {
         }
 
         // Wait for completion handler
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await waitUntil { completed }
         // Without appModel, recording should not happen
         XCTAssertFalse(appModel.isRecentApp(app.path))
         XCTAssertTrue(completed)
@@ -64,7 +73,7 @@ final class ApplicationServiceTests: XCTestCase {
         }
 
         // Wait for completion handler
-        try await Task.sleep(nanoseconds: 200_000_000)
+        try await waitUntil { completedSuccessfully }
         // Finder should launch successfully and be recorded
         XCTAssertTrue(completedSuccessfully)
         XCTAssertTrue(appModel.isRecentApp(app.path))
@@ -102,7 +111,7 @@ final class ApplicationServiceTests: XCTestCase {
         }
 
         // Wait for completion handler
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await waitUntil { nonExistentCompleted }
         XCTAssertTrue(nonExistentCompleted)
         XCTAssertFalse(nonExistentSuccess)
     }
@@ -120,7 +129,7 @@ final class ApplicationServiceTests: XCTestCase {
         }
 
         // Wait for completion handler
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await waitUntil { completedSuccessfully }
         // No recording without appModel, even for Finder
         XCTAssertTrue(completedSuccessfully)
         XCTAssertFalse(appModel.isRecentApp(app.path))
@@ -140,7 +149,7 @@ final class ApplicationServiceTests: XCTestCase {
         }
 
         // Wait for completion handler
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await waitUntil { finderCompleted }
         XCTAssertTrue(finderCompleted)
         XCTAssertTrue(finderSuccess)
     }
@@ -157,7 +166,7 @@ final class ApplicationServiceTests: XCTestCase {
             finderSuccess = success
         }
 
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await waitUntil { finderSuccess }
         XCTAssertTrue(finderSuccess)
     }
 

@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(swift build)",
+      "Bash(swift build *)",
+      "Bash(swift test)",
+      "Bash(swift test *)",
+      "Bash(./create_app_bundle.sh)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(git add *)",
+      "Bash(codesign *)",
+      "Bash(rm -rf *)"
+    ],
+    "deny": [
+      "Bash(git push *)",
+      "Bash(git tag *)",
+      "Bash(./build_production.sh*)",
+      "Bash(xcrun notarytool *)",
+      "Bash(xcrun stapler *)",
+      "Bash(gh release *)",
+      "Bash(swift test --parallel*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(**/*.p12)",
+      "Read(**/*.key)"
+    ]
+  }
+}

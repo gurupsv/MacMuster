@@ -112,6 +112,20 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         for name in Self.supersededCacheDirNames {
             try? FileManager.default.removeItem(at: parent.appendingPathComponent(name, isDirectory: true))
         }
+        removeDiscardedCaches()
+    }
+
+    /// Name prefix for a cache directory `clearAll` has moved aside for background deletion.
+    private var discardedCacheDirPrefix: String { cacheDir.lastPathComponent + "-discarded-" }
+
+    /// Deletes directories `clearAll` moved aside — including any a quit interrupted mid-delete.
+    private func removeDiscardedCaches() {
+        let parent = cacheDir.deletingLastPathComponent()
+        guard let siblings = try? FileManager.default.contentsOfDirectory(
+            at: parent, includingPropertiesForKeys: nil) else { return }
+        for url in siblings where url.lastPathComponent.hasPrefix(discardedCacheDirPrefix) {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     private struct CacheEntry: Codable {
@@ -284,7 +298,19 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         memoryCache.removeAllObjects()
         memoryEntryMtime.removeAllObjects()
         mtimeCache.removeAllObjects()
-        try? FileManager.default.removeItem(at: cacheDir)
+        // A recursive delete of the whole cache (~900 files for a typical library) took ~80 ms,
+        // and this runs on the main actor from "Refresh Now". Renaming the directory aside is
+        // one syscall and empties the live cache just as completely; the files are then
+        // deleted in the background. If the rename fails, fall back to deleting in place.
+        let discarded = cacheDir.deletingLastPathComponent()
+            .appendingPathComponent(discardedCacheDirPrefix + UUID().uuidString, isDirectory: true)
+        do {
+            try FileManager.default.moveItem(at: cacheDir, to: discarded)
+        } catch {
+            try? FileManager.default.removeItem(at: cacheDir)
+            return
+        }
+        DispatchQueue.global(qos: .utility).async { self.removeDiscardedCaches() }
     }
 
     /// Drops the in-memory icons rendered under `appearance` for the given app paths.

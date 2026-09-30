@@ -98,8 +98,10 @@ class StatusBarManager: NSObject {
     }
     
     @objc func exportBackup() {
-        guard let url = BackupManager.shared.export() else { return }
-        NSAlert.showInfo(String(localized: "Export Complete"), String(localized: "Backup saved to:\n\(url.path)"))
+        Task { @MainActor in
+            guard let url = await BackupManager.shared.export() else { return }
+            NSAlert.showInfo(String(localized: "Export Complete"), String(localized: "Backup saved to:\n\(url.path)"))
+        }
     }
 
     @objc func restoreBackup() {
@@ -114,10 +116,14 @@ class StatusBarManager: NSObject {
 
         guard openPanel.runModal() == .OK, let url = openPanel.url else { return }
 
+        Task { @MainActor in await self.restoreBackup(from: url) }
+    }
+
+    private func restoreBackup(from url: URL) async {
         // A MacMuster backup is tried first since it's the common case; a file that isn't one
         // (wrong shape, missing checksum wrapper) falls through to the Launchie import format
         // rather than being rejected outright.
-        if let preview = BackupManager.shared.restore(from: url) {
+        if let preview = await BackupManager.shared.restore(from: url) {
             restoreMacMusterBackup(preview)
             return
         }
@@ -132,9 +138,11 @@ class StatusBarManager: NSObject {
 
     private func restoreMacMusterBackup(_ preview: BackupManager.BackupPreview) {
         if preview.missingAppPaths.isEmpty {
-            BackupManager.shared.apply(preview: preview)
-            appModel?.reloadAfterRestore()
-            NSAlert.showInfo(String(localized: "Restore Complete"), String(localized: "All data restored successfully."))
+            Task { @MainActor in
+                await BackupManager.shared.apply(preview: preview)
+                self.appModel?.reloadAfterRestore()
+                NSAlert.showInfo(String(localized: "Restore Complete"), String(localized: "All data restored successfully."))
+            }
             return
         }
 
@@ -149,7 +157,7 @@ class StatusBarManager: NSObject {
         Task { @MainActor in
             let result = await previewPanel.runModal()
             if result == .OK {
-                BackupManager.shared.apply(preview: preview)
+                await BackupManager.shared.apply(preview: preview)
                 self.appModel?.reloadAfterRestore()
                 NSAlert.showInfo(String(localized: "Restore Complete"), String(localized: "Data restored. \(skippedCount) app(s) skipped (no longer on disk)."))
             }

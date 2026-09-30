@@ -320,7 +320,7 @@ final class BackupManagerTests: XCTestCase {
     // directory tests verify the archive structure directly (see BackupArchive tests below).
 
     @MainActor
-    func testIconPackRestoreWritesToV4CacheDirectory() throws {
+    func testIconPackRestoreWritesToV4CacheDirectory() async throws {
         // Verify that restoreIconPack writes to the v4 cache directory.
         let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("MacMuster/icons-v4", isDirectory: true)
@@ -359,7 +359,7 @@ final class BackupManagerTests: XCTestCase {
             validAppPaths: Set<String>(),
             missingAppPaths: Set<String>()
         )
-        BackupManager.shared.apply(preview: preview)
+        await BackupManager.shared.apply(preview: preview)
 
         let restoredFile = cacheDir.appendingPathComponent(restoreTestKey)
         XCTAssertTrue(FileManager.default.fileExists(atPath: restoredFile.path),
