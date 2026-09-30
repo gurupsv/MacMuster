@@ -108,8 +108,13 @@ final class AppDelegateTests: XCTestCase {
     // MARK: - NSApplicationDelegate Conformance
 
     func testAppDelegateConformsToNSApplicationDelegate() {
-        XCTAssertTrue(appDelegate is NSApplicationDelegate,
-            "AppDelegate should conform to NSApplicationDelegate")
+        // Conformance is a compile-time guarantee — `AppDelegate` is declared
+        // `NSObject, NSApplicationDelegate`, so an `is` test against the optional could only ever
+        // report whether the value is non-nil. Binding to the protocol type proves the conformance
+        // at compile time and leaves the runtime assertion saying what it means.
+        let delegate: NSApplicationDelegate? = appDelegate
+        XCTAssertNotNil(delegate,
+            "AppDelegate should be instantiated and usable as an NSApplicationDelegate")
     }
 
     // MARK: - Window Management Delegation

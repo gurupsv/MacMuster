@@ -32,9 +32,14 @@ final class IconServiceFunctionalTests: XCTestCase {
         let app = makeApp("FakeApp", path: "/Applications/FakeApp.app")
         let result = await service.loadMissingIcons(for: [app])
 
-        // When a bundle doesn't exist, it's silently skipped and not included in results
-        // This is graceful degradation — missing apps don't break the icon load
-        XCTAssert(true, "loadMissingIcons should handle missing bundles gracefully")
+        // A missing bundle is not dropped from the batch: the loader returns one entry per
+        // requested path, and `NSWorkspace.icon(forFile:)` hands back the shared generic icon for
+        // a path that does not exist. What matters is that a missing bundle degrades to a
+        // placeholder instead of crashing or misaligning the result with the request.
+        XCTAssertEqual(result.count, 1,
+            "A missing bundle should still yield one entry, keeping results aligned with the request")
+        XCTAssertEqual(result[0].0, app.path,
+            "The fallback entry should still be keyed by the requested path")
     }
 
     func testLoadMissingIconsWithForceReloadsEvenIfCached() async {
@@ -166,10 +171,11 @@ final class IconServiceFunctionalTests: XCTestCase {
     func testGenerateFolderIconWithEmptyAppsArray() {
         let folderIcon = service.generateFolderIcon([], for: "folder1")
 
-        // Empty apps array may result in nil or a placeholder icon
-        // Either behavior is acceptable
-        XCTAssert(true,
-            "generateFolderIcon should handle empty apps array without crashing")
+        // Empty apps array may result in nil or a placeholder icon; either is acceptable, so the
+        // assertion admits both rather than pinning one. What it does rule out is a malformed
+        // zero-sized image, which would paint as an empty cell.
+        XCTAssertTrue(folderIcon == nil || (folderIcon?.size.width ?? 0) > 0,
+            "generateFolderIcon should return nil or a usable placeholder for an empty apps array")
     }
 
     func testGenerateFolderIconWithSingleApp() {
@@ -245,6 +251,8 @@ final class IconServiceFunctionalTests: XCTestCase {
 
         XCTAssertFalse(result1.isEmpty,
             "Finder app should load icons")
+        XCTAssertFalse(result2.isEmpty,
+            "Safari app should load icons — the second concurrent call must not be starved")
     }
 
     // MARK: - Bounded Decode Concurrency (memory regression)
