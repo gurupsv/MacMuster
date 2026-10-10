@@ -1,15 +1,5 @@
 import Foundation
 
-// MARK: - App Version
-
-enum AppVersion {
-    static let current = "1.0.0"
-    static let build: Int = {
-        let n = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0")
-        return n ?? 0
-    }()
-}
-
 // MARK: - Scan Metrics
 
 enum ScanMetrics {
@@ -224,4 +214,26 @@ enum SettingsLayoutMetrics {
     static let labelSpacing: CGFloat = 14
     static let labelSpacingVertical: CGFloat = 4
     static let hiddenAppsListPaddingVertical: CGFloat = 20
+}
+
+// MARK: - Activation Metrics
+
+enum ActivationMetrics {
+    /// How close (in points) the pointer must be to a screen corner to count as "in the corner".
+    /// Two points is what the system's own hot corners use in practice: the pointer physically
+    /// cannot go past the display edge, so a thin zone is enough, and a wider one would fire while
+    /// the user is just reaching for a menu-bar or Dock item near the corner.
+    static let hotCornerZonePoints: CGFloat = 2
+
+    /// Pointer must rest in the corner this long before the launcher opens, so sweeping across a
+    /// corner on the way elsewhere doesn't trigger it. Long enough to filter flicks, short enough
+    /// to feel immediate.
+    static let hotCornerDwell: TimeInterval = 0.25
+
+    /// Default global shortcut: Control+Option+Space (virtual key code 49). Chosen because ⌘Space
+    /// (Spotlight), ⌥⌘Space (Finder search) and ⌥Space (common third-party launchers) are taken.
+    static let defaultHotkeyKeyCode = 49
+    /// `NSEvent.ModifierFlags` raw bits for Control (1 << 18) | Option (1 << 19); spelled out because
+    /// this file imports only Foundation.
+    static let defaultHotkeyModifiers = (1 << 18) | (1 << 19)
 }

@@ -21,6 +21,7 @@ Native macOS app launcher: Swift 6.2 + SwiftUI/AppKit, zero external dependencie
 | Task | Command |
 |------|---------|
 | Build (debug) | `swift build` |
+| Run from source (debug) | `swift run MacMuster` |
 | Run all tests | `swift test` (do **not** add `--parallel` — see *Testing*) |
 | Run one test | `swift test --filter AppModelTests/testSearchFilterCaseInsensitive` |
 | Coverage | `swift test --enable-code-coverage` |
@@ -77,6 +78,8 @@ Native macOS app launcher: Swift 6.2 + SwiftUI/AppKit, zero external dependencie
 | Icon loading / caching | `IconService` (decode, folder composites), `IconCacheManager` (memory + disk), `applyLoadedIcons` in `LibraryScanState` |
 | Folders | `FolderStore` (CRUD) + folder methods on `LibraryScanState` |
 | Keyboard / overlay window | `OverlayWindowManager`, `NavigationSelection` |
+| Global shortcut / hot corner | `ActivationManager` (Carbon hot key + global `mouseMoved` monitor, configured by value from `SettingsAppearance.syncActivation`) → `ActivationSettingsPanel` |
+| Glass material (Classic / Liquid Glass / low-GPU) | `VisualEffectBackground.buildView` (`ContentView.swift`) + `OverlayWindowManager.applyBackgroundColor`; Liquid Glass is `#available(macOS 26)` only |
 | Backup / import | `BackupManager`, `LaunchieImporter`, `RestorePreviewPanel`, entry points in `StatusBarManager` |
 | Magic number | matching case-less enum in `Constants.swift`, with a rationale comment |
 
@@ -126,6 +129,7 @@ Sources/MacMuster/
 ├── StatusBarManager.swift         # Menu bar item; backup export/restore entry points
 ├── SettingsWindowManager.swift    # Settings NSWindow (titled exactly "Settings" — see hacks)
 ├── SettingsContentView.swift      # Settings UI section panels
+├── ActivationSettingsPanel.swift  # Activation section: shortcut recorder + hot corner
 ├── Resources/Localizable.xcstrings # SPM-processed resources (localization only)
 └── Services/
     ├── ApplicationScanner.swift     # Scanning + custom-dir validation (nonisolated, Sendable)
@@ -138,6 +142,7 @@ Sources/MacMuster/
     ├── IconService.swift            # Rasterizing, folder composites, bounded decode task groups
     ├── IconCacheManager.swift       # Memory + disk icon cache (~/Library/Caches/MacMuster/icons-v4)
     ├── PreferencesStore.swift       # ONLY UserDefaults accessor; private Keys enum; schema migrations
+    ├── ActivationManager.swift      # Global hotkey + hot corner; `HotCorner`, `HotkeyFormatter`
     ├── RecentAppsTracker.swift / RecentlyUpdatedTracker.swift / RunningAppTracker.swift
     ├── DirectoryWatcher.swift       # FSEvents install/remove detection
     └── AlertHelper.swift            # NSAlert.showError/showInfo
@@ -186,14 +191,14 @@ Exceptions: `ApplicationScanner` and `IconCacheManager` are `nonisolated final c
 
 | Wrong | Right | Why |
 |-------|-------|-----|
-| `for … { observedDict[k] = v }` | `var copy = observedDict; …; observedDict = copy` | Each write fires `didSet` (bump + encode + persist): 28–330 ms per drag drop |
-| File I/O / JSON / SHA-256 on the main actor | `await Task.detached { … }.value` | Backup export froze the UI ~480 ms |
+| `for … { observedDict[k] = v }` | `var copy = observedDict; …; observedDict = copy` | Each write fires `didSet` (bump + encode + persist): tens to hundreds of ms per drop on a large grid |
+| File I/O / JSON / SHA-256 on the main actor | `await Task.detached { … }.value` | Backup export froze the UI about half a second (~25 MB icon pack) |
 | One task per icon in a task group | Bounded in-flight window | Unbounded fan-out spiked memory by hundreds of MB |
 | Reading `NSApp` in background code | Resolve on main, pass the value | Data race; wrong appearance baked into cache |
 | `NSWorkspace.open(_:)` (sync) | `openApplication(at:configuration:)` async | Blocked main 283–963 ms |
 | Cell reading `appPathIndex` | Cell reading its `IconSlot` | Whole-grid redraw per icon batch |
 | `NSWorkspace.icon(forFile:)` inside a draw handler | Pre-loaded icon or shared placeholder | 13 ms per folder at paint time |
-| Recursive delete of the cache on main | Rename aside, delete in background | 81 ms for ~900 files |
+| Recursive delete of the cache on main | Rename aside, delete in background | ~80 ms for ~900 files |
 | `lockFocus` off-main | `NSGraphicsContext` over a `CGContext` | `lockFocus` is main-thread only |
 | `Dictionary(uniqueKeysWithValues:)` on disk/scan data | `uniquingKeysWith:` | Duplicate paths trap |
 
@@ -270,7 +275,9 @@ No dependencies (ask first). GitHub Actions are **pinned to full commit SHAs** w
 3. **macOS Tahoe**: overlay level is `.floating`; `.fullScreenAuxiliary` alone was insufficient for Dock visibility.
 4. **Type-to-search**: `isPlainTypingKeystroke` excludes the private-use function-key range (0xF700–0xF8FF); `collapseSearchFieldSelectionIfSelectAll` defeats select-all-on-focus.
 5. **Drag reorder** only in the unfiltered "All" view (`canReorderByDragging`); persisting a filtered order corrupts it.
-6. **Icon cache versioning**: changing the key scheme → bump to `icons-v5` and add `icons-v4` to `supersededCacheDirNames`.
+6. **Activation triggers**: neither needs Accessibility permission (Carbon hot keys; global `mouseMoved` monitors aren't gated). Shortcuts must include ⌘/⌃/⌥ (`isValidShortcut`) — also enforced on backup restore. Hot corner requires a 0.25 s dwell, ignores drags, and ignores corners shared with an adjoining display. Both default **off**.
+7. **Liquid Glass**: `NSGlassEffectView` under `#available(macOS 26.0, *)`; the window fill is cleared for it (a near-opaque black fill would hide the glass). "Low-GPU glass" (`simpleGlass`) overrides both materials with an inactive in-window effect view.
+8. **Icon cache versioning**: changing the key scheme → bump to `icons-v5` and add `icons-v4` to `supersededCacheDirNames`.
 
 ## Git
 

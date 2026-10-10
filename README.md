@@ -41,6 +41,7 @@ Built entirely with **Swift 6.2** and **SwiftUI + AppKit**, MacMuster has zero e
 | **Recent Apps** | Most recently launched apps, max 8 visible (history retained 14 days); can be hidden from Settings |
 | **Menu Bar Access** | Quick toggle, Export/Restore Backup, and Quit from the menu bar icon |
 | **Backup & Restore** | Export all folders, preferences, and hidden-app state to a JSON file; restore with a preview showing which apps are still installed before applying |
+| **Global Shortcut & Hot Corner** | Optional system-wide shortcut (default ⌃⌥Space, recordable) and screen-corner activation; both off by default, no Accessibility permission needed |
 | **Multi-Monitor** | Launcher opens on the display under your cursor; dimmed backgrounds on other displays; reacts to display changes |
 | **Accessibility** | Keyboard shortcuts help, screen reader support, reduce motion/transparency, non-color selection cues, visible keyboard focus rings |
 | **Provenance Badge** | Apps installed outside `/Applications`/`/System/Applications` (e.g. `~/Applications`) show a warning badge |
@@ -59,6 +60,7 @@ Built entirely with **Swift 6.2** and **SwiftUI + AppKit**, MacMuster has zero e
 
 - **Launch Mode**: Window / Full Screen / Maximized — how the launcher itself is presented
 - **Presentation Style**: Glass (frosted blur) or Sheet (solid), plus an optional tint color & strength
+- **Glass Style**: Classic frosted blur or Liquid Glass (macOS 26+), with a **Low-GPU glass** option that swaps the live blur for a flat fill
 - **Grid columns**: 4–10 columns
 - **Icon sizes**: Small / Medium / Large / Extra Large
 - **Sort options**: Name (A–Z) or Installation Date
@@ -196,7 +198,7 @@ Other launchers hang around after launching, forcing you to hit Escape or click 
 |-------------|---------|
 | macOS | 14.0 (Sonoma) or later |
 | Xcode / Swift | 15.0+ / Swift 6.2 |
-| Architecture | Apple Silicon (arm64) |
+| Architecture | Apple Silicon + Intel (releases are universal) |
 
 ---
 
@@ -204,16 +206,16 @@ Other launchers hang around after launching, forcing you to hit Escape or click 
 
 ### Option 1: Download Pre-built Release (Recommended)
 
-1. Download `MacMuster.app` from [Releases](https://github.com/MacMuster/releases)
-2. Drag to `/Applications`
+1. Download `MacMuster-<version>.pkg` from [Releases](https://github.com/gurupsv/MacMuster/releases)
+2. Run the installer (installs to `/Applications`)
 3. Right-click → **Open** (first launch only, due to ad-hoc signing)
 
 ### Option 2: Build from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/MacMuster/macos-launcher.git
-cd macos-launcher
+git clone https://github.com/gurupsv/MacMuster.git
+cd MacMuster
 
 # Build production release
 ./build_production.sh
@@ -311,7 +313,7 @@ MacMuster/
 │       └── DirectoryWatcher.swift     # FSEvents-based install/remove detection
 ├── MacMuster.xcassets/              # Asset catalog (light/dark app icon variants)
 ├── Resources/                     # Icons, PrivacyInfo.xcprivacy, Localizable.xcstrings
-├── Tests/                         # Unit tests (27 test files, 455 tests)
+├── Tests/                         # XCTest suites, one file per area
 ├── Package.swift                  # SPM manifest
 ├── build_common.sh                # Shared build config (resource list, asset-catalog compile)
 ├── build_production.sh            # Production build script
@@ -384,10 +386,10 @@ xcrun stapler staple MacMuster.app
 
 ### Code Style
 
-- SwiftFormat + SwiftLint (run `swift format` before commit)
-- `@MainActor` for all UI classes
-- `@Observable` for state objects
-- Comprehensive error handling
+- 4-space indent; match the surrounding file (no formatter or linter config is committed — do not mass-reformat)
+- `@MainActor` for all UI classes; `@Observable` for state objects
+- `///` doc comments explain rationale, not mechanics
+- Fail-soft error handling: no `try!`/`as!`/force-unwraps; `NSAlert` for user-facing failures
 
 ---
 
@@ -415,6 +417,6 @@ This project has benefited from AI-assisted code review and development:
 
 **Made In BHARATH with ❤️ for macOS**
 
-[Report Bug](https://github.com/yourusername/MacMuster/issues) · [Request Feature](https://github.com/yourusername/MacMuster/issues) · [Discussions](https://github.com/yourusername/MacMuster/discussions)
+[Report Bug](https://github.com/gurupsv/MacMuster/issues) · [Request Feature](https://github.com/gurupsv/MacMuster/issues) · [Discussions](https://github.com/gurupsv/MacMuster/discussions)
 
 </div>

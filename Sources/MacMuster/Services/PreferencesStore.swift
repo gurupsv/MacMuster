@@ -39,6 +39,13 @@ final class PreferencesStore {
         case tintColor = "tintColor"
         case tintStrength = "tintStrength"
         case showHiddenApps = "showHiddenApps"
+        case glassStyle = "glassStyle"
+        case simpleGlass = "simpleGlass"
+        case globalHotkeyEnabled = "globalHotkeyEnabled"
+        case hotkeyKeyCode = "hotkeyKeyCode"
+        case hotkeyModifiers = "hotkeyModifiers"
+        case hotCornerEnabled = "hotCornerEnabled"
+        case hotCorner = "hotCorner"
         // Phase 1: recently-updated badge state. Two separate keys so the mtime baseline
         // (long-lived) and the badge membership (short-lived, age-evicted) can be read
         // and written independently — the baseline must never be pruned by age.
@@ -374,6 +381,29 @@ final class PreferencesStore {
     func loadTintStrength() -> Double? {
         defaults.value(forKey: Keys.tintStrength.rawValue) as? Double
     }
+
+    // MARK: - Glass Style + Activation
+
+    func saveGlassStyle(_ style: String) { defaults.set(style, forKey: Keys.glassStyle.rawValue) }
+    func loadGlassStyle() -> String? { defaults.string(forKey: Keys.glassStyle.rawValue) }
+
+    func saveSimpleGlass(_ enabled: Bool) { defaults.set(enabled, forKey: Keys.simpleGlass.rawValue) }
+    func loadSimpleGlass() -> Bool { defaults.bool(forKey: Keys.simpleGlass.rawValue) }
+
+    func saveGlobalHotkeyEnabled(_ enabled: Bool) { defaults.set(enabled, forKey: Keys.globalHotkeyEnabled.rawValue) }
+    func loadGlobalHotkeyEnabled() -> Bool { defaults.bool(forKey: Keys.globalHotkeyEnabled.rawValue) }
+
+    func saveHotkeyKeyCode(_ keyCode: Int) { defaults.set(keyCode, forKey: Keys.hotkeyKeyCode.rawValue) }
+    func loadHotkeyKeyCode() -> Int? { defaults.value(forKey: Keys.hotkeyKeyCode.rawValue) as? Int }
+
+    func saveHotkeyModifiers(_ modifiers: Int) { defaults.set(modifiers, forKey: Keys.hotkeyModifiers.rawValue) }
+    func loadHotkeyModifiers() -> Int? { defaults.value(forKey: Keys.hotkeyModifiers.rawValue) as? Int }
+
+    func saveHotCornerEnabled(_ enabled: Bool) { defaults.set(enabled, forKey: Keys.hotCornerEnabled.rawValue) }
+    func loadHotCornerEnabled() -> Bool { defaults.bool(forKey: Keys.hotCornerEnabled.rawValue) }
+
+    func saveHotCorner(_ corner: String) { defaults.set(corner, forKey: Keys.hotCorner.rawValue) }
+    func loadHotCorner() -> String? { defaults.string(forKey: Keys.hotCorner.rawValue) }
 
     // MARK: - Recently Updated Badge (schema v2)
 

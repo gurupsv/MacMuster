@@ -772,23 +772,41 @@ struct VisualEffectBackground: NSViewRepresentable {
         case .glass:
             let parent = NSView(frame: .zero)
             parent.wantsLayer = true
-            
-            let visualEffect = NSVisualEffectView()
-            visualEffect.material = .fullScreenUI
-            visualEffect.blendingMode = .behindWindow
-            visualEffect.state = .active
-            visualEffect.autoresizingMask = [.width, .height]
-            parent.addSubview(visualEffect)
-            
+
+            let settings = appModel.settings
+            if settings.simpleGlass {
+                // Low-GPU: an inactive, in-window material is a flat fill that still follows
+                // light/dark; the live behind-window blur is what costs GPU every frame.
+                let flat = NSVisualEffectView()
+                flat.material = .fullScreenUI
+                flat.blendingMode = .withinWindow
+                flat.state = .inactive
+                flat.autoresizingMask = [.width, .height]
+                parent.addSubview(flat)
+            } else if #available(macOS 26.0, *), settings.effectiveGlassStyle == .liquid {
+                let glass = NSGlassEffectView()
+                glass.style = .clear
+                glass.cornerRadius = 0
+                glass.autoresizingMask = [.width, .height]
+                parent.addSubview(glass)
+            } else {
+                let visualEffect = NSVisualEffectView()
+                visualEffect.material = .fullScreenUI
+                visualEffect.blendingMode = .behindWindow
+                visualEffect.state = .active
+                visualEffect.autoresizingMask = [.width, .height]
+                parent.addSubview(visualEffect)
+            }
+
             if appModel.tintStrength > 0 {
-                let tintColor = appModel.settings.tintedBackgroundColor()
+                let tintColor = settings.tintedBackgroundColor()
                 let tintLayer = CALayer()
                 tintLayer.backgroundColor = tintColor.cgColor
                 tintLayer.frame = parent.bounds
                 tintLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
                 parent.layer?.addSublayer(tintLayer)
             }
-            
+
             return parent
         case .sheet:
             let view = NSView(frame: .zero)

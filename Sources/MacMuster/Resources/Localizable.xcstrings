@@ -603,6 +603,27 @@
     },
     "%lld app%@ — %@" : {
       "extractionState" : "manual"
+    },
+    "Press shortcut…" : {
+      "extractionState" : "manual"
+    },
+    "Classic" : {
+      "extractionState" : "manual"
+    },
+    "Liquid Glass" : {
+      "extractionState" : "manual"
+    },
+    "Top Left" : {
+      "extractionState" : "manual"
+    },
+    "Top Right" : {
+      "extractionState" : "manual"
+    },
+    "Bottom Left" : {
+      "extractionState" : "manual"
+    },
+    "Bottom Right" : {
+      "extractionState" : "manual"
     }
   },
   "version" : "1.0"

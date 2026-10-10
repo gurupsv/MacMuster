@@ -205,6 +205,10 @@ class OverlayWindowManager {
     private func applyBackgroundColor() {
         guard let appModel else { return }
         let color: NSColor = switch appModel.presentationMode {
+            // Liquid Glass samples what is behind the window; a near-opaque black window fill under
+            // it would hide exactly that, so it gets a clear window. Simple glass is flat anyway.
+            case .glass where appModel.settings.effectiveGlassStyle == .liquid && !appModel.settings.simpleGlass:
+                NSColor.clear
             case .glass: NSColor.black.withAlphaComponent(appModel.overlayOpacity)
             case .sheet: appModel.settings.tintedBackgroundColor()
         }

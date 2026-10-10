@@ -58,6 +58,15 @@ final class BackupManager {
         let tintStrength: Double
         let showHiddenApps: Bool
         let launchMode: String
+        // Added after schema v2 shipped: optional so older archives, which lack these keys,
+        // still decode. Nil on restore leaves the current value untouched.
+        let glassStyle: String?
+        let simpleGlass: Bool?
+        let globalHotkeyEnabled: Bool?
+        let hotkeyKeyCode: Int?
+        let hotkeyModifiers: Int?
+        let hotCornerEnabled: Bool?
+        let hotCorner: String?
         // Schema v2: recently-updated badge state. The mtime baseline (`knownBundleMtimes`)
         // is long-lived; the badge membership (`recentlyUpdatedPaths`) is age-evicted. Both
         // round-trip so a restored backup continues badging apps that updated just before
@@ -96,6 +105,13 @@ final class BackupManager {
             tintStrength: Double = 0.0,
             showHiddenApps: Bool = false,
             launchMode: String = "Window",
+            glassStyle: String? = nil,
+            simpleGlass: Bool? = nil,
+            globalHotkeyEnabled: Bool? = nil,
+            hotkeyKeyCode: Int? = nil,
+            hotkeyModifiers: Int? = nil,
+            hotCornerEnabled: Bool? = nil,
+            hotCorner: String? = nil,
             knownBundleMtimes: [String: Date] = [:],
             recentlyUpdatedPaths: [String: Date] = [:],
             icons: IconPack
@@ -129,6 +145,13 @@ final class BackupManager {
             self.tintStrength = tintStrength
             self.showHiddenApps = showHiddenApps
             self.launchMode = launchMode
+            self.glassStyle = glassStyle
+            self.simpleGlass = simpleGlass
+            self.globalHotkeyEnabled = globalHotkeyEnabled
+            self.hotkeyKeyCode = hotkeyKeyCode
+            self.hotkeyModifiers = hotkeyModifiers
+            self.hotCornerEnabled = hotCornerEnabled
+            self.hotCorner = hotCorner
             self.knownBundleMtimes = knownBundleMtimes
             self.recentlyUpdatedPaths = recentlyUpdatedPaths
             self.icons = icons
@@ -254,6 +277,13 @@ final class BackupManager {
             tintStrength: tintStrength,
             showHiddenApps: showHiddenApps,
             launchMode: launchMode,
+            glassStyle: PreferencesStore.shared.loadGlassStyle() ?? SettingsAppearance.GlassStyle.classic.rawValue,
+            simpleGlass: PreferencesStore.shared.loadSimpleGlass(),
+            globalHotkeyEnabled: PreferencesStore.shared.loadGlobalHotkeyEnabled(),
+            hotkeyKeyCode: PreferencesStore.shared.loadHotkeyKeyCode() ?? ActivationMetrics.defaultHotkeyKeyCode,
+            hotkeyModifiers: PreferencesStore.shared.loadHotkeyModifiers() ?? ActivationMetrics.defaultHotkeyModifiers,
+            hotCornerEnabled: PreferencesStore.shared.loadHotCornerEnabled(),
+            hotCorner: PreferencesStore.shared.loadHotCorner() ?? HotCorner.topRight.rawValue,
             knownBundleMtimes: knownBundleMtimes,
             recentlyUpdatedPaths: recentlyUpdatedPaths,
             icons: IconPack(entries: iconEntries)
@@ -403,6 +433,25 @@ final class BackupManager {
         PreferencesStore.shared.saveTintStrength(archive.tintStrength)
         PreferencesStore.shared.saveShowHiddenApps(archive.showHiddenApps)
         PreferencesStore.shared.saveLaunchMode(LaunchMode(rawValue: archive.launchMode) ?? .window)
+
+        // Glass style and activation triggers. Values are validated against their enums/ranges
+        // here because the file is untrusted; the hotkey additionally must satisfy
+        // `isValidShortcut` or it is dropped (and left disabled) rather than registered.
+        if let raw = archive.glassStyle, let style = SettingsAppearance.GlassStyle(rawValue: raw) {
+            PreferencesStore.shared.saveGlassStyle(style.rawValue)
+        }
+        if let simpleGlass = archive.simpleGlass { PreferencesStore.shared.saveSimpleGlass(simpleGlass) }
+        if let keyCode = archive.hotkeyKeyCode, let modifiers = archive.hotkeyModifiers,
+           (0...127).contains(keyCode), ActivationManager.isValidShortcut(modifiers: modifiers) {
+            let allowed = Int(bitPattern: ActivationManager.allowedModifiers.rawValue)
+            PreferencesStore.shared.saveHotkeyKeyCode(keyCode)
+            PreferencesStore.shared.saveHotkeyModifiers(modifiers & allowed)
+            if let enabled = archive.globalHotkeyEnabled { PreferencesStore.shared.saveGlobalHotkeyEnabled(enabled) }
+        }
+        if let enabled = archive.hotCornerEnabled { PreferencesStore.shared.saveHotCornerEnabled(enabled) }
+        if let raw = archive.hotCorner, let corner = HotCorner(rawValue: raw) {
+            PreferencesStore.shared.saveHotCorner(corner.rawValue)
+        }
 
         // Schema v2: restore the recently-updated badge state. The mtime baseline is restored
         // verbatim so the next scan measures deltas against the backed-up baseline rather than

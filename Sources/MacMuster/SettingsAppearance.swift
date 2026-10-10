@@ -123,6 +123,63 @@ class SettingsAppearance {
         }
     }
 
+    /// Which material the Glass presentation uses. `liquid` needs macOS 26; older systems (and a
+    /// restored backup naming it) fall back to `classic` at draw time via `effectiveGlassStyle`.
+    enum GlassStyle: String, CaseIterable {
+        case classic = "Classic"
+        case liquid = "Liquid Glass"
+
+        static var liquidGlassAvailable: Bool {
+            if #available(macOS 26.0, *) { return true }
+            return false
+        }
+    }
+
+    var glassStyle: GlassStyle = .classic {
+        didSet {
+            PreferencesStore.shared.saveGlassStyle(glassStyle.rawValue)
+            OverlayWindowManager.shared.refreshAppearance()
+        }
+    }
+
+    var effectiveGlassStyle: GlassStyle {
+        glassStyle == .liquid && GlassStyle.liquidGlassAvailable ? .liquid : .classic
+    }
+
+    /// Low-GPU glass: drops the live behind-window blur for a flat material, which is what costs
+    /// GPU time on every frame the launcher is open (and on every display it covers).
+    var simpleGlass: Bool = false {
+        didSet {
+            PreferencesStore.shared.saveSimpleGlass(simpleGlass)
+            OverlayWindowManager.shared.refreshAppearance()
+        }
+    }
+
+    // MARK: Activation
+
+    var globalHotkeyEnabled: Bool = false {
+        didSet { PreferencesStore.shared.saveGlobalHotkeyEnabled(globalHotkeyEnabled); syncActivation() }
+    }
+    var hotkeyKeyCode: Int = ActivationMetrics.defaultHotkeyKeyCode {
+        didSet { PreferencesStore.shared.saveHotkeyKeyCode(hotkeyKeyCode); syncActivation() }
+    }
+    var hotkeyModifiers: Int = ActivationMetrics.defaultHotkeyModifiers {
+        didSet { PreferencesStore.shared.saveHotkeyModifiers(hotkeyModifiers); syncActivation() }
+    }
+    var hotCornerEnabled: Bool = false {
+        didSet { PreferencesStore.shared.saveHotCornerEnabled(hotCornerEnabled); syncActivation() }
+    }
+    var hotCorner: HotCorner = .topRight {
+        didSet { PreferencesStore.shared.saveHotCorner(hotCorner.rawValue); syncActivation() }
+    }
+
+    private func syncActivation() {
+        ActivationManager.shared.apply(
+            hotkeyEnabled: globalHotkeyEnabled, keyCode: hotkeyKeyCode, modifiers: hotkeyModifiers,
+            cornerEnabled: hotCornerEnabled, corner: hotCorner
+        )
+    }
+
     var tintColor: Color = .blue {
         didSet {
             PreferencesStore.shared.saveTintColor(getHexColorValue())
@@ -185,6 +242,13 @@ class SettingsAppearance {
         if let modeRaw = PreferencesStore.shared.loadPresentationMode() { presentationMode = PresentationMode(rawValue: modeRaw) ?? .glass }
         if let tintHex = PreferencesStore.shared.loadTintColor() { tintColor = parseColor(from: tintHex) }
         if let strengthRaw = PreferencesStore.shared.loadTintStrength() { tintStrength = max(0, min(1, strengthRaw)) }
+        if let styleRaw = PreferencesStore.shared.loadGlassStyle() { glassStyle = GlassStyle(rawValue: styleRaw) ?? .classic }
+        simpleGlass = PreferencesStore.shared.loadSimpleGlass()
+        if let keyCode = PreferencesStore.shared.loadHotkeyKeyCode() { hotkeyKeyCode = keyCode }
+        if let modifiers = PreferencesStore.shared.loadHotkeyModifiers() { hotkeyModifiers = modifiers }
+        globalHotkeyEnabled = PreferencesStore.shared.loadGlobalHotkeyEnabled()
+        if let cornerRaw = PreferencesStore.shared.loadHotCorner() { hotCorner = HotCorner(rawValue: cornerRaw) ?? .topRight }
+        hotCornerEnabled = PreferencesStore.shared.loadHotCornerEnabled()
         if let launchRaw = PreferencesStore.shared.loadLaunchMode() { launchMode = LaunchMode(rawValue: launchRaw) ?? .window }
     }
 

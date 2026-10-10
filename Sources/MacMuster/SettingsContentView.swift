@@ -155,6 +155,8 @@ struct SettingsContentView: View {
                 switch selectedSection {
                 case .general:
                     GeneralSettingsPanel(appModel: appModel, showRefreshComplete: $showRefreshComplete)
+                case .activation:
+                    ActivationSettingsPanel(appModel: appModel)
                 case .appearance:
                     AppearanceSettingsPanel(appModel: appModel)
                 case .hiddenApps:
@@ -193,6 +195,7 @@ case .appDirectories:
 // MARK: - Settings Section Enum
 enum SettingsSection: String, CaseIterable, Identifiable {
      case general
+     case activation
      case appearance
      case hiddenApps
      case appDirectories
@@ -205,6 +208,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
      var title: String {
          switch self {
          case .general: return "General"
+         case .activation: return "Activation"
          case .appearance: return "Appearance"
          case .hiddenApps: return "Hidden Apps"
          case .appDirectories: return "App Directories"
@@ -217,6 +221,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
      var icon: String {
          switch self {
          case .general: return "gearshape"
+         case .activation: return "keyboard"
          case .appearance: return "paintpalette"
          case .hiddenApps: return "eye.slash"
          case .appDirectories: return "folder.badge.plus"
@@ -1081,6 +1086,35 @@ struct AppearanceSettingsPanel: View {
                           }
                       }
                       
+                      if appModel.presentationMode == .glass {
+                          @Bindable var settings = appModel.settings
+                          Divider()
+
+                          // Glass style + low-GPU mode (only meaningful for the Glass presentation)
+                          VStack(alignment: .leading, spacing: 8) {
+                              Text("Glass Style")
+                                  .font(.system(size: 14, weight: .medium))
+                              Text(SettingsAppearance.GlassStyle.liquidGlassAvailable
+                                   ? "Classic frosted blur, or the Liquid Glass material"
+                                   : "Liquid Glass requires macOS 26 or later")
+                                  .font(.system(size: 12))
+                                  .foregroundStyle(.secondary)
+                              Picker("Glass Style", selection: $settings.glassStyle) {
+                                  ForEach(SettingsAppearance.GlassStyle.allCases, id: \.self) { style in
+                                      Text(LocalizedStringKey(style.rawValue)).tag(style)
+                                  }
+                              }
+                              .labelsHidden()
+                              .pickerStyle(.segmented)
+                              .disabled(!SettingsAppearance.GlassStyle.liquidGlassAvailable)
+
+                              Toggle("Low-GPU glass", isOn: $settings.simpleGlass)
+                              Text("Replaces the live background blur with a flat translucent fill. Uses less GPU, especially on large or multiple displays.")
+                                  .font(.system(size: 12))
+                                  .foregroundStyle(.secondary)
+                          }
+                      }
+
                       Divider()
                       
                       // Tint section
