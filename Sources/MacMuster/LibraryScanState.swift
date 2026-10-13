@@ -12,7 +12,19 @@ import Observation
 @Observable
 final class IconSlot {
     var icon: NSImage?
-    init(icon: NSImage?) { self.icon = icon }
+    /// The running-app dot and the recently-updated sparkle for this path, held here rather than
+    /// read from `runningAppPaths` / `recentlyUpdatedPaths` by every cell. Those are single
+    /// observed `Set`s, so a cell that asked `contains(path)` depended on the whole set: any app
+    /// anywhere on the system launching or quitting re-evaluated every materialized cell (20 cell
+    /// bodies per launch or quit, measured). With a flag per path only the one cell whose app
+    /// changed is invalidated. `LibraryScanState` keeps these in step with the sets.
+    var isRunning = false
+    var isRecentlyUpdated = false
+    init(icon: NSImage?, isRunning: Bool = false, isRecentlyUpdated: Bool = false) {
+        self.icon = icon
+        self.isRunning = isRunning
+        self.isRecentlyUpdated = isRecentlyUpdated
+    }
 }
 
 /// Manages the application library: scanning, folders, icon caching, smart categories, and display ordering.
@@ -69,7 +81,11 @@ class LibraryScanState {
     /// scan). Driven by `RecentlyUpdatedTracker`; read by `AppIconView` to show a sparkles
     /// badge. `@Observable` propagates changes to the UI without manual `dataVersion` bumps.
     var recentlyUpdatedPaths: Set<String> = [] {
-        didSet { dataVersion += 1 }
+        didSet {
+            dataVersion += 1
+            recentlyUpdatedMirror = recentlyUpdatedPaths
+            syncBadge(\.isRecentlyUpdated, from: oldValue, to: recentlyUpdatedPaths)
+        }
     }
     /// Filesystem paths of currently-running app bundles. Driven by `RunningAppTracker`
     /// (NSWorkspace launch/terminate notifications); read by `AppIconView` to show a running
@@ -82,7 +98,17 @@ class LibraryScanState {
     /// The badge is read straight from this property in `AppIconView`, so `@Observable` already
     /// re-renders the affected cells. Bumping here would recompute the whole grid (filter +
     /// category + sort over every app) every time *any* app on the system launches or quits.
-    var runningAppPaths: Set<String> = []
+    var runningAppPaths: Set<String> = [] {
+        didSet {
+            runningMirror = runningAppPaths
+            syncBadge(\.isRunning, from: oldValue, to: runningAppPaths)
+        }
+    }
+    /// Copies of the two sets that Observation does not track, for `makeSlot`: it runs from view
+    /// bodies, and reading the observed sets there would make that cell depend on the whole set —
+    /// the dependency the per-path flags exist to remove.
+    @ObservationIgnored private var runningMirror: Set<String> = []
+    @ObservationIgnored private var recentlyUpdatedMirror: Set<String> = []
     var _recentApps: [Application] = []
     var _mostUsedApps: [Application] = []
     // INVARIANT: every writer of `customOrder` must go through this property (or bump
@@ -462,9 +488,26 @@ class LibraryScanState {
     /// dependency beyond the slot itself.
     func iconSlot(for path: String) -> IconSlot {
         if let slot = iconSlots[path] { return slot }
-        let slot = IconSlot(icon: nil)
+        let slot = makeSlot(icon: nil, path: path)
         iconSlots[path] = slot
         return slot
+    }
+
+    /// A slot with its badge flags already matching the current sets (via the untracked mirrors).
+    private func makeSlot(icon: NSImage?, path: String) -> IconSlot {
+        IconSlot(icon: icon,
+                 isRunning: runningMirror.contains(path),
+                 isRecentlyUpdated: recentlyUpdatedMirror.contains(path))
+    }
+
+    /// Writes `keyPath` on the slot of every path whose membership differs between the old and new
+    /// sets. A path with no slot yet needs nothing: `makeSlot` reads the sets when it is created.
+    private func syncBadge(_ keyPath: ReferenceWritableKeyPath<IconSlot, Bool>, from old: Set<String>, to new: Set<String>) {
+        for path in old.symmetricDifference(new) {
+            guard let slot = iconSlots[path] else { continue }
+            let value = new.contains(path)
+            if slot[keyPath: keyPath] != value { slot[keyPath: keyPath] = value }
+        }
     }
 
     /// Pushes `icon` to the cell showing `path`, if any cell has asked for it. Writes only on an
@@ -528,7 +571,7 @@ class LibraryScanState {
             if let slot = iconSlots[path] {
                 if slot.icon !== app.icon { slot.icon = app.icon }
             } else {
-                iconSlots[path] = IconSlot(icon: app.icon)
+                iconSlots[path] = makeSlot(icon: app.icon, path: path)
             }
         }
     }
@@ -593,6 +636,17 @@ class LibraryScanState {
         }.value
         scanCache = ScanCache(dirMtimes: currentMtimes, timestamp: Date())
 
+        // A rescan that found exactly what is already shown has nothing to apply. Replacing the
+        // catalog anyway rebuilt the index, bumped `dataVersion` (re-evaluating `ContentView.body`)
+        // and recomputed the display for no visible change. "Refresh Now" is exempt: it exists to
+        // rebuild the icons, so it always applies.
+        if !reason.rebuildsIcons, Self.catalogsMatch(result.apps, displayOrder) {
+            refreshCategoryCounts()   // still ages "Newly Installed" and friends
+            await loadMissingIcons()  // still retries any icon that failed to load
+            updateRecentlyUpdatedBadges()   // still ages badges; persists only on a real change
+            return
+        }
+
         let freshApps: [Application]
         if reason.rebuildsIcons {
             IconCacheManager.shared.clearAll()
@@ -615,6 +669,29 @@ class LibraryScanState {
         await self.loadMissingIcons()
         self.updateRecentApps()
         updateRecentlyUpdatedBadges()
+    }
+
+    /// Whether a fresh scan describes the same catalog as the one on screen: the same paths, each
+    /// with the same name, modification date, folder-ness and contained apps. Order is ignored —
+    /// the live catalog is sorted and a scan is not — and icons are ignored, since a scan has none
+    /// and the live apps carry theirs. Any difference at all (including a duplicate path on either
+    /// side) counts as changed, so a doubtful comparison errs towards applying the scan.
+    nonisolated static func catalogsMatch(_ fresh: [Application], _ current: [Application]) -> Bool {
+        guard fresh.count == current.count else { return false }
+        var known: [String: Application] = [:]
+        known.reserveCapacity(current.count)
+        for app in current {
+            guard known.updateValue(app, forKey: app.path) == nil else { return false }
+        }
+        var seen = Set<String>()
+        for app in fresh {
+            guard seen.insert(app.path).inserted, let existing = known[app.path] else { return false }
+            guard existing.name == app.name,
+                  existing.installationDate == app.installationDate,
+                  existing.isFolder == app.isFolder,
+                  existing.containedApps == app.containedApps else { return false }
+        }
+        return true
     }
 
     func recordAppLaunch(at path: String) {
@@ -723,11 +800,20 @@ class LibraryScanState {
     /// which `hiddenAppPaths` and `showHiddenApps` (via `AppModel`) both bump, so nothing needs
     /// the extra invalidation the cache demanded either.
     var visibleApplications: [Application] {
-        displayOrder.filter {
-            guard !Self.permanentlyHiddenAppPaths.contains($0.path) else { return false }
-            if settings?.showHiddenApps ?? false { return true }
-            return !hiddenAppPaths.contains($0.path)
-        }
+        displayOrder.filter(isVisible)
+    }
+
+    /// Whether `visibleApplications` would be non-empty, without building it. `ContentView.body`
+    /// asks only this, and it runs on every body evaluation; copying the whole catalog to test
+    /// `isEmpty` is O(n), while this stops at the first visible app.
+    var hasVisibleApplications: Bool {
+        displayOrder.contains(where: isVisible)
+    }
+
+    private func isVisible(_ app: Application) -> Bool {
+        guard !Self.permanentlyHiddenAppPaths.contains(app.path) else { return false }
+        if settings?.showHiddenApps ?? false { return true }
+        return !hiddenAppPaths.contains(app.path)
     }
 
     func getFolderApplication(_ folder: AppFolder) -> Application {
@@ -800,5 +886,206 @@ class LibraryScanState {
         let effectiveHiddenPaths: Set<String> = (settings?.showHiddenApps ?? false) ? [] : hiddenAppPaths
         let apps = FolderStore.shared.appsInFolder(for: folderId, appPathIndex: appPathIndex, hiddenAppPaths: effectiveHiddenPaths, customOrder: customOrder, sortOption: sortOption)
         return apps.filter { !Self.permanentlyHiddenAppPaths.contains($0.path) }
+    }
+
+    // MARK: - Smart Folders Wizard
+
+    /// Whether `app` is a candidate the Smart Folders Wizard may classify: a real (non-folder)
+    /// `.app` that is not hidden (permanently or by the user), still present in the index, not
+    /// already in any folder, and not a system app. Defined once and reused both to build the
+    /// candidate list and to re-validate a plan at apply time, so the two can never disagree.
+    ///
+    /// Reads only main-actor state (`hiddenAppPaths`, `folders`, `appPathIndex`, `getCategory`), so
+    /// it lives on the main actor; the wizard reduces the result to plain `SmartFolderCandidate`
+    /// values before any background work.
+    func isSmartFolderCandidate(_ app: Application) -> Bool {
+        guard !app.isFolder, app.path.hasSuffix(".app") else { return false }
+        guard !Self.permanentlyHiddenAppPaths.contains(app.path),
+              !hiddenAppPaths.contains(app.path) else { return false }
+        guard appPathIndex[app.path] != nil else { return false }
+        guard !allFolderMemberPaths.contains(app.path) else { return false }
+        guard getCategory(for: app) != .system else { return false }
+        return true
+    }
+
+    /// Every path that is a member of any folder, cached and invalidated by `folders`'s observer.
+    private var allFolderMemberPaths: Set<String> {
+        if let cached = cachedAppsInAnyFolder { return cached }
+        let set = folders.reduce(into: Set<String>()) { $0.formUnion($1.appPaths) }
+        cachedAppsInAnyFolder = set
+        return set
+    }
+
+    /// Applies a classification plan in one batch, re-validating it against the live state at apply
+    /// time (the wizard does not block the app, so a rescan, drag, hide, or folder deletion can
+    /// happen between preview and apply). Returns an undo token, or nil when nothing changed — in
+    /// which case no folder is closed, no `dataVersion` bump happens, and nothing is persisted.
+    ///
+    /// Bump accounting: no-op → 0 (an open folder stays open); applied with no folder open → 1;
+    /// applied with a folder open → 2 (close + apply). The single `folders` assignment pushes to
+    /// `FolderStore` via its observer, so there is exactly one persist.
+    @discardableResult
+    func applySmartFolderBatch(_ plan: SmartFolderPlan, allowCreatingFolders: Bool) -> SmartFolderUndoToken? {
+        // 1. Re-validate every candidate against the live state.
+        var revalidated: [SmartFolderCategory: [SmartFolderCandidate]] = [:]
+        for (category, candidates) in plan.assignments {
+            let valid = candidates.filter { candidate in
+                guard let app = appPathIndex[candidate.path] else { return false }
+                return isSmartFolderCandidate(app)
+            }
+            if !valid.isEmpty { revalidated[category] = valid }
+        }
+
+        // 2. Build the new folders array, tracking every change for the undo token. Categories are
+        //    processed in a stable order so the resulting folder array is deterministic.
+        var newFolders = folders
+        var addedPathsByFolder: [String: [String]] = [:]
+        var createdFolderIds = Set<String>()
+        var stampedKeysByFolder: [String: String] = [:]
+        let now = Date()
+
+        for (category, candidates) in revalidated.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            // Resolve the target folder by key first, then by display name.
+            var targetIndex = newFolders.firstIndex { $0.smartCategoryKey == category.rawValue }
+                ?? newFolders.firstIndex { $0.name == category.displayName }
+
+            if targetIndex == nil {
+                // Create only when allowed and there is at least one app to put in it.
+                guard allowCreatingFolders else { continue }
+                let created = AppFolder(name: category.displayName, appPaths: [], smartCategoryKey: category.rawValue)
+                newFolders.append(created)
+                targetIndex = newFolders.count - 1
+                createdFolderIds.insert(created.id)
+            }
+            guard let index = targetIndex else { continue }
+
+            var folder = newFolders[index]
+            let existing = Set(folder.appPaths)
+            var added: [String] = []
+            for candidate in candidates where !existing.contains(candidate.path) {
+                folder.appPaths.append(candidate.path)
+                added.append(candidate.path)
+            }
+
+            var changed = false
+            if !added.isEmpty {
+                addedPathsByFolder[folder.id, default: []].append(contentsOf: added)
+                changed = true
+            }
+            // Stamp the key when reusing a folder that didn't carry one, so later renames still match.
+            if folder.smartCategoryKey != category.rawValue {
+                folder.smartCategoryKey = category.rawValue
+                stampedKeysByFolder[folder.id] = category.rawValue
+                changed = true
+            }
+            if changed {
+                folder.modifiedAt = now
+                newFolders[index] = folder
+            }
+        }
+
+        // 3. No-op: return before touching any state — no folder close, no bump, no persist.
+        guard !addedPathsByFolder.isEmpty || !createdFolderIds.isEmpty || !stampedKeysByFolder.isEmpty else {
+            return nil
+        }
+
+        let token = SmartFolderUndoToken(
+            preApply: folders,
+            postApply: newFolders,
+            addedPathsByFolder: addedPathsByFolder,
+            createdFolderIds: createdFolderIds,
+            stampedKeysByFolder: stampedKeysByFolder)
+
+        // 4. Close an open folder first (its observer bumps dataVersion once), then apply in a
+        //    single assignment. Re-validation and folder resolution above don't depend on
+        //    currentFolderId, so closing after them is safe.
+        if currentFolderId != nil { closeFolder() }
+        folders = newFolders
+        dataVersion += 1
+        cachedDisplayedApps = nil
+        rebuildAppPathIndex()
+        updateFilteredApps()
+        regenerateFolderIcons(changedAppPaths: token.assignedPaths)
+
+        return token
+    }
+
+    /// Reverts a previously applied batch. If the folders are unchanged since the apply, the
+    /// pre-apply snapshot is restored wholesale; otherwise only what this batch did is reverted
+    /// (added paths removed, now-empty created folders deleted, stamped keys cleared), so edits the
+    /// user made in between are preserved.
+    ///
+    /// Bump accounting mirrors `applySmartFolderBatch`: 1 normally, 2 when the undo deletes the
+    /// currently open folder and so has to close it.
+    func undoSmartFolderBatch(_ token: SmartFolderUndoToken) {
+        let unchangedSinceApply = sameFolderSequence(folders, token.postApply)
+        var reverted: [AppFolder]
+
+        if unchangedSinceApply {
+            reverted = token.preApply
+        } else {
+            // Surgical: start from the current folders and undo only this batch's changes.
+            reverted = folders
+            for (folderId, addedPaths) in token.addedPathsByFolder {
+                guard let index = reverted.firstIndex(where: { $0.id == folderId }) else { continue }
+                let added = Set(addedPaths)
+                let before = reverted[index].appPaths
+                let after = before.filter { !added.contains($0) }
+                guard after.count != before.count else { continue }
+                reverted[index].appPaths = after
+                reverted[index].modifiedAt = Date()
+            }
+            for (folderId, key) in token.stampedKeysByFolder {
+                guard let index = reverted.firstIndex(where: { $0.id == folderId }),
+                      reverted[index].smartCategoryKey == key else { continue }
+                reverted[index].smartCategoryKey = nil
+            }
+            reverted.removeAll { token.createdFolderIds.contains($0.id) && $0.appPaths.isEmpty }
+        }
+
+        // Nothing left to undo.
+        guard !sameFolderSequence(reverted, folders) else { return }
+
+        // If the open folder is one this undo deletes, close it first.
+        if let current = currentFolderId, !reverted.contains(where: { $0.id == current }) {
+            closeFolder()
+        }
+
+        folders = reverted
+        dataVersion += 1
+        cachedDisplayedApps = nil
+        rebuildAppPathIndex()
+        updateFilteredApps()
+        // Regenerate all folder composites: a removal leaves the removed paths out of a folder's
+        // current membership, so the "member is in changedAppPaths" fast path would skip exactly the
+        // folders that lost icons. Undo is rare, so regenerating all (few) folders is the correct,
+        // simple choice.
+        regenerateFolderIcons(changedAppPaths: [])
+    }
+
+    /// Whether two folder arrays describe the same folders in the same order by content (not just
+    /// `id`), so a membership-only edit is detected even though `==` would miss it.
+    private func sameFolderSequence(_ lhs: [AppFolder], _ rhs: [AppFolder]) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        for (a, b) in zip(lhs, rhs) where !a.hasSameContent(as: b) { return false }
+        return true
+    }
+}
+
+/// Everything `undoSmartFolderBatch` needs to reverse one `applySmartFolderBatch`. Held by the
+/// wizard panel and discarded when it closes.
+struct SmartFolderUndoToken: Sendable {
+    let preApply: [AppFolder]
+    let postApply: [AppFolder]
+    /// folderId → the paths this batch added to that folder.
+    let addedPathsByFolder: [String: [String]]
+    /// Folders this batch created.
+    let createdFolderIds: Set<String>
+    /// folderId → the `smartCategoryKey` this batch stamped onto a folder that didn't have one.
+    let stampedKeysByFolder: [String: String]
+
+    /// Every path this batch assigned, regardless of folder — for scoped icon regeneration on apply.
+    var assignedPaths: Set<String> {
+        Set(addedPathsByFolder.values.flatMap { $0 })
     }
 }

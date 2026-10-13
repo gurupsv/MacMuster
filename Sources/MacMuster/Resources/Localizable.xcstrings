@@ -487,6 +487,66 @@
     "Apply Restore" : {
       "extractionState" : "manual"
     },
+    "Smart Folders" : {
+      "extractionState" : "manual"
+    },
+    "Smart Folders Wizard" : {
+      "extractionState" : "manual"
+    },
+    "Set Up Smart Folders" : {
+      "extractionState" : "manual"
+    },
+    "Organize Your Apps" : {
+      "extractionState" : "manual"
+    },
+    "Analyzing your apps…" : {
+      "extractionState" : "manual"
+    },
+    "Choose the folders to create. Apps will be added automatically." : {
+      "extractionState" : "manual"
+    },
+    "%lld apps are not in a folder yet." : {
+      "extractionState" : "manual"
+    },
+    "Create folders for new categories" : {
+      "extractionState" : "manual"
+    },
+    "Play animation" : {
+      "extractionState" : "manual"
+    },
+    "No folder yet" : {
+      "extractionState" : "manual"
+    },
+    "Turn on \"Create folders for new categories\" to sort these apps." : {
+      "extractionState" : "manual"
+    },
+    "Everything is already organized." : {
+      "extractionState" : "manual"
+    },
+    "No apps are waiting to be sorted." : {
+      "extractionState" : "manual"
+    },
+    "Back" : {
+      "extractionState" : "manual"
+    },
+    "Continue" : {
+      "extractionState" : "manual"
+    },
+    "Preview" : {
+      "extractionState" : "manual"
+    },
+    "Organize" : {
+      "extractionState" : "manual"
+    },
+    "Nothing needed organizing." : {
+      "extractionState" : "manual"
+    },
+    "Organized %lld apps into %lld folders." : {
+      "extractionState" : "manual"
+    },
+    "Undo" : {
+      "extractionState" : "manual"
+    },
     "Save" : {
       "extractionState" : "manual"
     },
@@ -623,6 +683,33 @@
       "extractionState" : "manual"
     },
     "Bottom Right" : {
+      "extractionState" : "manual"
+    },
+    "Productivity" : {
+      "extractionState" : "manual"
+    },
+    "Development" : {
+      "extractionState" : "manual"
+    },
+    "Design & Creativity" : {
+      "extractionState" : "manual"
+    },
+    "Internet & Communication" : {
+      "extractionState" : "manual"
+    },
+    "Media & Entertainment" : {
+      "extractionState" : "manual"
+    },
+    "Tools" : {
+      "extractionState" : "manual"
+    },
+    "Games" : {
+      "extractionState" : "manual"
+    },
+    "Finance" : {
+      "extractionState" : "manual"
+    },
+    "Education & Reference" : {
       "extractionState" : "manual"
     }
   },

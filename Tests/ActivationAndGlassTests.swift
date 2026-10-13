@@ -21,6 +21,69 @@ final class ActivationAndGlassTests: XCTestCase {
         for key in Self.keys { UserDefaults.standard.removeObject(forKey: key) }
     }
 
+    // MARK: - Hot corner re-arm after the launcher hides
+
+    /// Regression: the corner disarms when it fires and re-armed only on a global `mouseMoved` that
+    /// showed the pointer outside it. Global monitors never see this app's own events, so the pointer
+    /// leaving the corner while the launcher was up went unnoticed, and after the launcher hid the
+    /// corner stayed dead until the pointer crossed another app.
+    func testOverlayHideRearmsCornerWhenPointerLeftIt() {
+        ActivationManager.shared.overlayDidHide(pointerInCorner: true)   // corner fired: disarmed
+        XCTAssertFalse(ActivationManager.shared.cornerArmed)
+
+        ActivationManager.shared.overlayDidHide(pointerInCorner: false)  // pointer moved away, launcher hid
+
+        XCTAssertTrue(ActivationManager.shared.cornerArmed,
+            "Hiding the launcher with the pointer outside the corner must re-arm it")
+    }
+
+    func testOverlayHideKeepsCornerDisarmedWhilePointerIsStillInIt() {
+        ActivationManager.shared.overlayDidHide(pointerInCorner: true)
+
+        XCTAssertFalse(ActivationManager.shared.cornerArmed,
+            "Hiding with the pointer parked in the corner must not let the next nudge reopen the launcher")
+    }
+
+    // MARK: - Pointer sampling while MacMuster is active
+
+    /// Regression: after the launcher hides MacMuster is still the active app, and the global
+    /// `mouseMoved` monitor receives nothing in that state, so the corner stayed dead until another
+    /// app was activated. Sampling must run exactly when the corner is on and this app is active.
+    func testShouldPollOnlyWhenCornerOnAndAppActive() {
+        XCTAssertTrue(ActivationManager.shouldPoll(cornerMonitoring: true, appIsActive: true))
+        XCTAssertFalse(ActivationManager.shouldPoll(cornerMonitoring: true, appIsActive: false),
+            "Another app is active: the global monitor works, no polling needed")
+        XCTAssertFalse(ActivationManager.shouldPoll(cornerMonitoring: false, appIsActive: true),
+            "Corner off: never poll")
+    }
+
+    func testPollingStartsWhenAppActiveAndStopsWhenItResignsOrCornerTurnsOff() {
+        let manager = ActivationManager.shared
+        manager.apply(hotkeyEnabled: false, keyCode: 0, modifiers: 0, cornerEnabled: true, corner: .topRight)
+
+        manager.updatePolling(appIsActive: true)
+        XCTAssertTrue(manager.isPollingPointer)
+
+        manager.updatePolling(appIsActive: false)
+        XCTAssertFalse(manager.isPollingPointer)
+
+        manager.updatePolling(appIsActive: true)
+        manager.apply(hotkeyEnabled: false, keyCode: 0, modifiers: 0, cornerEnabled: false, corner: .topRight)
+        XCTAssertFalse(manager.isPollingPointer, "Turning the corner off must stop the timer")
+    }
+
+    func testHidingTheLauncherStartsPollingWhileTheAppIsStillActive() {
+        let manager = ActivationManager.shared
+        manager.apply(hotkeyEnabled: false, keyCode: 0, modifiers: 0, cornerEnabled: true, corner: .topRight)
+        manager.updatePolling(appIsActive: false)
+        XCTAssertFalse(manager.isPollingPointer)
+
+        // `overlayDidHide` re-evaluates using the real activation state; under `swift test` the app
+        // is not active, so only the decision function is asserted for the active case above.
+        manager.overlayDidHide(pointerInCorner: false)
+        XCTAssertEqual(manager.isPollingPointer, NSApplication.shared.isActive)
+    }
+
     // MARK: - Hot corner geometry
 
     func testHotCornerContainsPointNearEachCorner() {

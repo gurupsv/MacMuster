@@ -190,27 +190,47 @@ struct AppFolder: Codable, Identifiable, Hashable {
     var name: String
     var appPaths: [String]
     var customIcon: String?
+    /// Stable `SmartFolderCategory` raw value stamped by the Smart Folders Wizard, so a folder keeps
+    /// matching across reruns even if the user renames it. `nil` for manually created folders.
+    /// Optional so folders and backups that predate it still decode (synthesized Codable uses
+    /// `decodeIfPresent` for optionals).
+    var smartCategoryKey: String?
     let createdAt: Date
     var modifiedAt: Date
 
     init(id: String = UUID().uuidString,
           name: String,
           appPaths: [String],
-          customIcon: String? = nil) {
+          customIcon: String? = nil,
+          smartCategoryKey: String? = nil) {
         self.id = id
         self.name = name
         self.appPaths = appPaths
         self.customIcon = customIcon
+        self.smartCategoryKey = smartCategoryKey
         self.createdAt = Date()
         self.modifiedAt = Date()
     }
-    
+
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
-    
+
     static func == (lhs: AppFolder, rhs: AppFolder) -> Bool {
         return lhs.id == rhs.id
+    }
+
+    /// Whether two folders describe the same content, as opposed to `==` (which compares `id` only).
+    /// The wizard's undo uses this to decide between restoring the pre-apply snapshot wholesale and
+    /// surgically reverting only what a batch changed — `==` would read "unchanged" after any
+    /// membership edit, because it ignores everything but `id`.
+    func hasSameContent(as other: AppFolder) -> Bool {
+        id == other.id
+            && name == other.name
+            && appPaths == other.appPaths
+            && customIcon == other.customIcon
+            && smartCategoryKey == other.smartCategoryKey
+            && modifiedAt == other.modifiedAt
     }
 }
 

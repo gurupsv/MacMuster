@@ -38,7 +38,10 @@ struct GlowEffectView: View {
                 .overlay(alignment: .leading) { EdgeGlow(edge: .leading, color: color, intensity: intensity, inset: glowInset) }
                 .overlay(alignment: .trailing) { EdgeGlow(edge: .trailing, color: color, intensity: intensity, inset: glowInset) }
                 .allowsHitTesting(false)
-                .drawingGroup(opaque: false)
+                // Deliberately no `.drawingGroup`: it flattened the four strips into one
+                // window-sized offscreen bitmap, which measured ~245 MB at peak at launch (295 MB
+                // vs 49 MB without it) and ~16 MB steady. Four small gradient strips are cheap to
+                // draw directly, and nothing here needs them flattened first.
         }
     }
 }
@@ -311,6 +314,7 @@ class OverlayWindowManager {
         appModel?.clearSearchState()
         removeCombinedEventMonitor()
         removeDisplayChangeObserver()
+        ActivationManager.shared.overlayDidHide()
     }
     
     private func preferredScreen(for window: NSWindow) -> NSScreen? {

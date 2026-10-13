@@ -188,8 +188,8 @@ final class IconService {
         }
 
         let icon = Self.rasterize(path, pixelSize: IconMetrics.iconRasterPixelSizePx, appearance: appearance)
-        IconCacheManager.shared.cacheIcon(icon, for: path, appearance: appearance)
-        return icon
+        // Keep what the cache hands back (PNG-backed, decoded lazily), not the rasterized bitmap.
+        return IconCacheManager.shared.cacheIcon(icon, for: path, appearance: appearance)
     }
     
     func updateIconsInPlace(for displayOrder: [Application], with loadedIcons: [(String, NSImage)]) -> [Application] {

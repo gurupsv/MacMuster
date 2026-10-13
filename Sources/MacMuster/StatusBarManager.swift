@@ -36,6 +36,10 @@ class StatusBarManager: NSObject {
         restoreItem.target = self
         menu.addItem(restoreItem)
 
+        let smartFoldersItem = NSMenuItem(title: String(localized: "Smart Folders"), action: #selector(showSmartFolders), keyEquivalent: "")
+        smartFoldersItem.target = self
+        menu.addItem(smartFoldersItem)
+
         menu.addItem(NSMenuItem.separator())
 
         let settingsItem = NSMenuItem(title: String(localized: "Settings"), action: #selector(showSettings), keyEquivalent: "")
@@ -192,6 +196,11 @@ class StatusBarManager: NSObject {
 
     @objc func showSettings() {
         SettingsWindowManager.shared.show()
+    }
+
+    @objc func showSmartFolders() {
+        guard let appModel else { return }
+        SmartFoldersWizardWindow.shared.show(appModel: appModel)
     }
 
     @objc func quitApp() {

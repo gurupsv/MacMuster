@@ -392,7 +392,9 @@ final class BackupManager {
         // faithfully carried. Dropping apps that are no longer installed is a restore-time
         // adaptation, not a user edit, so `modifiedAt` is preserved too — the restored state
         // should read as the state that was backed up.
-        for folder in archive.appFolders {
+        // Sanitize the untrusted archive first: a `smartCategoryKey` that isn't a known category is
+        // dropped (the folder is kept) before it can reach the live stores.
+        for folder in SmartFolderCategory.sanitizedFolders(archive.appFolders) {
             var cleanedFolder = folder
             cleanedFolder.appPaths = folder.appPaths.filter { preview.validAppPaths.contains($0) }
             FolderStore.shared.folders.append(cleanedFolder)

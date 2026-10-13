@@ -260,4 +260,61 @@ final class BackupIntegrityTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: escape.path),
             "A checksummed archive carrying a traversal key must still write nothing outside the cache directory")
     }
+
+    // MARK: - Smart category key
+
+    func testSmartCategoryKeyRoundTrips() throws {
+        let folder = AppFolder(name: "Development", appPaths: ["/Applications/Xcode.app"], smartCategoryKey: "development")
+        let data = try BackupManager.encodeArchive(makeArchive(appFolders: [folder]))
+
+        let decoded = BackupManager.decodeArchive(from: data)
+
+        XCTAssertEqual(decoded?.appFolders.first?.smartCategoryKey, "development",
+            "A valid smartCategoryKey must survive the export→restore round trip")
+    }
+
+    func testArchiveWithoutSmartCategoryKeyDecodesAsNil() throws {
+        // A folder with no key (the shape of every pre-wizard archive) must decode with a nil key,
+        // not fail — backward compatibility for old backups and UserDefaults.
+        let folder = AppFolder(name: "Design", appPaths: ["/Applications/Preview.app"])
+        let legacy = try JSONEncoder().encode(makeArchive(appFolders: [folder]))
+
+        let decoded = BackupManager.decodeArchive(from: legacy)
+
+        XCTAssertNotNil(decoded)
+        XCTAssertNil(decoded?.appFolders.first?.smartCategoryKey)
+    }
+
+    func testGarbageSmartCategoryKeyIsDroppedOnRestore() async throws {
+        // Drive a hostile archive (a legitimate folder carrying a garbage key) through the real
+        // restore path: the folder must be kept and the key dropped.
+        FolderStore.shared.folders.removeAll()
+        defer { FolderStore.shared.folders.removeAll() }
+
+        let hostile = AppFolder(name: "Kept", appPaths: [], smartCategoryKey: "totally-not-a-category")
+        let preview = BackupManager.BackupPreview(
+            archive: makeArchive(appFolders: [hostile]),
+            validAppPaths: [], missingAppPaths: [])
+
+        await BackupManager.shared.apply(preview: preview)
+
+        let restored = FolderStore.shared.folders.first
+        XCTAssertEqual(restored?.name, "Kept", "The folder must be kept")
+        XCTAssertNil(restored?.smartCategoryKey, "A garbage key must be dropped on restore")
+    }
+
+    func testValidSmartCategoryKeySurvivesRestore() async throws {
+        FolderStore.shared.folders.removeAll()
+        defer { FolderStore.shared.folders.removeAll() }
+
+        let folder = AppFolder(name: "Tools", appPaths: [], smartCategoryKey: "tools")
+        let preview = BackupManager.BackupPreview(
+            archive: makeArchive(appFolders: [folder]),
+            validAppPaths: [], missingAppPaths: [])
+
+        await BackupManager.shared.apply(preview: preview)
+
+        XCTAssertEqual(FolderStore.shared.folders.first?.smartCategoryKey, "tools",
+            "A known key must survive restore untouched")
+    }
 }

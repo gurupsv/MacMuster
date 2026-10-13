@@ -274,7 +274,8 @@ final class PreferencesStore {
 
     func loadFolders() -> [AppFolder]? {
         guard let data = defaults.data(forKey: Keys.folders.rawValue) else { return nil }
-        return try? JSONDecoder().decode([AppFolder].self, from: data)
+        guard let folders = try? JSONDecoder().decode([AppFolder].self, from: data) else { return nil }
+        return SmartFolderCategory.sanitizedFolders(folders)
     }
     
     func saveFolders(_ folders: [AppFolder]) {

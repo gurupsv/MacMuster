@@ -31,6 +31,16 @@ extension LibraryScanState {
         let displayedApps = getDisplayedApps(searchTerm: navigation?.searchTerm ?? "", showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: customOrder, sortOption: sortOption, selectedCategory: navigation?.selectedCategory ?? .all, columnCount: settings?.columnCount ?? 4)
         if displayedApps.isEmpty { navigation?.selectedAppIndex = -1 }
 
+        refreshCategoryCounts()
+    }
+
+    /// Recomputes the per-category tab counts and publishes them only if they changed.
+    ///
+    /// Split out of `updateFilteredApps` so a rescan that found the catalog unchanged can still age
+    /// time-dependent counts ("Newly Installed" is a 14-day window) without rebuilding the displayed
+    /// list. Compared explicitly rather than trusting Observation to drop an equal write: whether it
+    /// does depends on the OS runtime (the current one does; the deployment target is macOS 14).
+    func refreshCategoryCounts() {
         var counts: [AppCategory: Int] = [:]
         let searchFilter = navigation?.searchTerm ?? ""
         let visible = visibleApplications
@@ -45,7 +55,7 @@ extension LibraryScanState {
         counts[.mostUsed] = _mostUsedApps.filter { filteredPaths.contains($0.path) }.count
         counts[.recentlyLaunched] = _recentApps.filter { filteredPaths.contains($0.path) }.count
         counts[.newlyInstalled] = filtered.filter { isNewlyInstalled($0) }.count
-        navigation?.categoryCounts = counts
+        if navigation?.categoryCounts != counts { navigation?.categoryCounts = counts }
     }
 
     // MARK: Display Ordering

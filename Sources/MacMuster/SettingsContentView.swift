@@ -699,6 +699,17 @@ struct FoldersSettingsPanel: View {
                 Text(String(localized: "\(appModel.folders.count) folders"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+                Button {
+                    SmartFoldersWizardWindow.shared.show(appModel: appModel)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 12))
+                        Text(String(localized: "Smart Folders Wizard"))
+                    }
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
             }
             
             Text("Manage your folders - rename, delete, or create new ones.")

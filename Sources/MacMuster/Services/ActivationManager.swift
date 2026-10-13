@@ -53,7 +53,9 @@ final class ActivationManager {
     @ObservationIgnored private var handlerRef: EventHandlerRef?
     @ObservationIgnored private var mouseMonitor: Any?
     @ObservationIgnored private var dwellTask: Task<Void, Never>?
-    @ObservationIgnored private var cornerArmed = true
+    @ObservationIgnored private var pollTimer: Timer?
+    @ObservationIgnored private var activeObservers: [NSObjectProtocol] = []
+    @ObservationIgnored private(set) var cornerArmed = true
     @ObservationIgnored private var corner: HotCorner = .topRight
 
     /// Modifier bits a shortcut may use; anything else (caps lock, fn, device flags) is dropped.
@@ -150,15 +152,75 @@ final class ActivationManager {
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
             Task { @MainActor in self?.pointerMoved() }
         }
+        // The global monitor is blind while this app is active (see `hotCornerPollInterval`), so
+        // follow activation and fall back to sampling the pointer in that state.
+        let center = NotificationCenter.default
+        activeObservers = [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification]
+            .map { name in
+                center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.updatePolling() }
+                }
+            }
+        updatePolling()
+    }
+
+    /// Whether the pointer should be sampled by timer: only when the corner is on and this app is
+    /// active, the one state in which the global monitor receives nothing.
+    nonisolated static func shouldPoll(cornerMonitoring: Bool, appIsActive: Bool) -> Bool {
+        cornerMonitoring && appIsActive
+    }
+
+    var isPollingPointer: Bool { pollTimer != nil }
+
+    func updatePolling() {
+        updatePolling(appIsActive: NSApplication.shared.isActive)
+    }
+
+    func updatePolling(appIsActive: Bool) {
+        if Self.shouldPoll(cornerMonitoring: mouseMonitor != nil, appIsActive: appIsActive) {
+            guard pollTimer == nil else { return }
+            pollTimer = Timer.scheduledTimer(withTimeInterval: ActivationMetrics.hotCornerPollInterval, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.pointerMoved() }
+            }
+        } else {
+            pollTimer?.invalidate()
+            pollTimer = nil
+        }
     }
 
     private func stopCornerMonitor() {
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         mouseMonitor = nil
+        activeObservers.forEach(NotificationCenter.default.removeObserver)
+        activeObservers = []
+        pollTimer?.invalidate()
+        pollTimer = nil
         dwellTask?.cancel()
         dwellTask = nil
         cornerArmed = true
     }
+
+    /// Re-arms the corner after the launcher hides, if the pointer is no longer in it.
+    ///
+    /// The corner disarms when it fires and re-arms only when a global `mouseMoved` event shows the
+    /// pointer outside it. Global monitors never see events delivered to this app, so while the
+    /// launcher was up the pointer could leave the corner unnoticed and the corner stayed disarmed:
+    /// after hiding the launcher (clicking empty space), moving back to the corner did nothing until
+    /// the pointer had crossed another app's window. When the pointer is still parked in the corner
+    /// (e.g. Esc pressed there) it stays disarmed so the next nudge doesn't reopen the launcher.
+    func overlayDidHide() {
+        overlayDidHide(pointerInCorner: cornerEnabledMonitorActive ? pointerIsInCorner() : false)
+    }
+
+    func overlayDidHide(pointerInCorner: Bool) {
+        dwellTask?.cancel()
+        dwellTask = nil
+        cornerArmed = !pointerInCorner
+        // This app is usually still active once the launcher hides; make sure sampling is running.
+        updatePolling()
+    }
+
+    private var cornerEnabledMonitorActive: Bool { mouseMonitor != nil }
 
     private func pointerMoved() {
         guard pointerIsInCorner() else {

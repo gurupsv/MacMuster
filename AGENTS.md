@@ -72,14 +72,15 @@ Native macOS app launcher: Swift 6.2 + SwiftUI/AppKit, zero external dependencie
 | New sort option | `ApplicationSorter.SortOption` + comparator → Sort menu in `ContentView` → `OrderingStabilityTests` |
 | New smart category | `AppCategory` (`Types.swift`) → `matchesSelectedCategory` + counts in `LibraryScanState+Display` → `CategoryTabView` → `CategoryFilterTests` |
 | What a grid cell shows | `AppIconView` (`ContentView.swift`); accessibility label in the same view |
-| New cell badge | tracker in `Services/` → property on `LibraryScanState` (no `dataVersion` bump) → `AppIconView` badge (`accessibilityHidden`) + fold into cell label |
+| New cell badge | tracker in `Services/` → property on `LibraryScanState` (no `dataVersion` bump) → per-path flag on `IconSlot`, synced from the set by `syncBadge` → `AppIconView` badge reading `slot.flag` (`accessibilityHidden`) + fold into cell label |
 | Search behavior | `Application.searchMatchRank` (`Types.swift`) → `applySearchFilter` (`LibraryScanState+Display`) |
 | Scanning / discovery | `ApplicationScanner` (keep hardening), `DirectoryWatcher`, `refreshDisplayOrder` |
 | Icon loading / caching | `IconService` (decode, folder composites), `IconCacheManager` (memory + disk), `applyLoadedIcons` in `LibraryScanState` |
 | Folders | `FolderStore` (CRUD) + folder methods on `LibraryScanState` |
+| Smart Folders wizard | `SmartFolderPlanBuilder` (build) → `SmartFoldersWizardViewModel` (steps/apply/undo) → `SmartFoldersWizardPanel` (UI) + `SmartFoldersAnimation` (motion + CPU/thermal/reduce-motion gate); entry points in `StatusBarManager` + `FoldersSettingsPanel`; apply/undo on `LibraryScanState` |
 | Keyboard / overlay window | `OverlayWindowManager`, `NavigationSelection` |
 | Global shortcut / hot corner | `ActivationManager` (Carbon hot key + global `mouseMoved` monitor, configured by value from `SettingsAppearance.syncActivation`) → `ActivationSettingsPanel` |
-| Glass material (Classic / Liquid Glass / low-GPU) | `VisualEffectBackground.buildView` (`ContentView.swift`) + `OverlayWindowManager.applyBackgroundColor`; Liquid Glass is `#available(macOS 26)` only |
+| Glass material (Classic / Liquid Glass / low-GPU) | `VisualEffectBackground` (`ContentView.swift`: `structure` decides which views exist, `rebuild` only when it changes, `refreshColors` in place) + `OverlayWindowManager.applyBackgroundColor`; Liquid Glass is `#available(macOS 26)` only |
 | Backup / import | `BackupManager`, `LaunchieImporter`, `RestorePreviewPanel`, entry points in `StatusBarManager` |
 | Magic number | matching case-less enum in `Constants.swift`, with a rationale comment |
 
@@ -103,10 +104,11 @@ getDisplayedApps(query)  ── cached by DisplayQuery (incl. dataVersion) ─�
 - displayed apps — the output of `getDisplayedApps`: what the grid renders right now.
 - `IconSlot` — per-path observable icon holder a cell reads, so icon batches redraw only affected cells.
 - `customOrder` — `path → index` drag positions; combined with the sort option by `ApplicationSorter.sort`.
+- `AppFolder.smartCategoryKey` — a `SmartFolderCategory.rawValue` the Smart Folders Wizard stamps on folders it creates. The wizard's rerun resolves an existing folder **by key first, then name**, so renaming a created folder doesn't orphan it; a key on a hand-made folder is honored too. Optional (old data/backups decode without it); validated by `SmartFolderCategory.sanitizedFolders` on every untrusted load.
 
 ## Project overview
 
-- **What**: Launchpad-style launcher overlay (Window / Full Screen / Maximized) + menu bar item. Type-to-search with fuzzy/acronym matching, keyboard navigation, smart categories, drag-and-drop folders, backup/restore, icon caching, provenance, running-app and recently-updated badges.
+- **What**: Launchpad-style launcher overlay (Window / Full Screen / Maximized) + menu bar item. Type-to-search with fuzzy/acronym matching, keyboard navigation, smart categories, drag-and-drop folders, a Smart Folders auto-organization wizard (offline classification + optional animation), backup/restore, icon caching, provenance, running-app and recently-updated badges.
 - **Architecture**: hybrid AppKit/SwiftUI. `@main` (`AppEntry.swift`) declares only a dummy `Settings { EmptyView() }` scene; **all real windows are created imperatively by AppKit managers** hosting SwiftUI via `NSHostingView`.
 - **Identity**: bundle id `com.macmuster.app`; version from `version.txt` (single source of truth); build number = `git rev-list --count HEAD`.
 
@@ -130,6 +132,9 @@ Sources/MacMuster/
 ├── SettingsWindowManager.swift    # Settings NSWindow (titled exactly "Settings" — see hacks)
 ├── SettingsContentView.swift      # Settings UI section panels
 ├── ActivationSettingsPanel.swift  # Activation section: shortcut recorder + hot corner
+├── SmartFoldersWizardViewModel.swift # @Observable wizard state machine (selection/preview/done + undo)
+├── SmartFoldersWizardWindow.swift   # Wizard NSPanel owner; fresh VM per open
+├── SmartFoldersWizardPanel.swift    # Wizard SwiftUI content + "apps grouping" animation view
 ├── Resources/Localizable.xcstrings # SPM-processed resources (localization only)
 └── Services/
     ├── ApplicationScanner.swift     # Scanning + custom-dir validation (nonisolated, Sendable)
@@ -145,6 +150,11 @@ Sources/MacMuster/
     ├── ActivationManager.swift      # Global hotkey + hot corner; `HotCorner`, `HotkeyFormatter`
     ├── RecentAppsTracker.swift / RecentlyUpdatedTracker.swift / RunningAppTracker.swift
     ├── DirectoryWatcher.swift       # FSEvents install/remove detection
+    ├── SmartFolderCatalog.swift     # 9 predefined categories (displayName + rawValue) + `sanitizedFolders` untrusted-input guard
+    ├── SmartFolderAssigner.swift    # pure 3-tier classifier → `SmartFolderPlan` (bundle ID → vendor → name)
+    ├── BundleInfoReader.swift       # off-main `Info.plist` → `BundleInfo` (size-capped, fails soft)
+    ├── SmartFolderPlanBuilder.swift # main-actor build: candidates → bundle read → classify
+    ├── SmartFoldersAnimation.swift  # pure "apps grouping" motion math + CPU/thermal/reduce-motion gate
     └── AlertHelper.swift            # NSAlert.showError/showInfo
 Resources/                          # Bundle resources copied by the BUNDLE_RESOURCES allowlist in
                                     # build_common.sh: icons (.icns/.png), PrivacyInfo.xcprivacy
@@ -163,7 +173,7 @@ CODE_REVIEW.md                      # Review ledger with stable finding IDs
    - `runningAppPaths` — badge only; cells observe it directly.
    - icon batches (`applyLoadedIcons`) — cells observe `IconSlot`; a warm display cache is patched in place.
    `customOrder` is a dictionary and deliberately not part of `DisplayQuery`, so its `didSet` bump is what keeps the cache correct.
-2. **`IconSlot`.** Each cell reads `library.iconSlot(for: path)`. Don't make cells read `appPathIndex` (every icon batch would redraw the whole grid). Every folder-composite regeneration goes through `regenerateFolderIcons` so folder slots never lag.
+2. **`IconSlot`.** Each cell reads `library.iconSlot(for: path)`. Don't make cells read `appPathIndex` (every icon batch would redraw the whole grid), and don't make them call `runningAppPaths.contains(path)` / `recentlyUpdatedPaths.contains(path)` — those depend on the whole `Set`, so one app launching re-evaluated every cell; read `slot.isRunning` / `slot.isRecentlyUpdated`. Hover, press and drop-target state is `@State` inside `AppGridCell`, not on `ContentView`. Every folder-composite regeneration goes through `regenerateFolderIcons` so folder slots never lag.
 3. **Path identity.** `Application.id` is the filesystem path (folders: bare folder UUID). `Application ==`/`hash` compare `id` only — a changed icon does **not** make two values unequal, which is why cells observe slots.
 4. **`displayOrder` is the full catalog.** Operations on a visible subset (e.g. drag reorder) must write `customOrder`, never `displayOrder`.
 5. **Persistence bottleneck.** Only `PreferencesStore` writes `UserDefaults`.
@@ -201,6 +211,12 @@ Exceptions: `ApplicationScanner` and `IconCacheManager` are `nonisolated final c
 | Recursive delete of the cache on main | Rename aside, delete in background | ~80 ms for ~900 files |
 | `lockFocus` off-main | `NSGraphicsContext` over a `CGContext` | `lockFocus` is main-thread only |
 | `Dictionary(uniqueKeysWithValues:)` on disk/scan data | `uniquingKeysWith:` | Duplicate paths trap |
+| Layering a decoration over an `NSVisualEffectView` as a hand-added `CALayer` sublayer | Add it as a subview after the material | A bare sublayer was not composited above the material's layer: glass tint drew nothing, even at full strength |
+| Per-cell state (hover, press, drop target) as `@State` on the parent, or `set.contains(path)` in a cell | `@State` inside the cell; a per-path flag on `IconSlot` | Every pointer enter/exit re-ran `ContentView.body` (~1.2 evals per hover change); every app launch/quit re-ran ~20 cell bodies. After: 0 and 0 |
+| Applying a rescan that matches the live catalog (replace `displayOrder`, bump `dataVersion`, rebuild the index) | `LibraryScanState.catalogsMatch` short-circuit in `refreshDisplayOrder` (not for "Refresh Now") | 5 no-change rescans re-evaluated `ContentView.body` 5 times and re-persisted the update baseline each time; now 0 |
+| Rebuilding the blur/material view tree in `updateNSView` | Rebuild only when `VisualEffectBackground.Structure` changes; recolour in place | Every tint/opacity slider tick destroyed and recreated a GPU-backed `NSVisualEffectView` |
+| Retaining the freshly rasterized icon bitmap after `cacheIcon` | Keep the PNG-backed image `cacheIcon` returns | A bitmap is 160 KB (200×200×4) per icon and not lazy; the PNG form decodes only what is drawn. Cold load measured 89 MB vs 52 MB warm for 228 apps; with the fix ~60 MB |
+| Decoding every cached icon at a smaller size up front (thumbnails) | Leave warm icons PNG-backed and lazy | ImageIO thumbnails decode eagerly: 128 px for all 228 apps measured 61 MB vs 52 MB with lazy full-size PNGs |
 
 ## Persistence map
 

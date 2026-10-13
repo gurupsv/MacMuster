@@ -53,6 +53,8 @@ final class RecentlyUpdatedTracker {
     /// `knownBundleMtimes` and `recentlyUpdated` — a deleted app shouldn't keep a stale badge.
     func detectUpdatedApps(currentMtimesByPath: [String: Date], now: Date = Date()) {
         var updatedPaths: [String] = []
+        let baselineBefore = knownBundleMtimes
+        let badgesBefore = recentlyUpdated
 
         for (path, currentMtime) in currentMtimesByPath {
             if let previousMtime = knownBundleMtimes[path] {
@@ -82,7 +84,11 @@ final class RecentlyUpdatedTracker {
         }
 
         pruneExpired(now: now)
-        schedulePersist()
+        // Persist only when something moved. A rescan that finds every mtime as it was leaves both
+        // dictionaries equal, and re-encoding and rewriting them every time was pure churn.
+        if knownBundleMtimes != baselineBefore || recentlyUpdated != badgesBefore {
+            schedulePersist()
+        }
     }
 
     /// Removes entries older than `UpdateMetrics.recentlyUpdatedBadgeSeconds` from

@@ -205,40 +205,50 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         return nil
     }
 
-    /// Saves an icon to cache along with bundle modification time.
+    /// Saves an icon to cache along with bundle modification time, and returns the image the caller
+    /// should keep.
     ///
     /// Writes to both the in-memory cache (for instant subsequent reads) and the on-disk cache
     /// (so the icon survives relaunch).
-    func cacheIcon(_ icon: NSImage, for appPath: String, appearance: IconAppearance) {
+    ///
+    /// The returned (and memory-cached) image is backed by the PNG just encoded, **not** by the
+    /// freshly rasterized bitmap passed in. That is the same compressed, lazily decoded form
+    /// `cachedIcon` returns on a disk hit, and it is what keeps a cold load cheap: holding the
+    /// rasterized bitmaps instead costs 160 KB per icon (200×200×4) for every app in the library —
+    /// measured 89 MB steady against 52 MB for a warm start of the same 228 apps — because nothing
+    /// is lazy about a bitmap. Only the icons actually drawn get decoded. If the PNG cannot be
+    /// produced, the original bitmap is kept: a larger icon beats a missing one.
+    @discardableResult
+    func cacheIcon(_ icon: NSImage, for appPath: String, appearance: IconAppearance) -> NSImage {
         let memKey = memoryCacheKey(appPath, appearance: appearance)
 
         // Read the mtime before storing, not after: a memory entry with no recorded mtime cannot
         // be validated on the way back out, so it would be discarded on the next read.
         guard let bundleMtime = currentBundleModificationTime(for: appPath) else {
-            return
+            return icon
         }
-        storeInMemory(icon, key: memKey, renderedFor: bundleMtime)
-
-        do {
-            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-        } catch {
-            return
-        }
-
-        let cacheKey = cacheKey(for: appPath, appearance: appearance)
-        let iconURL = cacheDir.appendingPathComponent(cacheKey, isDirectory: false)
-        let metaURL = cacheDir.appendingPathComponent(cacheKey + ".meta", isDirectory: false)
 
         // Store icon as PNG for smaller size, faster round-trip, and format-stability across OS versions.
+        var resident = icon
+        var pngData: Data?
+        if let cgImage = icon.cgImage(forProposedRect: nil, context: nil, hints: nil),
+           let data = Self.pngData(for: cgImage) {
+            pngData = data
+            if let source = CGImageSourceCreateWithData(data as CFData, nil),
+               let lazy = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+                // Keep the caller's point size so an in-memory hit reads exactly as it did before.
+                resident = NSImage(cgImage: lazy, size: icon.size)
+            }
+        }
+        storeInMemory(resident, key: memKey, renderedFor: bundleMtime)
+
+        guard let pngData else { return resident }
         do {
-            guard let cgImage = icon.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-                return
-            }
-            guard let destination = CGImageDestinationCreateWithURL(iconURL as CFURL, "public.png" as CFString, 1, nil) else {
-                return
-            }
-            CGImageDestinationAddImage(destination, cgImage, nil)
-            CGImageDestinationFinalize(destination)
+            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+            let cacheKey = cacheKey(for: appPath, appearance: appearance)
+            let iconURL = cacheDir.appendingPathComponent(cacheKey, isDirectory: false)
+            let metaURL = cacheDir.appendingPathComponent(cacheKey + ".meta", isDirectory: false)
+            try pngData.write(to: iconURL)
 
             let entry = CacheEntry(appPath: appPath, bundleMtime: bundleMtime, appearance: appearance)
             let metaData = try JSONEncoder().encode(entry)
@@ -246,6 +256,15 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         } catch {
             // Silent failure — cache write is not critical
         }
+        return resident
+    }
+
+    nonisolated private static func pngData(for image: CGImage) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
     }
 
     /// Returns cached app paths along with their cached mtimes, for the appearance currently
