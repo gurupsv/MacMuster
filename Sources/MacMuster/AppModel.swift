@@ -286,7 +286,7 @@ class AppModel {
     func matchesSelectedCategory(_ app: Application) -> Bool { library.matchesSelectedCategory(app, selectedCategory: selectedCategory) }
     func removeCustomDirectory(_ path: String) { library.removeCustomDirectory(path) }
     func addCustomDirectory(_ path: String, bookmarkData: Data? = nil) { library.addCustomDirectory(path, bookmarkData: bookmarkData) }
-    func getDisplayedApps() -> [Application] { library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: showFoldersFirst, customOrder: customOrder, sortOption: sortOption, selectedCategory: selectedCategory, columnCount: columnCount) }
+    func getDisplayedApps() -> [Application] { library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: showFoldersFirst, customOrder: customOrder, sortOption: sortOption, selectedCategory: selectedCategory) }
     func getFolderApplication(_ folder: AppFolder) -> Application { library.getFolderApplication(folder) }
     func createFolder(name: String, appPaths: [String]) -> AppFolder? { library.createFolder(name: name, appPaths: appPaths) }
     func deleteFolder(folderId: String) { library.deleteFolder(folderId: folderId) }

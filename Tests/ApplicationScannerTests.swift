@@ -256,10 +256,10 @@ final class ApplicationScannerTests: XCTestCase {
     }
 
     func testCustomDirectoryWithNewlineCharacter() {
-        // A path with a newline character doesn't exist on disk, so isValidCustomDirectory
-        // considers it valid (non-existent paths are valid — same as unmounted volume).
-        XCTAssertTrue(ApplicationScanner.isValidCustomDirectory("/\n"),
-            "Non-existent path with newline — treated as valid (same as unmounted volume)")
+        // SEC-12: control characters are refused even when the path does not exist; the shape
+        // checks no longer wait for something to stat. (Used to be treated as an unmounted volume.)
+        XCTAssertFalse(ApplicationScanner.isValidCustomDirectory("/\n"),
+            "Control character in a non-existent path — rejected")
     }
 
     func testCustomDirectoryWithBackslashCharacter() {
@@ -376,5 +376,34 @@ final class ApplicationScannerTests: XCTestCase {
             XCTAssertTrue(ApplicationScanner.isValidCustomDirectory(publicDir),
                 "User public directory should be valid")
         }
+    }
+
+    // MARK: - SEC-6 / SEC-12: custom directory validation
+
+    func testCustomDirectoryRejectsBroadSystemRoots() {
+        for root in ["/Users", "/System", "/Library", "/private", "/Volumes", "/usr", "/var", "/users", "/LIBRARY"] {
+            XCTAssertFalse(ApplicationScanner.isValidCustomDirectory(root), "\(root) is too broad to scan")
+        }
+    }
+
+    func testCustomDirectoryRejectsAncestorsOfHomeButNotHomeItself() {
+        let home = NSHomeDirectory()
+        XCTAssertFalse(ApplicationScanner.isValidCustomDirectory((home as NSString).deletingLastPathComponent))
+        XCTAssertTrue(ApplicationScanner.isValidCustomDirectory(home), "home itself stays allowed")
+    }
+
+    func testCustomDirectoryStillAllowsSpecificFoldersInsideReservedRoots() {
+        XCTAssertTrue(ApplicationScanner.isValidCustomDirectory("/System/Applications"))
+        XCTAssertTrue(ApplicationScanner.isValidCustomDirectory((NSHomeDirectory() as NSString).appendingPathComponent("Applications")))
+    }
+
+    /// SEC-12: shape checks used to be skipped for any path that did not exist.
+    func testNonexistentCustomDirectoryStillMustBeWellFormed() {
+        XCTAssertTrue(ApplicationScanner.isValidCustomDirectory("/Volumes/NoSuchVolume/Apps"), "unmounted volume stays allowed")
+        XCTAssertFalse(ApplicationScanner.isValidCustomDirectory("/Volumes/NoSuchVolume/../../etc"))
+        XCTAssertFalse(ApplicationScanner.isValidCustomDirectory("/Volumes/NoSuchVolume//Apps"))
+        XCTAssertFalse(ApplicationScanner.isValidCustomDirectory("/Volumes/NoSuchVolume/Apps/"))
+        XCTAssertFalse(ApplicationScanner.isValidCustomDirectory("/Volumes/NoSuch\u{0}Volume/Apps"))
+        XCTAssertFalse(ApplicationScanner.isValidCustomDirectory("/Volumes/NoSuch\nVolume/Apps"))
     }
 }

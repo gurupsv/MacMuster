@@ -176,7 +176,7 @@ final class RefreshCachedIconsTests: XCTestCase {
         // Warm the display cache, as the grid would have before icons arrive.
         _ = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         let versionBefore = library.dataVersion
         await library.loadMissingIcons()
@@ -189,7 +189,7 @@ final class RefreshCachedIconsTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
         XCTAssertNotNil(displayed.first(where: { $0.path == path })?.icon,
             "The warm display result is patched with the icon rather than served stale")
     }

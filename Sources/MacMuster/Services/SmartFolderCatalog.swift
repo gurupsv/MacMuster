@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// The nine smart folders the Smart Folders Wizard can create, keyed by a **stable** raw value
 /// that survives renames and locales. That raw value is what gets stamped onto a folder as its
@@ -209,14 +210,40 @@ extension SmartFolderCategory {
     /// Called from both untrusted-data entry points — `BackupManager.apply` (backup/Launchie
     /// restore) and `PreferencesStore.loadFolders` (UserDefaults load) — so a hand-edited or
     /// tampered key can never reach the live state. Pure and nonisolated, so it is directly testable.
+    ///
+    /// Also guards the folder `id` (SEC-9). `Application.id`/`path` for a folder tile *is* this
+    /// string, and the code relies on it never colliding with a real app path ("real app paths
+    /// always start with `/`, UUIDs never do"). That holds for folders made in-app but not for ones
+    /// decoded from a file: an id of `/Applications/Safari.app`, or two folders sharing an id, made
+    /// tiles share an `Application.id`, an `IconSlot` and a composite-icon cache entry. An id that
+    /// is not UUID-shaped, or repeats an earlier one, is replaced by a UUID derived from it — stable
+    /// across loads, so the result needs no re-save to stay consistent (a random replacement would
+    /// change every launch).
     static func sanitizedFolders(_ folders: [AppFolder]) -> [AppFolder] {
-        folders.map { folder in
-            guard let key = folder.smartCategoryKey, SmartFolderCategory(rawValue: key) == nil else {
-                return folder
-            }
+        var seenIds = Set<String>()
+        return folders.map { folder in
             var cleaned = folder
-            cleaned.smartCategoryKey = nil
+            if let key = folder.smartCategoryKey, SmartFolderCategory(rawValue: key) == nil {
+                cleaned.smartCategoryKey = nil
+            }
+            if UUID(uuidString: folder.id) == nil || seenIds.contains(folder.id) {
+                var attempt = 0
+                var candidate = derivedFolderId(from: folder.id, attempt: attempt)
+                while seenIds.contains(candidate) {
+                    attempt += 1
+                    candidate = derivedFolderId(from: folder.id, attempt: attempt)
+                }
+                cleaned.id = candidate
+            }
+            seenIds.insert(cleaned.id)
             return cleaned
         }
+    }
+
+    private static func derivedFolderId(from id: String, attempt: Int) -> String {
+        let digest = Array(SHA256.hash(data: Data("\(id)#\(attempt)".utf8)))
+        let bytes: uuid_t = (digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
+                             digest[8], digest[9], digest[10], digest[11], digest[12], digest[13], digest[14], digest[15])
+        return UUID(uuid: bytes).uuidString
     }
 }

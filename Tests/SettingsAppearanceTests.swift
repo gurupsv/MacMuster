@@ -20,6 +20,69 @@ final class SettingsAppearanceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "refreshInterval")
     }
 
+    // MARK: - Bulk load applies side effects once (PERF-8)
+
+    private func persistActivationSettings(enabled: Bool) {
+        let store = PreferencesStore.shared
+        store.saveGlobalHotkeyEnabled(enabled)
+        store.saveHotkeyKeyCode(ActivationMetrics.defaultHotkeyKeyCode)
+        store.saveHotkeyModifiers(ActivationMetrics.defaultHotkeyModifiers)
+        store.saveHotCornerEnabled(enabled)
+        store.saveHotCorner(HotCorner.topLeft.rawValue)
+    }
+
+    func testReloadFromPersistenceConfiguresActivationOnce() {
+        persistActivationSettings(enabled: true)
+        defer {
+            persistActivationSettings(enabled: false)
+            let settings = SettingsAppearance()
+            settings.reloadFromPersistence()
+        }
+        let settings = SettingsAppearance()
+        let before = ActivationManager.shared.applyCount
+
+        settings.reloadFromPersistence()
+
+        XCTAssertEqual(ActivationManager.shared.applyCount - before, 1,
+                       "five activation settings were each re-registering the hotkey")
+        XCTAssertTrue(settings.globalHotkeyEnabled)
+        XCTAssertEqual(settings.hotCorner, .topLeft)
+    }
+
+    func testSingleActivationSettingChangeStillAppliesImmediately() {
+        let settings = SettingsAppearance()
+        let before = ActivationManager.shared.applyCount
+        settings.hotCornerEnabled = false
+        settings.hotkeyKeyCode = settings.hotkeyKeyCode
+        XCTAssertEqual(ActivationManager.shared.applyCount - before, 2,
+                       "outside a bulk load each change must still take effect")
+    }
+
+    // MARK: - Hotkey key-code bound (SEC-16)
+
+    func testLoadOutOfRangeHotkeyKeyCodeFallsBackToDefault() {
+        defer { UserDefaults.standard.removeObject(forKey: "hotkeyKeyCode") }
+        for bad in [Int(UInt32.max) + 1, Int.max, -1, 128] {
+            UserDefaults.standard.set(bad, forKey: "hotkeyKeyCode")
+            let settings = SettingsAppearance()
+            XCTAssertEqual(settings.hotkeyKeyCode, ActivationMetrics.defaultHotkeyKeyCode, "\(bad)")
+        }
+    }
+
+    func testLoadInRangeHotkeyKeyCodeIsKept() {
+        defer { UserDefaults.standard.removeObject(forKey: "hotkeyKeyCode") }
+        UserDefaults.standard.set(49, forKey: "hotkeyKeyCode")
+        XCTAssertEqual(SettingsAppearance().hotkeyKeyCode, 49)
+    }
+
+    func testRegisteringOutOfRangeKeyCodeFailsSoftInsteadOfTrapping() {
+        let manager = ActivationManager.shared
+        manager.apply(hotkeyEnabled: true, keyCode: Int.max,
+                      modifiers: ActivationMetrics.defaultHotkeyModifiers, cornerEnabled: false, corner: .topRight)
+        XCTAssertTrue(manager.hotkeyRegistrationFailed)
+        manager.apply(hotkeyEnabled: false, keyCode: 0, modifiers: 0, cornerEnabled: false, corner: .topRight)
+    }
+
     // MARK: - Refresh Interval Clamping (security regression)
 
     /// The Settings picker only ever offers 300/900/1800/3600s. A value outside that range —

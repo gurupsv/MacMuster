@@ -207,6 +207,185 @@ final class FolderTests: XCTestCase {
         XCTAssertEqual(appModel.folders[0].appPaths.count, 2)
     }
 
+    func testMoveAppInFolderRefreshesDisplayedAppsOfOpenFolder() {
+        func app(_ n: String) -> Application {
+            let p = "/Applications/\(n).app"
+            return Application(id: p, name: n, path: p, icon: nil, installationDate: Date(),
+                               isFolder: false, containedApps: nil, bundleDescription: nil)
+        }
+        let library = appModel.library
+        library.setApplications([app("A"), app("B"), app("C")])
+        let source = library.createFolder(name: "Source", appPaths: ["/Applications/A.app", "/Applications/B.app"])!
+        let target = library.createFolder(name: "Target", appPaths: ["/Applications/C.app"])!
+        library.openFolder(source.id)
+        func shown() -> [String] {
+            library.getDisplayedApps(searchTerm: "", showFoldersFirst: false, customOrder: library.customOrder,
+                                     sortOption: library.sortOption, selectedCategory: .all).map(\.name)
+        }
+        XCTAssertEqual(Set(shown()), ["A", "B"])
+
+        library.moveAppInFolder("/Applications/A.app", from: source.id, to: target.id)
+
+        XCTAssertEqual(shown(), ["B"], "A moved out of the open folder must leave the grid (BUG-11)")
+    }
+
+    func testRenameFolderRefreshesFolderTileName() {
+        let library = appModel.library
+        library.setApplications([Application(id: "/Applications/A.app", name: "A", path: "/Applications/A.app", icon: nil,
+                                             installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)])
+        let folder = library.createFolder(name: "Old", appPaths: ["/Applications/A.app"])!
+        func tileNames() -> [String] {
+            library.getDisplayedApps(searchTerm: "", showFoldersFirst: false, customOrder: library.customOrder,
+                                     sortOption: library.sortOption, selectedCategory: .all)
+                .filter(\.isFolder).map(\.name)
+        }
+        _ = tileNames()
+        library.renameFolder(folderId: folder.id, newName: "New")
+        XCTAssertEqual(tileNames(), ["New"])
+    }
+
+    // MARK: - Small redundancies (PERF-21)
+
+    func testOpenAndCloseFolderStillPersistCurrentFolderId() {
+        let library = appModel.library
+        let folder = library.createFolder(name: "F", appPaths: ["/Applications/A.app"])!
+        library.openFolder(folder.id)
+        XCTAssertEqual(PreferencesStore.shared.loadCurrentFolderId(), folder.id)
+        library.closeFolder()
+        XCTAssertNil(PreferencesStore.shared.loadCurrentFolderId())
+    }
+
+    func testToggleHiddenAppLeavesDisplayWarmAndCorrect() {
+        let library = appModel.library
+        library.setApplications(["A", "B"].map {
+            let p = "/Applications/\($0).app"
+            return Application(id: p, name: $0, path: p, icon: nil, installationDate: Date(),
+                               isFolder: false, containedApps: nil, bundleDescription: nil)
+        })
+        func shown() -> [String] {
+            library.getDisplayedApps(searchTerm: "", showFoldersFirst: false, customOrder: library.customOrder,
+                                     sortOption: library.sortOption, selectedCategory: .all).map(\.name)
+        }
+        XCTAssertEqual(shown(), ["A", "B"])
+        library.toggleHiddenApp("/Applications/A.app")
+        XCTAssertNotNil(library.cachedDisplayedApps, "the observer's rebuild must not be thrown away")
+        XCTAssertEqual(shown(), ["B"])
+        library.toggleHiddenApp("/Applications/A.app")
+        XCTAssertEqual(shown(), ["A", "B"])
+    }
+
+    func testSetSortOptionWithNoCustomOrderBumpsOnce() {
+        let library = appModel.library
+        library.customOrder = [:]
+        let before = library.dataVersion
+        library.setSortOption(.installationDate)
+        XCTAssertEqual(library.dataVersion - before, 1)
+    }
+
+    // MARK: - Persistence writes (PERF-9)
+
+    /// Counts writes to the `appFolders` defaults key via KVO.
+    private final class WriteCounter: NSObject {
+        private(set) var count = 0
+        override func observeValue(forKeyPath keyPath: String?, of object: Any?,
+                                   change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
+            count += 1
+        }
+    }
+
+    private func foldersWritten(by action: () -> Void) -> Int {
+        let counter = WriteCounter()
+        UserDefaults.standard.addObserver(counter, forKeyPath: "appFolders", options: [], context: nil)
+        action()
+        UserDefaults.standard.removeObserver(counter, forKeyPath: "appFolders")
+        return counter.count
+    }
+
+    func testFolderEditsPersistOncePerOperation() {
+        let library = appModel.library
+        let a = library.createFolder(name: "A", appPaths: ["/Applications/X.app"])!
+        let b = library.createFolder(name: "B", appPaths: [])!
+
+        XCTAssertEqual(foldersWritten { library.addAppToFolder("/Applications/Y.app", folderId: a.id) }, 1)
+        XCTAssertEqual(foldersWritten { library.removeAppFromFolder("/Applications/Y.app", folderId: a.id) }, 1)
+        XCTAssertEqual(foldersWritten { library.moveAppInFolder("/Applications/X.app", from: a.id, to: b.id) }, 1)
+        XCTAssertEqual(foldersWritten { library.renameFolder(folderId: a.id, newName: "A2") }, 1)
+        XCTAssertEqual(foldersWritten { _ = library.createFolder(name: "C", appPaths: []) }, 1)
+    }
+
+    func testNoOpFolderEditDoesNotPersist() {
+        let library = appModel.library
+        let a = library.createFolder(name: "A", appPaths: ["/Applications/X.app"])!
+        XCTAssertEqual(foldersWritten { library.addAppToFolder("/Applications/X.app", folderId: a.id) }, 0,
+                       "already a member")
+        XCTAssertEqual(foldersWritten { library.addAppToFolder("/Applications/Z.app", folderId: "missing") }, 0)
+    }
+
+    // MARK: - Folder composite icon (BUG-10)
+
+    private func seededLibrary() -> LibraryScanState {
+        let library = appModel.library
+        library.setApplications(["A", "B", "C"].map {
+            let p = "/Applications/\($0).app"
+            return Application(id: p, name: $0, path: p, icon: nil, installationDate: Date(),
+                               isFolder: false, containedApps: nil, bundleDescription: nil)
+        })
+        return library
+    }
+
+    func testRemoveAppFromFolderRefreshesFolderTileIcon() {
+        let library = seededLibrary()
+        let folder = library.createFolder(name: "F", appPaths: ["/Applications/A.app", "/Applications/B.app"])!
+        let slot = library.iconSlot(for: folder.id)
+        let stale = library.getFolderApplication(folder).icon
+        slot.icon = stale
+
+        library.removeAppFromFolder("/Applications/B.app", folderId: folder.id)
+
+        XCTAssertNotNil(slot.icon)
+        XCTAssertFalse(slot.icon === stale, "tile must not keep the composite that still shows the removed app")
+    }
+
+    func testAddAppToFolderRefreshesFolderTileIcon() {
+        let library = seededLibrary()
+        let folder = library.createFolder(name: "F", appPaths: ["/Applications/A.app"])!
+        let slot = library.iconSlot(for: folder.id)
+        let stale = library.getFolderApplication(folder).icon
+        slot.icon = stale
+
+        library.addAppToFolder("/Applications/B.app", folderId: folder.id)
+
+        XCTAssertFalse(slot.icon === stale)
+    }
+
+    func testMoveAppInFolderRefreshesBothFolderTileIcons() {
+        let library = seededLibrary()
+        let source = library.createFolder(name: "S", appPaths: ["/Applications/A.app", "/Applications/B.app"])!
+        let target = library.createFolder(name: "T", appPaths: ["/Applications/C.app"])!
+        let sourceSlot = library.iconSlot(for: source.id)
+        let targetSlot = library.iconSlot(for: target.id)
+        let staleSource = library.getFolderApplication(source).icon
+        let staleTarget = library.getFolderApplication(target).icon
+        sourceSlot.icon = staleSource
+        targetSlot.icon = staleTarget
+
+        library.moveAppInFolder("/Applications/A.app", from: source.id, to: target.id)
+
+        XCTAssertFalse(sourceSlot.icon === staleSource)
+        XCTAssertFalse(targetSlot.icon === staleTarget)
+    }
+
+    func testEmptiedFolderTileIconIsCleared() {
+        let library = seededLibrary()
+        let folder = library.createFolder(name: "F", appPaths: ["/Applications/A.app"])!
+        let slot = library.iconSlot(for: folder.id)
+        slot.icon = library.getFolderApplication(folder).icon
+
+        library.removeAppFromFolder("/Applications/A.app", folderId: folder.id)
+
+        XCTAssertNil(slot.icon)
+    }
+
     // MARK: - Folder Navigation Tests
 
     func testOpenFolderSetsCurrentFolderId() {

@@ -85,13 +85,13 @@ final class LaunchieImporterTests: XCTestCase {
         {
           "folders": {
             "folders": [
-              { "id": "F1", "name": "Games", "apps": [] }
+              { "id": "6F1A2B3C-0000-4000-8000-000000000001", "name": "Games", "apps": [] }
             ]
           },
           "layout": {
             "positions": {
               "/Applications/Safari.app": 3,
-              "folder:F1": 0
+              "folder:6F1A2B3C-0000-4000-8000-000000000001": 0
             }
           }
         }
@@ -103,11 +103,30 @@ final class LaunchieImporterTests: XCTestCase {
             return XCTFail("Expected a valid Launchie export to parse")
         }
 
-        // "folder:F1" becomes the bare folder id — MacMuster's customOrder keys a folder's
+        // "folder:6F1A2B3C-0000-4000-8000-000000000001" becomes the bare folder id — MacMuster's customOrder keys a folder's
         // position by its raw UUID, since a folder's synthetic Application.path *is* its id.
-        XCTAssertEqual(preview.customOrder["F1"], 0)
-        XCTAssertNil(preview.customOrder["folder:F1"])
+        XCTAssertEqual(preview.customOrder["6F1A2B3C-0000-4000-8000-000000000001"], 0)
+        XCTAssertNil(preview.customOrder["folder:6F1A2B3C-0000-4000-8000-000000000001"])
         XCTAssertEqual(preview.customOrder["/Applications/Safari.app"], 3)
+    }
+
+    /// SEC-9: a Launchie folder id that is not UUID-shaped (here an app path) is re-keyed, and the
+    /// layout position that referenced it follows the new id.
+    func testParseRekeysNonUUIDFolderIdAndKeepsItsPosition() {
+        let json = #"""
+        { "folders": { "folders": [ { "id": "/Applications/Safari.app", "name": "Evil", "apps": [] } ] },
+          "layout": { "positions": { "folder:/Applications/Safari.app": 7 } } }
+        """#
+        let url = writeFixture(json)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        guard let preview = LaunchieImporter.shared.parse(from: url) else { return XCTFail("should parse") }
+
+        let id = preview.folders[0].id
+        XCTAssertNotEqual(id, "/Applications/Safari.app")
+        XCTAssertNotNil(UUID(uuidString: id))
+        XCTAssertEqual(preview.customOrder[id], 7)
+        XCTAssertNil(preview.customOrder["/Applications/Safari.app"])
     }
 
     func testParseDropsPositionEntriesForUnknownFolderOrMissingApp() {

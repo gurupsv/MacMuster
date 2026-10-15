@@ -153,6 +153,7 @@ Sources/MacMuster/
     ├── SmartFolderCatalog.swift     # 9 predefined categories (displayName + rawValue) + `sanitizedFolders` untrusted-input guard
     ├── SmartFolderAssigner.swift    # pure 3-tier classifier → `SmartFolderPlan` (bundle ID → vendor → name)
     ├── BundleInfoReader.swift       # off-main `Info.plist` → `BundleInfo` (size-capped, fails soft)
+    ├── BoundedFileReader.swift      # capped `FileHandle` read for user-opened import files (`ImportLimits`)
     ├── SmartFolderPlanBuilder.swift # main-actor build: candidates → bundle read → classify
     ├── SmartFoldersAnimation.swift  # pure "apps grouping" motion math + CPU/thermal/reduce-motion gate
     └── AlertHelper.swift            # NSAlert.showError/showInfo
@@ -164,7 +165,6 @@ Tests/                              # XCTest suites, one file per area
 build_common.sh / create_app_bundle.sh / build_production.sh
 entitlements.plist                  # user-data (SMAppService) + accessibility; NO sandbox
 version.txt                         # Release version — single source of truth
-CODE_REVIEW.md                      # Review ledger with stable finding IDs
 ```
 
 ## Critical invariants
@@ -257,8 +257,9 @@ Exceptions: `ApplicationScanner` and `IconCacheManager` are `nonisolated final c
 ## Security & privacy contract (do not regress)
 
 - **Offline**: no network, no analytics. `PrivacyInfo.xcprivacy` declares UserDefaults-only API access.
-- **Provenance badge**: apps outside `/Applications` and `/System/Applications` (incl. the Preboot/Cryptexes path) are flagged, using the **fully resolved** path (`standardized` + `realpath`).
-- **Scanner hardening**: never follow symlinks, depth ≤ 4, `.app` must contain `Contents/`, dedup by resolved path; custom directories re-validated (absolute, not `/`, normalized, not symlink, not world-writable) before **every** scan, including restored ones.
+- **Provenance badge** (a location heuristic, not verification — `/Applications` is admin-writable, so a planted bundle there reads as trusted; signature/notarization checks are not done): apps outside `/Applications` and `/System/Applications` (incl. the Preboot/Cryptexes path) are flagged, using the **fully resolved** path (`standardized` + `realpath`).
+- **Scanner hardening**: never follow symlinks, depth ≤ 4, `.app` must contain `Contents/`, dedup by resolved path; custom directories re-validated (absolute, not `/` or a reserved root such as `/Users`/`/System`/`/Library` or an ancestor of home, lexically normalized with no control characters — checked even for a not-yet-existing path — not a symlink, not world-writable) before **every** scan, including restored ones.
+- **Import limits** (`ImportLimits`): backup/Launchie files are read through `BoundedFileReader` (≤128 MiB) and rejected if folder/app-path/icon-pack counts exceed the caps (`BackupManager.withinImportLimits`); `restoreIconPack` re-bounds its writes.
 - **Backup hardening**: checksum over payload bytes as written; icon-pack keys whitelisted to 64-char lowercase ASCII hex (+ `.meta`) with a containment check on the resolved write path (SEC-1).
 - **Bounded retention**: launch history ≤ 14 days / 50 entries; badge state age-evicted.
 - **Unsandboxed** app with pre-staged security-scoped bookmarks; always sign with `entitlements.plist`.

@@ -199,7 +199,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         XCTAssertEqual(displayed.count, 3,
             "Empty search should return all visible apps")
@@ -212,7 +212,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "Calc", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         XCTAssertEqual(displayed.count, 1,
             "Search for 'Calc' should match only Calculator")
@@ -225,10 +225,10 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let lowercase = library.getDisplayedApps(
             searchTerm: "calc", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
         let uppercase = library.getDisplayedApps(
             searchTerm: "CALC", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         XCTAssertEqual(lowercase.count, 1)
         XCTAssertEqual(uppercase.count, 1)
@@ -241,7 +241,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "Safari", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         XCTAssertEqual(displayed.count, 2)
         XCTAssertEqual(displayed[0].name, "Safari",
@@ -255,7 +255,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "Calc", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         XCTAssertEqual(displayed.count, 2)
         XCTAssertEqual(displayed[0].name, "Calculator",
@@ -271,7 +271,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "zebr", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         // "zebr" only matches Zebra (as a substring in name)
         XCTAssert(displayed.contains { $0.name == "Zebra" },
@@ -290,7 +290,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: true, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         XCTAssert(displayed.count > 0)
         if displayed.count >= 2 {
@@ -312,7 +312,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: library.customOrder,
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         XCTAssertEqual(displayed.count, 3)
         XCTAssertEqual(displayed[0].name, "App3")
@@ -331,7 +331,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .recentlyLaunched, columnCount: 4)
+            sortOption: .name, selectedCategory: .recentlyLaunched)
 
         XCTAssertEqual(displayed.count, 2)
         if displayed.count >= 2 {
@@ -352,7 +352,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .mostUsed, columnCount: 4)
+            sortOption: .name, selectedCategory: .mostUsed)
 
         XCTAssertEqual(displayed.count, 2)
         if displayed.count >= 1 {
@@ -369,7 +369,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let first = library.getDisplayedApps(
             searchTerm: "test", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         let cachedQuery = library.cachedDisplayedApps?.query
         XCTAssertNotNil(cachedQuery,
@@ -377,7 +377,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let second = library.getDisplayedApps(
             searchTerm: "test", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         XCTAssertEqual(first.count, second.count)
         let cachedQueryAfter = library.cachedDisplayedApps?.query
@@ -391,11 +391,11 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let first = library.getDisplayedApps(
             searchTerm: "test", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         let second = library.getDisplayedApps(
             searchTerm: "other", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         XCTAssertNotEqual(first.count, second.count,
             "Different search terms should produce different results")
@@ -407,14 +407,14 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         _ = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         let versionBefore = library.cachedDisplayedApps?.query.version
         library.dataVersion += 1
 
         _ = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         let versionAfter = library.cachedDisplayedApps?.query.version
         XCTAssertNotEqual(versionBefore, versionAfter,
@@ -429,7 +429,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .system, columnCount: 4)
+            sortOption: .name, selectedCategory: .system)
 
         XCTAssertEqual(displayed.count, 0,
             "Category filter with no matches should return empty")
@@ -441,7 +441,7 @@ final class LibraryScanStateDisplayTests: XCTestCase {
 
         let displayed = library.getDisplayedApps(
             searchTerm: "NotFound", showFoldersFirst: false, customOrder: [:],
-            sortOption: .name, selectedCategory: .all, columnCount: 4)
+            sortOption: .name, selectedCategory: .all)
 
         XCTAssertEqual(displayed.count, 0,
             "Search with no matches should return empty")

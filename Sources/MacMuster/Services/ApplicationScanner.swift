@@ -262,13 +262,10 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         // something the permission/symlink checks below happen to catch.
         guard path != "/" else { return false }
 
-        let fm = FileManager.default
-
-        var isDir: ObjCBool = false
-        let exists = fm.fileExists(atPath: path, isDirectory: &isDir)
-        if exists && !isDir.boolValue { return false }
-        guard exists else { return true }
-
+        // Shape checks come before the existence test (SEC-12): a path that does not exist yet
+        // (an unmounted volume) is allowed, but only if it is well-formed — otherwise `..`,
+        // doubled slashes or control characters passed simply because nothing was there to stat.
+        //
         // Require an already-normalized path: no "..", no trailing or doubled slashes, nothing a
         // null byte truncated. Anything that normalizes to something other than what was passed is
         // refused rather than silently reinterpreted.
@@ -278,7 +275,21 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         // follow them — so it rejected every directory whose **ancestor** happened to be a symlink.
         // On macOS that includes anything under /var (a link to /private/var) and any home behind
         // a link, so ordinary directories were unaddable with no explanation given.
-        guard URL(fileURLWithPath: path).standardizedFileURL.path == path else { return false }
+        guard !path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
+              URL(fileURLWithPath: path).standardizedFileURL.path == path else { return false }
+
+        // A root that is too broad to scan (SEC-6). Only "/" was refused, but `/Users`, `/System`,
+        // `/Library` and the user's own home pass every other check yet make each scan crawl whole
+        // trees — and a restored backup can set this directly. Compared case-insensitively (the
+        // default volume is), and only the root itself: a specific folder inside them is fine.
+        guard !isTooBroadToScan(path) else { return false }
+
+        let fm = FileManager.default
+
+        var isDir: ObjCBool = false
+        let exists = fm.fileExists(atPath: path, isDirectory: &isDir)
+        if exists && !isDir.boolValue { return false }
+        guard exists else { return true }
 
         // Reject a symlink at the path itself — the traversal case actually worth refusing, since
         // that entry can be swapped for a link pointing somewhere else entirely. `.isSymbolicLinkKey`
@@ -294,7 +305,26 @@ nonisolated final class ApplicationScanner: @unchecked Sendable {
         return true
     }
     
-    /// Returns the default scan directories (cached).
+    /// Directories that exist on every Mac and hold far more than apps; scanning one as a custom
+    /// root walks the machine rather than a folder of apps.
+    private static let reservedScanRoots: Set<String> = [
+        "/users", "/system", "/library", "/private", "/volumes",
+        "/bin", "/sbin", "/usr", "/etc", "/var", "/tmp", "/dev", "/opt", "/cores", "/network",
+        "/system/volumes", "/system/volumes/data",
+    ]
+
+    /// True for a reserved system root, or for a strict ancestor of the user's home (`/Users`).
+    /// The home directory itself is deliberately still allowed — adding it is a plausible,
+    /// explicit choice, and an existing test pins it — although the plain-folder walk then goes
+    /// four levels into everything in it.
+    private static func isTooBroadToScan(_ path: String) -> Bool {
+        let lower = path.lowercased()
+        if reservedScanRoots.contains(lower) { return true }
+        return NSHomeDirectory().lowercased().hasPrefix(lower + "/")
+    }
+
+    /// Returns the default scan directories. Not cached: `~/Applications` is included only if it
+    /// exists, and that is re-checked (one `stat`) per scan so creating it mid-session is picked up.
     static var defaultScanDirectories: [String] {
         var paths = [
             "/Applications",

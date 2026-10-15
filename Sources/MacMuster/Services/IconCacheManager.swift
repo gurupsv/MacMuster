@@ -3,6 +3,22 @@ import AppKit
 import CryptoKit
 import UniformTypeIdentifiers
 
+extension Sequence where Element == UInt8 {
+    /// Lowercase hex. A digest is hex-encoded on every cache read, write and delete, and
+    /// `map { String(format: "%02x", $0) }.joined()` made 32 `String(format:)` calls plus an
+    /// intermediate array each time.
+    nonisolated var hexString: String {
+        let digits = Array("0123456789abcdef".utf8)
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(underestimatedCount * 2)
+        for byte in self {
+            bytes.append(digits[Int(byte >> 4)])
+            bytes.append(digits[Int(byte & 0x0f)])
+        }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+}
+
 /// Which light/dark variant an icon was rendered under.
 ///
 /// Resolving the appearance is main-actor work (`NSApp.effectiveAppearance`), but icons are
@@ -296,10 +312,11 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
         }
 
         var results: [CacheEntry] = []
+        let decoder = JSONDecoder()
         for fileURL in contents {
             guard fileURL.pathExtension == "meta" else { continue }
             guard let metaData = try? Data(contentsOf: fileURL),
-                  let entry = try? JSONDecoder().decode(CacheEntry.self, from: metaData) else {
+                  let entry = try? decoder.decode(CacheEntry.self, from: metaData) else {
                 continue
             }
 
@@ -356,9 +373,25 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
 
     /// Deletes cache entries for apps that no longer exist on disk.
     func pruneDeletedApps(currentAppPaths: Set<String>) {
+        pruneDeleted(entries: allCacheEntries(), currentAppPaths: currentAppPaths)
+    }
+
+    /// Prunes uninstalled apps and returns `appearance`'s surviving entries from one enumeration.
+    /// The 6-hourly refresh needs both, and each `allCacheEntries()` call reads and decodes every
+    /// `.meta` file (~900; 32 ms warm / 194 ms cold) — it used to pay that twice, the first time
+    /// on the main actor. Call from a background task.
+    func pruneDeletedApps(currentAppPaths: Set<String>, keepingEntriesFor appearance: IconAppearance)
+        -> [(appPath: String, cachedMtime: Date)] {
+        let entries = allCacheEntries()
+        pruneDeleted(entries: entries, currentAppPaths: currentAppPaths)
+        return entries.filter { $0.appearance == appearance && currentAppPaths.contains($0.appPath) }
+            .map { ($0.appPath, $0.bundleMtime) }
+    }
+
+    private func pruneDeleted(entries: [CacheEntry], currentAppPaths: Set<String>) {
         // Enumerate across *all* appearances, not just the current one — otherwise a deleted
         // app whose only cached variant belongs to the other appearance is never reclaimed.
-        for appPath in allCachedAppPaths() {
+        for appPath in Set(entries.map(\.appPath)) {
             guard !currentAppPaths.contains(appPath) else { continue }
             deleteCacheAllAppearances(for: appPath)
             mtimeCache.removeObject(forKey: appPath as NSString)
@@ -398,7 +431,7 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     /// the variant that was cached for the current appearance.
     func cacheKey(for appPath: String, appearance: IconAppearance) -> String {
         let digest = SHA256.hash(data: Data(variantKey(appPath, appearance: appearance).utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
+        return digest.hexString
     }
 
     /// Deletes every cached appearance variant for an app — used when the app itself is gone.

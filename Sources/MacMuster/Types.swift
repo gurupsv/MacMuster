@@ -93,11 +93,18 @@ struct Application: Identifiable, Hashable {
         return nil
     }
 
-    /// F-1: whether this app lives under one of the two locations macOS reserves for vetted
-    /// installs (`/Applications`, `/System/Applications`). A bundle outside these — including
+    /// F-1: whether this app lives under one of the locations macOS conventionally installs apps
+    /// into (`/Applications`, `/System/Applications`). A bundle outside these — including
     /// `~/Applications` or any user-added custom directory — could be named/iconed to impersonate
     /// a real app, so callers use this to show a provenance warning rather than trusting name/icon
     /// alone. Folders are synthetic (no real install location) and are never flagged.
+    ///
+    /// **This is a location heuristic, not verification** (SEC-5). `/Applications` is group-writable
+    /// by `admin` on stock macOS, so any process running as an admin user can plant an impostor
+    /// there and it will read as trusted; only `/System/Applications` and the cryptex path are
+    /// OS-protected. The badge catches the accidental and the casual (a copy in `~/Applications` or
+    /// a custom folder), not an attacker who already has the user's privileges. Real assurance would
+    /// need code-signature and notarization checks, which this does not perform.
     ///
     /// Checked against `resolvedPath`, not `path`. A prefix test on the raw path is trivially
     /// defeated by the two things it most needs to catch: `/Applications/../tmp/Fake.app` has the
@@ -108,7 +115,9 @@ struct Application: Identifiable, Hashable {
         return Self.trustedLocationPrefixes.contains { resolvedPath.hasPrefix($0) }
     }
 
-    /// Locations macOS reserves for vetted installs, matched against the fully resolved path.
+    /// Locations macOS conventionally installs apps into, matched against the fully resolved path.
+    /// "Trusted" here means *conventional*, not *vetted*: of these only the two `/System` paths are
+    /// protected from modification (see `isFromTrustedLocation`).
     ///
     /// The cryptex entry is not optional cleverness: on current macOS, `/Applications/Safari.app`
     /// resolves to `/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app`, so

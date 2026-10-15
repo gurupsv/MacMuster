@@ -28,7 +28,7 @@ extension LibraryScanState {
     func updateFilteredApps() {
         cachedDisplayedApps = nil
 
-        let displayedApps = getDisplayedApps(searchTerm: navigation?.searchTerm ?? "", showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: customOrder, sortOption: sortOption, selectedCategory: navigation?.selectedCategory ?? .all, columnCount: settings?.columnCount ?? 4)
+        let displayedApps = getDisplayedApps(searchTerm: navigation?.searchTerm ?? "", showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: customOrder, sortOption: sortOption, selectedCategory: navigation?.selectedCategory ?? .all)
         if displayedApps.isEmpty { navigation?.selectedAppIndex = -1 }
 
         refreshCategoryCounts()
@@ -60,7 +60,7 @@ extension LibraryScanState {
 
     // MARK: Display Ordering
 
-    func getDisplayedApps(searchTerm: String, showFoldersFirst: Bool, customOrder: [String: Int], sortOption: ApplicationSorter.SortOption, selectedCategory: AppCategory, columnCount: Int) -> [Application] {
+    func getDisplayedApps(searchTerm: String, showFoldersFirst: Bool, customOrder: [String: Int], sortOption: ApplicationSorter.SortOption, selectedCategory: AppCategory) -> [Application] {
         let query = DisplayQuery(version: dataVersion, searchTerm: searchTerm,
                                  showFoldersFirst: showFoldersFirst, sortOption: sortOption,
                                  selectedCategory: selectedCategory)

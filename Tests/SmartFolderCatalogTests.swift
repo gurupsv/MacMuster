@@ -132,13 +132,41 @@ final class SmartFolderCatalogTests: XCTestCase {
     }
 
     func testSanitizedFoldersLeavesNilKeysAndOtherFieldsAlone() {
-        let folder = AppFolder(id: "fixed-id", name: "Tools", appPaths: ["/Applications/A.app"],
+        let folder = AppFolder(id: "6F1A2B3C-0000-4000-8000-0000000000AA", name: "Tools", appPaths: ["/Applications/A.app"],
                                customIcon: "icon", smartCategoryKey: nil)
         let cleaned = SmartFolderCategory.sanitizedFolders([folder])[0]
         XCTAssertNil(cleaned.smartCategoryKey)
-        XCTAssertEqual(cleaned.id, "fixed-id")
+        XCTAssertEqual(cleaned.id, "6F1A2B3C-0000-4000-8000-0000000000AA")
         XCTAssertEqual(cleaned.name, "Tools")
         XCTAssertEqual(cleaned.appPaths, ["/Applications/A.app"])
         XCTAssertEqual(cleaned.customIcon, "icon")
+    }
+
+    // MARK: - Folder id guard (SEC-9)
+
+    func testSanitizedFoldersRekeysIdThatCollidesWithAnAppPath() {
+        let folder = AppFolder(id: "/Applications/Safari.app", name: "F", appPaths: [])
+        let cleaned = SmartFolderCategory.sanitizedFolders([folder])[0]
+        XCTAssertNotEqual(cleaned.id, "/Applications/Safari.app")
+        XCTAssertNotNil(UUID(uuidString: cleaned.id))
+    }
+
+    func testSanitizedFoldersRekeysDuplicateIdsButKeepsTheFirst() {
+        let id = UUID().uuidString
+        let result = SmartFolderCategory.sanitizedFolders([
+            AppFolder(id: id, name: "A", appPaths: []), AppFolder(id: id, name: "B", appPaths: []),
+            AppFolder(id: id, name: "C", appPaths: [])])
+        XCTAssertEqual(result[0].id, id)
+        XCTAssertEqual(Set(result.map(\.id)).count, 3, "every folder needs a distinct id")
+        XCTAssertEqual(result.map(\.name), ["A", "B", "C"])
+    }
+
+    func testSanitizedFoldersLeavesValidUniqueIdsAndIsStableAcrossCalls() {
+        let ok = AppFolder(name: "ok", appPaths: [])
+        XCTAssertEqual(SmartFolderCategory.sanitizedFolders([ok])[0].id, ok.id)
+        let bad = AppFolder(id: "not-a-uuid", name: "bad", appPaths: [])
+        XCTAssertEqual(SmartFolderCategory.sanitizedFolders([bad])[0].id,
+                       SmartFolderCategory.sanitizedFolders([bad])[0].id,
+                       "re-keying must be deterministic so a reload does not change ids")
     }
 }

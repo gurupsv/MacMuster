@@ -405,7 +405,7 @@ class LibraryScanState {
     func priorityIconLoadOrder() -> [Application] {
         let rootApps = getDisplayedApps(searchTerm: "", showFoldersFirst: settings?.showFoldersFirst ?? false,
                                         customOrder: customOrder, sortOption: sortOption,
-                                        selectedCategory: .all, columnCount: settings?.columnCount ?? 4)
+                                        selectedCategory: .all)
         let visiblePaths = Set(rootApps.prefix(ScanMetrics.priorityIconLoadCount).map(\.path))
         var priorityApps = displayOrder.filter { visiblePaths.contains($0.path) }
         if priorityApps.count < ScanMetrics.priorityIconLoadCount {
@@ -466,6 +466,13 @@ class LibraryScanState {
         return folderIcons
     }
 
+    /// Rebuilds one folder's composite after a membership edit and pushes it to its tile's slot
+    /// (nil when the folder is now empty, so the tile cannot keep drawing the old thumbnails).
+    private func regenerateFolderIcon(folderId: String) {
+        guard let folder = folders.first(where: { $0.id == folderId }) else { return }
+        publishIcon(IconService.shared.refreshFolderIcon(folder, appPathIndex: appPathIndex), for: folderId)
+    }
+
     /// Carries freshly-loaded icons into a warm `getDisplayedApps` result, so a batch of icons
     /// does not cost a full display recompute. Folder tiles are matched by folder id, real apps
     /// by path.
@@ -522,12 +529,13 @@ class LibraryScanState {
         let appPathIndex = self.appPathIndex
         // Resolved here, on the main actor — the detached task below must not read `NSApp`.
         let appearance = IconAppearance.current
-        IconCacheManager.shared.pruneDeletedApps(currentAppPaths: currentPaths)
 
-        // Move directory enumeration to a background task to avoid blocking the main thread
-        // (measured at 32 ms warm / 194 ms cold on disk cache scan).
+        // Pruning and the stale check share one cache enumeration, both off the main actor
+        // (measured at 32 ms warm / 194 ms cold; pruning used to run here first and then
+        // enumerate a second time inside the task).
         let staleApps: [Application] = await Task.detached(priority: .utility) {
-            let cachedApps = IconCacheManager.shared.cachedAppPaths(appearance: appearance)
+            let cachedApps = IconCacheManager.shared.pruneDeletedApps(
+                currentAppPaths: currentPaths, keepingEntriesFor: appearance)
             // `uniquingKeysWith` rather than `uniqueKeysWithValues`: this list is built from
             // whatever .meta files are on disk, and a duplicate path there must degrade to
             // "refresh it once", never trap the process. Keeping the newer mtime makes a
@@ -734,8 +742,9 @@ class LibraryScanState {
 
     func toggleHiddenApp(_ path: String) {
         guard !Self.permanentlyHiddenAppPaths.contains(path) else { return }
+        // No cache reset here: the `hiddenAppPaths` observer already bumps `dataVersion` and
+        // re-warms the display, and clearing afterwards threw that result away.
         if hiddenAppPaths.contains(path) { hiddenAppPaths.remove(path) } else { hiddenAppPaths.insert(path) }
-        cachedDisplayedApps = nil
     }
     func toggleHiddenApp(_ app: Application) { toggleHiddenApp(app.path) }
     func isAppHidden(_ path: String) -> Bool {
@@ -744,7 +753,7 @@ class LibraryScanState {
 
     func setSortOption(_ option: ApplicationSorter.SortOption) {
         sortOption = option
-        customOrder.removeAll()
+        if !customOrder.isEmpty { customOrder.removeAll() }
         displayOrder = sortedApplications(displayOrder)
     }
     func setApplications(_ apps: [Application]) {
@@ -843,36 +852,51 @@ class LibraryScanState {
     func renameFolder(folderId: String, newName: String) {
         FolderStore.shared.renameFolder(folderId: folderId, newName: newName)
         folders = FolderStore.shared.folders
+        invalidateFolderDisplay()
     }
     func addAppToFolder(_ appPath: String, folderId: String) {
         FolderStore.shared.addAppToFolder(appPath, folderId: folderId)
         folders = FolderStore.shared.folders
         rebuildAppPathIndex()
         cachedDisplayedApps = nil
+        regenerateFolderIcon(folderId: folderId)
     }
     func removeAppFromFolder(_ appPath: String, folderId: String) {
         FolderStore.shared.removeAppFromFolder(appPath, folderId: folderId)
         folders = FolderStore.shared.folders
         rebuildAppPathIndex()
         cachedDisplayedApps = nil
+        regenerateFolderIcon(folderId: folderId)
         if folderId == currentFolderId && currentFolder?.appPaths.isEmpty ?? true { currentFolderId = nil }
     }
     func moveAppInFolder(_ appPath: String, from folderId: String, to toFolderId: String) {
         FolderStore.shared.moveAppInFolder(appPath, from: folderId, to: toFolderId)
         folders = FolderStore.shared.folders
+        invalidateFolderDisplay()
+        regenerateFolderIcon(folderId: folderId)
+        regenerateFolderIcon(folderId: toFolderId)
+        if folderId == currentFolderId && currentFolder?.appPaths.isEmpty ?? true { currentFolderId = nil }
+    }
+
+    /// Discards the cached display after a folder edit that `addAppToFolder`/`removeAppFromFolder`
+    /// don't cover. `folders`' observer does not bump `dataVersion`, so without this a move or
+    /// rename left the grid (BUG-11: an app moved out of the open folder stayed on screen) and the
+    /// folder tile's name stale until something unrelated invalidated the cache.
+    private func invalidateFolderDisplay() {
+        dataVersion += 1
+        rebuildAppPathIndex()
+        cachedDisplayedApps = nil
     }
     func moveAppToRoot(_ appPath: String, folderId: String) {
         removeAppFromFolder(appPath, folderId: folderId)
     }
     func openFolder(_ folderId: String) {
-        currentFolderId = folderId
-        PreferencesStore.shared.saveCurrentFolderId(folderId)
+        currentFolderId = folderId  // the observer persists it
         rebuildAppPathIndex()
         cachedDisplayedApps = nil
     }
     func closeFolder() {
-        currentFolderId = nil
-        PreferencesStore.shared.saveCurrentFolderId(nil)
+        currentFolderId = nil  // the observer persists it
         rebuildAppPathIndex()
         cachedDisplayedApps = nil
     }

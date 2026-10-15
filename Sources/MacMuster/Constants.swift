@@ -245,6 +245,23 @@ enum ActivationMetrics {
     static let defaultHotkeyModifiers = (1 << 18) | (1 << 19)
 }
 
+// MARK: - Import Limits
+
+/// Bounds on a backup or Launchie export the user opens (SEC-7). The file is untrusted: without
+/// these a multi-gigabyte file is read whole, and an archive of millions of tiny valid icon keys
+/// creates millions of cache files. Each is a multiple of what a very large real library produces
+/// (a backup with ~900 icons is ~25 MB; a few thousand apps), so a legitimate file never trips one.
+enum ImportLimits {
+    /// Largest file read at all. ~5× a typical full backup with its icon pack.
+    static let maxFileBytes = 128 * 1_048_576
+    static let maxFolders = 2_000
+    /// Applies to each of: total folder members, hidden apps, custom-order entries, known mtimes.
+    static let maxAppPaths = 50_000
+    /// Icon pack files (a PNG plus its `.meta` per app and appearance).
+    static let maxIconPackEntries = 20_000
+    static let maxIconPackBytes = 256 * 1_048_576
+}
+
 // MARK: - Wizard Metrics
 
 enum WizardMetrics {

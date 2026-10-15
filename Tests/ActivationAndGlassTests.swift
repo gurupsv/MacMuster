@@ -238,7 +238,33 @@ final class ActivationAndGlassTests: XCTestCase {
         XCTAssertEqual(PreferencesStore.shared.loadGlassStyle(), "Liquid Glass")
         XCTAssertEqual(PreferencesStore.shared.loadHotkeyKeyCode(), 40)
         XCTAssertEqual(PreferencesStore.shared.loadHotCorner(), "Top Left")
-        XCTAssertTrue(PreferencesStore.shared.loadGlobalHotkeyEnabled())
+        XCTAssertFalse(PreferencesStore.shared.loadGlobalHotkeyEnabled(),
+                       "SEC-8: a restore never switches a system-wide hotkey on")
+    }
+
+    func testRestoreDoesNotRepointAHotkeyThatIsAlreadyLive() async {
+        PreferencesStore.shared.saveGlobalHotkeyEnabled(true)
+        PreferencesStore.shared.saveHotkeyKeyCode(11)
+        let archive = makeArchive(modifiers: ActivationMetrics.defaultHotkeyModifiers, keyCode: 49,
+                                  style: nil, corner: nil)
+        await BackupManager.shared.apply(preview: .init(archive: archive, validAppPaths: [], missingAppPaths: []))
+        XCTAssertEqual(PreferencesStore.shared.loadHotkeyKeyCode(), 11, "live chord must stay as the user set it")
+        XCTAssertTrue(PreferencesStore.shared.loadGlobalHotkeyEnabled(), "an archive saying 'enabled' leaves it enabled")
+    }
+
+    func testRestoreMayTurnTheHotkeyOff() async {
+        PreferencesStore.shared.saveGlobalHotkeyEnabled(true)
+        let base = makeArchive(modifiers: ActivationMetrics.defaultHotkeyModifiers, keyCode: 40, style: nil, corner: nil)
+        let archive = BackupManager.BackupArchive(
+            appFolders: [], customOrder: [:], hiddenAppPaths: [], sortOption: base.sortOption, iconSize: base.iconSize,
+            showFoldersFirst: false, refreshInterval: 900, currentFolderId: nil, customDirectories: [],
+            glowEnabled: true, glowColor: "#ffffff", glowIntensity: 0.3, glowWidth: 40, fontFamily: "SF Pro",
+            fontSize: 14, fontWeight: "normal", pressFeedbackEnabled: true, recentAppsEnabled: true,
+            overlayOpacity: GlowMetrics.overlayOpacityDefault, showInDock: true,
+            globalHotkeyEnabled: false, hotkeyKeyCode: 40, hotkeyModifiers: ActivationMetrics.defaultHotkeyModifiers,
+            icons: BackupManager.IconPack(entries: [:]))
+        await BackupManager.shared.apply(preview: .init(archive: archive, validAppPaths: [], missingAppPaths: []))
+        XCTAssertFalse(PreferencesStore.shared.loadGlobalHotkeyEnabled())
     }
 
     func testRestoreRejectsInvalidShortcutAndUnknownValues() async {

@@ -230,10 +230,17 @@ final class IconService {
                 guard folderAffected else { continue }
             }
 
-            folderIconCache.removeObject(forKey: folder.id as NSString)
-            let apps = folder.appPaths.compactMap { appPathIndex[$0] }
-            regenerated[folder.id] = generateFolderIcon(apps, for: folder.id)
+            regenerated[folder.id] = refreshFolderIcon(folder, appPathIndex: appPathIndex)
         }
         return regenerated
+    }
+
+    /// Drops and rebuilds one folder's composite regardless of which member icons changed. For a
+    /// membership edit: `refreshFolderIcons` selects folders by their *current* members, so it
+    /// cannot see the folder an app was just removed from (BUG-10). Nil for an empty folder.
+    func refreshFolderIcon(_ folder: AppFolder, appPathIndex: [String: Application]) -> NSImage? {
+        folderIconCache.removeObject(forKey: folder.id as NSString)
+        let apps = folder.appPaths.compactMap { appPathIndex[$0] }
+        return generateFolderIcon(apps, for: folder.id)
     }
 }

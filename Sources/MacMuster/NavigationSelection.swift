@@ -39,7 +39,7 @@ class NavigationSelection {
 
     func selectAppUp() {
         guard let library else { return }
-        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory, columnCount: settings?.columnCount ?? 4)
+        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory)
         guard !apps.isEmpty else { return }
         if selectedAppIndex < 0 { selectedAppIndex = 0 }
         else if selectedAppIndex < (settings?.columnCount ?? 4) {
@@ -57,7 +57,7 @@ class NavigationSelection {
 
     func selectAppDown() {
         guard let library else { return }
-        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory, columnCount: settings?.columnCount ?? 4)
+        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory)
         guard !apps.isEmpty else { return }
         if selectedAppIndex < 0 { selectedAppIndex = 0 }
         else if selectedAppIndex >= apps.count - (settings?.columnCount ?? 4) {
@@ -73,7 +73,7 @@ class NavigationSelection {
 
     func selectAppLeft() {
         guard let library else { return }
-        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory, columnCount: settings?.columnCount ?? 4)
+        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory)
         guard !apps.isEmpty else { return }
         if selectedAppIndex < 0 { selectedAppIndex = 0 }
         else if selectedAppIndex % (settings?.columnCount ?? 4) == 0 {
@@ -95,7 +95,7 @@ class NavigationSelection {
 
     func selectAppRight() {
         guard let library else { return }
-        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory, columnCount: settings?.columnCount ?? 4)
+        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory)
         guard !apps.isEmpty else { return }
         if selectedAppIndex < 0 { selectedAppIndex = 0 }
         else if selectedAppIndex % (settings?.columnCount ?? 4) == (settings?.columnCount ?? 4) - 1 {
@@ -119,7 +119,7 @@ class NavigationSelection {
     @discardableResult
     func launchSelectedApp() -> Bool {
         guard let library else { return false }
-        let displayedApps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory, columnCount: settings?.columnCount ?? 4)
+        let displayedApps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory)
         guard selectedAppIndex >= 0, selectedAppIndex < displayedApps.count else { return false }
         let app = displayedApps[selectedAppIndex]
         if app.isFolder, let folderId = app.folderId {
@@ -144,29 +144,29 @@ class NavigationSelection {
 
     func selectFirstApp() {
         guard let library else { selectedAppIndex = -1; return }
-        guard !library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory, columnCount: settings?.columnCount ?? 4).isEmpty else { selectedAppIndex = -1; return }
+        guard !library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory).isEmpty else { selectedAppIndex = -1; return }
         selectedAppIndex = 0
     }
     func selectLastApp() {
         guard let library else { selectedAppIndex = -1; return }
-        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory, columnCount: settings?.columnCount ?? 4)
+        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory)
         selectedAppIndex = apps.count - 1
     }
     func selectNextApp() {
         guard let library else { selectedAppIndex = -1; return }
-        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory, columnCount: settings?.columnCount ?? 4)
+        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory)
         guard !apps.isEmpty else { selectedAppIndex = -1; return }
         selectedAppIndex = (selectedAppIndex + 1) % apps.count
     }
     func selectPreviousApp() {
         guard let library else { selectedAppIndex = -1; return }
-        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory, columnCount: settings?.columnCount ?? 4)
+        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory)
         guard !apps.isEmpty else { selectedAppIndex = -1; return }
         selectedAppIndex = (selectedAppIndex - 1 + apps.count) % apps.count
     }
     func selectApp(at index: Int) {
         guard let library else { return }
-        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory, columnCount: settings?.columnCount ?? 4)
+        let apps = library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: settings?.showFoldersFirst ?? false, customOrder: library.customOrder, sortOption: library.sortOption, selectedCategory: selectedCategory)
         guard index >= 0, index < apps.count else { return }
         selectedAppIndex = index
     }

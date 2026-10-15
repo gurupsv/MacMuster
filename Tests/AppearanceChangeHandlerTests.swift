@@ -89,7 +89,7 @@ final class AppearanceChangeHandlerTests: XCTestCase {
         // Access the displayed apps to populate the cache
         _ = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: [:], sortOption: .name,
-            selectedCategory: .all, columnCount: 4
+            selectedCategory: .all
         )
 
         // After appearance change, the cached display list should be invalidated
@@ -98,7 +98,7 @@ final class AppearanceChangeHandlerTests: XCTestCase {
         // The dataVersion bump should cause the cache to miss next time
         let displayed = library.getDisplayedApps(
             searchTerm: "", showFoldersFirst: false, customOrder: [:], sortOption: .name,
-            selectedCategory: .all, columnCount: 4
+            selectedCategory: .all
         )
         XCTAssertFalse(displayed.isEmpty, "Should still have apps after appearance change")
     }

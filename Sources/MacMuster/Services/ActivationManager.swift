@@ -61,7 +61,12 @@ final class ActivationManager {
     /// Modifier bits a shortcut may use; anything else (caps lock, fn, device flags) is dropped.
     nonisolated static let allowedModifiers: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
 
+    /// How many times `apply` has run. Lets tests pin that a bulk settings load configures
+    /// activation once, not once per setting (PERF-8).
+    @ObservationIgnored private(set) var applyCount = 0
+
     func apply(hotkeyEnabled: Bool, keyCode: Int, modifiers: Int, cornerEnabled: Bool, corner: HotCorner) {
+        applyCount += 1
         unregisterHotkey()
         if hotkeyEnabled {
             registerHotkey(keyCode: keyCode, modifiers: modifiers)
@@ -89,6 +94,11 @@ final class ActivationManager {
         return result
     }
 
+    /// Virtual key codes a shortcut may use. Bounds the stored value before it reaches
+    /// `UInt32(_:)` in `registerHotkey`, which traps on anything out of range (SEC-16); the backup
+    /// restore path applies the same range.
+    nonisolated static let validKeyCodes = 0...127
+
     /// A shortcut must include Command, Option or Control; Shift alone would hijack typing.
     nonisolated static func isValidShortcut(modifiers rawFlags: Int) -> Bool {
         let flags = NSEvent.ModifierFlags(rawValue: UInt(bitPattern: rawFlags))
@@ -96,7 +106,7 @@ final class ActivationManager {
     }
 
     private func registerHotkey(keyCode: Int, modifiers: Int) {
-        guard keyCode >= 0, Self.isValidShortcut(modifiers: modifiers) else {
+        guard Self.validKeyCodes.contains(keyCode), Self.isValidShortcut(modifiers: modifiers) else {
             hotkeyRegistrationFailed = true
             return
         }

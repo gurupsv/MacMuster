@@ -70,7 +70,7 @@ final class CategoryFilterTests: XCTestCase {
     private func displayed(_ category: AppCategory, customOrder: [String: Int] = [:], showFoldersFirst: Bool = false) -> [String] {
         library.getDisplayedApps(searchTerm: "", showFoldersFirst: showFoldersFirst,
                                  customOrder: customOrder, sortOption: .name,
-                                 selectedCategory: category, columnCount: 4).map(\.name)
+                                 selectedCategory: category).map(\.name)
     }
 
     // MARK: - Categories the old `switch` never handled
