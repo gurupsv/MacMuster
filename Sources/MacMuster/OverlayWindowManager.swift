@@ -38,7 +38,10 @@ struct GlowEffectView: View {
                 .overlay(alignment: .leading) { EdgeGlow(edge: .leading, color: color, intensity: intensity, inset: glowInset) }
                 .overlay(alignment: .trailing) { EdgeGlow(edge: .trailing, color: color, intensity: intensity, inset: glowInset) }
                 .allowsHitTesting(false)
-                .drawingGroup(opaque: false)
+                // Deliberately no `.drawingGroup`: it flattened the four strips into one
+                // window-sized offscreen bitmap, which measured ~245 MB at peak at launch (295 MB
+                // vs 49 MB without it) and ~16 MB steady. Four small gradient strips are cheap to
+                // draw directly, and nothing here needs them flattened first.
         }
     }
 }
@@ -205,6 +208,10 @@ class OverlayWindowManager {
     private func applyBackgroundColor() {
         guard let appModel else { return }
         let color: NSColor = switch appModel.presentationMode {
+            // Liquid Glass samples what is behind the window; a near-opaque black window fill under
+            // it would hide exactly that, so it gets a clear window. Simple glass is flat anyway.
+            case .glass where appModel.settings.effectiveGlassStyle == .liquid && !appModel.settings.simpleGlass:
+                NSColor.clear
             case .glass: NSColor.black.withAlphaComponent(appModel.overlayOpacity)
             case .sheet: appModel.settings.tintedBackgroundColor()
         }
@@ -307,6 +314,7 @@ class OverlayWindowManager {
         appModel?.clearSearchState()
         removeCombinedEventMonitor()
         removeDisplayChangeObserver()
+        ActivationManager.shared.overlayDidHide()
     }
     
     private func preferredScreen(for window: NSWindow) -> NSScreen? {

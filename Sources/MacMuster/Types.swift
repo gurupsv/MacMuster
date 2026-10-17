@@ -93,11 +93,18 @@ struct Application: Identifiable, Hashable {
         return nil
     }
 
-    /// F-1: whether this app lives under one of the two locations macOS reserves for vetted
-    /// installs (`/Applications`, `/System/Applications`). A bundle outside these — including
+    /// F-1: whether this app lives under one of the locations macOS conventionally installs apps
+    /// into (`/Applications`, `/System/Applications`). A bundle outside these — including
     /// `~/Applications` or any user-added custom directory — could be named/iconed to impersonate
     /// a real app, so callers use this to show a provenance warning rather than trusting name/icon
     /// alone. Folders are synthetic (no real install location) and are never flagged.
+    ///
+    /// **This is a location heuristic, not verification** (SEC-5). `/Applications` is group-writable
+    /// by `admin` on stock macOS, so any process running as an admin user can plant an impostor
+    /// there and it will read as trusted; only `/System/Applications` and the cryptex path are
+    /// OS-protected. The badge catches the accidental and the casual (a copy in `~/Applications` or
+    /// a custom folder), not an attacker who already has the user's privileges. Real assurance would
+    /// need code-signature and notarization checks, which this does not perform.
     ///
     /// Checked against `resolvedPath`, not `path`. A prefix test on the raw path is trivially
     /// defeated by the two things it most needs to catch: `/Applications/../tmp/Fake.app` has the
@@ -108,7 +115,9 @@ struct Application: Identifiable, Hashable {
         return Self.trustedLocationPrefixes.contains { resolvedPath.hasPrefix($0) }
     }
 
-    /// Locations macOS reserves for vetted installs, matched against the fully resolved path.
+    /// Locations macOS conventionally installs apps into, matched against the fully resolved path.
+    /// "Trusted" here means *conventional*, not *vetted*: of these only the two `/System` paths are
+    /// protected from modification (see `isFromTrustedLocation`).
     ///
     /// The cryptex entry is not optional cleverness: on current macOS, `/Applications/Safari.app`
     /// resolves to `/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app`, so
@@ -190,27 +199,47 @@ struct AppFolder: Codable, Identifiable, Hashable {
     var name: String
     var appPaths: [String]
     var customIcon: String?
+    /// Stable `SmartFolderCategory` raw value stamped by the Smart Folders Wizard, so a folder keeps
+    /// matching across reruns even if the user renames it. `nil` for manually created folders.
+    /// Optional so folders and backups that predate it still decode (synthesized Codable uses
+    /// `decodeIfPresent` for optionals).
+    var smartCategoryKey: String?
     let createdAt: Date
     var modifiedAt: Date
 
     init(id: String = UUID().uuidString,
           name: String,
           appPaths: [String],
-          customIcon: String? = nil) {
+          customIcon: String? = nil,
+          smartCategoryKey: String? = nil) {
         self.id = id
         self.name = name
         self.appPaths = appPaths
         self.customIcon = customIcon
+        self.smartCategoryKey = smartCategoryKey
         self.createdAt = Date()
         self.modifiedAt = Date()
     }
-    
+
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
-    
+
     static func == (lhs: AppFolder, rhs: AppFolder) -> Bool {
         return lhs.id == rhs.id
+    }
+
+    /// Whether two folders describe the same content, as opposed to `==` (which compares `id` only).
+    /// The wizard's undo uses this to decide between restoring the pre-apply snapshot wholesale and
+    /// surgically reverting only what a batch changed — `==` would read "unchanged" after any
+    /// membership edit, because it ignores everything but `id`.
+    func hasSameContent(as other: AppFolder) -> Bool {
+        id == other.id
+            && name == other.name
+            && appPaths == other.appPaths
+            && customIcon == other.customIcon
+            && smartCategoryKey == other.smartCategoryKey
+            && modifiedAt == other.modifiedAt
     }
 }
 

@@ -54,8 +54,11 @@ final class LaunchieImporter {
     /// `BackupManager.restore` — and returned in `missingPaths` so the caller can show them
     /// before the user commits.
     func parse(from url: URL) -> ImportPreview? {
-        guard let data = try? Data(contentsOf: url),
-              let archive = try? JSONDecoder().decode(LaunchieArchive.self, from: data) else {
+        guard let data = BoundedFileReader.read(url, maxBytes: ImportLimits.maxFileBytes),
+              let archive = try? JSONDecoder().decode(LaunchieArchive.self, from: data),
+              archive.folders.folders.count <= ImportLimits.maxFolders,
+              archive.folders.folders.reduce(0, { $0 + $1.apps.count }) <= ImportLimits.maxAppPaths,
+              archive.layout.positions.count <= ImportLimits.maxAppPaths else {
             return nil
         }
 
@@ -77,13 +80,18 @@ final class LaunchieImporter {
         // Grid order: keep an app's slot only if it's still installed, and a folder's slot only
         // if the folder actually made it through the loop above (an id Launchie's own layout
         // references but its folders list doesn't define would otherwise create an orphan entry).
-        let knownFolderIds = Set(folders.map(\.id))
+        // Launchie's ids are untrusted input: re-key any that are not UUID-shaped or repeat
+        // (SEC-9), and translate the layout's references so positions still find their folder.
+        let sanitized = SmartFolderCategory.sanitizedFolders(folders)
+        let idMap = Dictionary(zip(folders.map(\.id), sanitized.map(\.id)), uniquingKeysWith: { first, _ in first })
+        folders = sanitized
+        let knownFolderIds = Set(idMap.keys)
         var customOrder: [String: Int] = [:]
         for (key, position) in archive.layout.positions {
             if key.hasPrefix(Self.folderPositionPrefix) {
                 let folderId = String(key.dropFirst(Self.folderPositionPrefix.count))
                 guard knownFolderIds.contains(folderId) else { continue }
-                customOrder[folderId] = position
+                customOrder[idMap[folderId] ?? folderId] = position
             } else {
                 guard Self.appExists(at: key) else { continue }
                 customOrder[key] = position

@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 @MainActor
 struct ContentView: View {
     @Bindable var appModel: AppModel
-    @State private var hoveredAppPath: String?
     @FocusState private var isSearchFocused: Bool
     @State private var showCreateFolder: Bool = false
     @State private var newFolderName: String = ""
@@ -20,15 +19,11 @@ struct ContentView: View {
     @State private var hasUsedKeyboard: Bool = false
     // Search bar is hidden until the user clicks the search icon or presses /
     @State private var isSearchExpanded: Bool = false
-    @State private var isDraggingAppPath: String? = nil
-    @State private var pressedAppPath: String? = nil
     @State private var showKeyboardHint = false
-    // Grid cells are uniform width (columns are `.flexible()` and split the row evenly), so one
-    // shared width — captured off whichever cell last reported its geometry — is enough to turn a
-    // drop's x-position into a leading/center/trailing zone. Used only at drop time; a stale value
-    // from before a window resize just means a drop this instant is misclassified by a few points,
-    // never wrong app or lost data.
-    @State private var gridCellWidth: CGFloat = 0
+    // Hover, press and drop-target state live in `AppGridCell`, one per cell. They used to be
+    // `@State` here, so every pointer enter/exit re-evaluated this whole body (and, because the
+    // value was read from the `ForEach` content, re-ran the content closure for every
+    // materialized cell). Now a hover change touches only the cell it happens in.
     
     private var gridColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: LayoutMetrics.gridSpacing), count: appModel.columnCount)
@@ -65,7 +60,6 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                let visibleApps = appModel.visibleApplications
                 let displayedApps = appModel.getDisplayedApps()
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -75,7 +69,7 @@ struct ContentView: View {
                         .allowsHitTesting(false)
                     
                     // Keyboard hints pill (shown on first launch, or when Help button is clicked)
-                    if !visibleApps.isEmpty && (!appModel.hasShownLauncher || showKeyboardHint) {
+                    if appModel.library.hasVisibleApplications && (!appModel.hasShownLauncher || showKeyboardHint) {
                         HStack(spacing: 10) {
                             HStack(spacing: 4) {
                                 Image(systemName: "keyboard.fill")
@@ -441,105 +435,68 @@ spacing: LayoutMetrics.gridSpacing
     // MARK: - Grid Item View (Fixes compiler timeout)
     @ViewBuilder
     private func gridItemView(app: Application, isSelected: Bool) -> some View {
-        let isDropTarget = isDraggingAppPath == app.path
-        let isPressed = pressedAppPath == app.path
-        let isLaunching = appModel.launchingAppPath == app.path
-
-        AppIconView(
+        AppGridCell(
             appModel: appModel,
             app: app,
-            isHovered: hoveredAppPath == app.path || isDropTarget,
             isSelected: isSelected,
-            isPressed: (isDropTarget || isPressed) && appModel.pressFeedbackEnabled,
-            feedbackEnabled: appModel.pressFeedbackEnabled
+            accessibilityText: { accessibilityLabel(for: $0) },
+            onTap: { handleAppTap(app) },
+            onDrop: { items, location, cellWidth in
+                acceptDrop(items, at: location, cellWidth: cellWidth, onto: app)
+            },
+            selectedAppPathsForFolder: $selectedAppPathsForFolder,
+            newFolderName: $newFolderName,
+            showCreateFolder: $showCreateFolder
         )
-        .id(app.path)
-        .accessibilityLabel(accessibilityLabel(for: app))
-        .accessibilityAddTraits(.isButton)
-        .scaleEffect(isLaunching ? 0.95 : 1.0)
-        .opacity(isLaunching ? 0.7 : 1.0)
-        .animation(appModel.shouldReduceMotion ? .none : .easeInOut(duration: 0.2), value: isLaunching)
-        .overlay(
-            PressTracker(pressedAppPath: $pressedAppPath, appPath: app.path)
-        )
-        .onTapGesture {
-            handleAppTap(app)
-        }
-        .contextMenu { AppContextMenu(appModel: appModel, app: app, selectedAppPathsForFolder: $selectedAppPathsForFolder, newFolderName: $newFolderName, showCreateFolder: $showCreateFolder) }
-        // Reports this cell's width so a later drop's x-position can be read as a fraction of the
-        // cell rather than raw points — `.background` keeps it out of layout and off the icon's
-        // own hit-testing, and it sits before `.draggable`/`.dropDestination` below so it measures
-        // the exact frame `location` in that drop closure is relative to.
-        .background(
-            GeometryReader { geo in
-                Color.clear
-                    .onAppear { gridCellWidth = geo.size.width }
-                    .onChange(of: geo.size.width) { _, newWidth in gridCellWidth = newWidth }
-            }
-        )
-        .draggable(app.path)
-        .dropDestination(for: String.self) { items, location in
-            guard let droppedPath = items.first else { return false }
+    }
 
-            guard canReorderByDragging else {
-                // Search results and the history tabs (Most Used, Recently Launched) don't have a
-                // stable position to record, and a category filter like "System" would otherwise
-                // persist positions computed from a partial app list, corrupting the full order
-                // the next time "All" is shown. Inside a folder there's nothing sensible to fall
-                // back to either — folders can't nest, so the merge sheet below would only offer a
-                // disabled confirm button — so the drop is simply declined rather than accepted
-                // into a dead end. At the root, the merge-into-folder gesture still works exactly
-                // as before.
-                guard appModel.currentFolderId == nil else { return false }
-                handleDrop(of: droppedPath, onto: app)
-                return true
-            }
+    /// Handles something dropped on `app`'s cell: a reorder next to it, or a merge into a folder.
+    /// `cellWidth` turns the drop's x-position into a leading/centre/trailing zone.
+    private func acceptDrop(_ items: [String], at location: CGPoint, cellWidth: CGFloat, onto app: Application) -> Bool {
 
-            // Folders are flat — an open folder's contents can never include another folder icon
-            // (see FolderStore.appsInFolder) — so there's no merge gesture to reserve a center
-            // zone for in here. Every drop reorders, split at the midpoint instead of the root
-            // grid's narrower edge thirds, since a wide reorder target is strictly more usable
-            // once merging isn't competing for the same gesture.
-            if appModel.currentFolderId != nil {
-                let fraction = gridCellWidth > 0 ? location.x / gridCellWidth : 0.5
-                let side: ApplicationSorter.ReorderSide = fraction < 0.5 ? .before : .after
-                handleReorderDrop(of: droppedPath, relativeTo: app, side: side)
-                return true
-            }
+        guard let droppedPath = items.first else { return false }
 
-            if gridCellWidth > 0 {
-                switch ApplicationSorter.dropZone(forXFraction: location.x / gridCellWidth) {
-                case .leadingEdge:
-                    handleReorderDrop(of: droppedPath, relativeTo: app, side: .before)
-                    return true
-                case .trailingEdge:
-                    handleReorderDrop(of: droppedPath, relativeTo: app, side: .after)
-                    return true
-                case .center:
-                    break
-                }
-            }
-
+        guard canReorderByDragging else {
+            // Search results and the history tabs (Most Used, Recently Launched) don't have a
+            // stable position to record, and a category filter like "System" would otherwise
+            // persist positions computed from a partial app list, corrupting the full order
+            // the next time "All" is shown. Inside a folder there's nothing sensible to fall
+            // back to either — folders can't nest, so the merge sheet below would only offer a
+            // disabled confirm button — so the drop is simply declined rather than accepted
+            // into a dead end. At the root, the merge-into-folder gesture still works exactly
+            // as before.
+            guard appModel.currentFolderId == nil else { return false }
             handleDrop(of: droppedPath, onto: app)
             return true
-        } isTargeted: { isTargeted in
-            if isTargeted {
-                isDraggingAppPath = app.path
-            } else {
-                isDraggingAppPath = nil
+        }
+
+        // Folders are flat — an open folder's contents can never include another folder icon
+        // (see FolderStore.appsInFolder) — so there's no merge gesture to reserve a center
+        // zone for in here. Every drop reorders, split at the midpoint instead of the root
+        // grid's narrower edge thirds, since a wide reorder target is strictly more usable
+        // once merging isn't competing for the same gesture.
+        if appModel.currentFolderId != nil {
+            let fraction = cellWidth > 0 ? location.x / cellWidth : 0.5
+            let side: ApplicationSorter.ReorderSide = fraction < 0.5 ? .before : .after
+            handleReorderDrop(of: droppedPath, relativeTo: app, side: side)
+            return true
+        }
+
+        if cellWidth > 0 {
+            switch ApplicationSorter.dropZone(forXFraction: location.x / cellWidth) {
+            case .leadingEdge:
+                handleReorderDrop(of: droppedPath, relativeTo: app, side: .before)
+                return true
+            case .trailingEdge:
+                handleReorderDrop(of: droppedPath, relativeTo: app, side: .after)
+                return true
+            case .center:
+                break
             }
         }
-        // .onHover must come after .draggable/.dropDestination — on macOS, a drag-enabled view's
-        // mouse-tracking setup otherwise suppresses the plain (non-drag) hover callback, which is
-        // why regular grid icons weren't highlighting on hover while the (non-draggable) Recent
-        // strip icons, using the same AppIconView, highlighted correctly.
-        .onHover { isHovered in
-            hoveredAppPath = isHovered ? app.path : nil
-        }
-        // Same reasoning applies to .help(): a tooltip set inside AppIconView would be nested
-        // inside .draggable/.dropDestination above and wouldn't reliably show. Applied here,
-        // outside drag support, instead — carries the name plus the F-1 provenance warning, if any.
-        .help(app.provenanceWarning.map { "\(app.name) — \($0)" } ?? app.name)
+
+        handleDrop(of: droppedPath, onto: app)
+        return true
     }
 
     /// The spoken description of one grid cell, including any status the badges convey visually.
@@ -557,10 +514,12 @@ spacing: LayoutMetrics.gridSpacing
         }
 
         var description = String(localized: "\(app.name), application")
-        if appModel.runningAppPaths.contains(app.path) {
+        // Read from the app's own slot, so only this cell depends on its own status.
+        let slot = appModel.library.iconSlot(for: app.path)
+        if slot.isRunning {
             description += String(localized: ", running")
         }
-        if appModel.recentlyUpdatedPaths.contains(app.path) {
+        if slot.isRecentlyUpdated {
             description += String(localized: ", recently updated")
         }
         if let warning = app.provenanceWarning {
@@ -754,48 +713,130 @@ struct FocusableButtonStyle: ButtonStyle {
 /// Switches to solid opaque background when presentationMode is Sheet.
 struct VisualEffectBackground: NSViewRepresentable {
     let appModel: AppModel
-    
+
+    /// Which AppKit views the current settings call for. Only a change in *this* needs the view
+    /// tree rebuilt; everything else (the tint colour, its strength, the opacity feeding a sheet's
+    /// colour) is a property of views that already exist and is updated in place.
+    ///
+    /// `updateNSView` used to rebuild unconditionally. It runs whenever any setting it reads
+    /// changes, so each tick of the tint or opacity slider destroyed and recreated an
+    /// `NSVisualEffectView` / `NSGlassEffectView` — a GPU-backed blur — instead of recolouring a
+    /// layer.
+    struct Structure: Equatable {
+        enum Content: Equatable {
+            case lowGpuGlass, liquidGlass, classicGlass, sheet
+        }
+        let content: Content
+        /// Glass only: whether a tint layer sits above the material.
+        let hasTint: Bool
+    }
+
+    final class Coordinator {
+        var structure: Structure?
+    }
+
+    private static let tintIdentifier = NSUserInterfaceItemIdentifier("MacMuster.tint")
+
+    /// The tint, as a real view stacked above the material. It used to be a bare `CALayer` added to
+    /// the container's layer, and a hand-added sublayer is not reliably composited above the layers
+    /// of the subviews AppKit manages — at full strength the tint drew nothing at all. A view's
+    /// position in `subviews` is its stacking order. Clicks pass through it.
+    private final class TintView: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeNSView(context: Context) -> NSView {
-        buildView()
+        let container = NSView(frame: .zero)
+        container.wantsLayer = true
+        apply(to: container, coordinator: context.coordinator)
+        return container
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        nsView.subviews.forEach { $0.removeFromSuperview() }
-        let replacement = buildView()
-        replacement.frame = nsView.bounds
-        replacement.autoresizingMask = [.width, .height]
-        nsView.addSubview(replacement)
+        apply(to: nsView, coordinator: context.coordinator)
     }
 
-    private func buildView() -> NSView {
+    private var structure: Structure {
         switch appModel.presentationMode {
+        case .sheet:
+            return Structure(content: .sheet, hasTint: false)
         case .glass:
-            let parent = NSView(frame: .zero)
-            parent.wantsLayer = true
-            
+            let settings = appModel.settings
+            let content: Structure.Content
+            if settings.simpleGlass {
+                content = .lowGpuGlass
+            } else if #available(macOS 26.0, *), settings.effectiveGlassStyle == .liquid {
+                content = .liquidGlass
+            } else {
+                content = .classicGlass
+            }
+            return Structure(content: content, hasTint: appModel.tintStrength > 0)
+        }
+    }
+
+    private func apply(to container: NSView, coordinator: Coordinator) {
+        let wanted = structure
+        if coordinator.structure != wanted {
+            rebuild(container, as: wanted)
+            coordinator.structure = wanted
+        }
+        refreshColors(in: container, for: wanted)
+    }
+
+    /// Replaces the container's contents with the views `structure` calls for.
+    private func rebuild(_ container: NSView, as structure: Structure) {
+        container.subviews.forEach { $0.removeFromSuperview() }
+        container.layer?.backgroundColor = nil
+
+        switch structure.content {
+        case .sheet:
+            break // An opaque fill on the container's own layer; `refreshColors` sets the colour.
+        case .lowGpuGlass:
+            // Low-GPU: an inactive, in-window material is a flat fill that still follows
+            // light/dark; the live behind-window blur is what costs GPU every frame.
+            let flat = NSVisualEffectView()
+            flat.material = .fullScreenUI
+            flat.blendingMode = .withinWindow
+            flat.state = .inactive
+            add(flat, to: container)
+        case .liquidGlass:
+            if #available(macOS 26.0, *) {
+                let glass = NSGlassEffectView()
+                glass.style = .clear
+                glass.cornerRadius = 0
+                add(glass, to: container)
+            }
+        case .classicGlass:
             let visualEffect = NSVisualEffectView()
             visualEffect.material = .fullScreenUI
             visualEffect.blendingMode = .behindWindow
             visualEffect.state = .active
-            visualEffect.autoresizingMask = [.width, .height]
-            parent.addSubview(visualEffect)
-            
-            if appModel.tintStrength > 0 {
-                let tintColor = appModel.settings.tintedBackgroundColor()
-                let tintLayer = CALayer()
-                tintLayer.backgroundColor = tintColor.cgColor
-                tintLayer.frame = parent.bounds
-                tintLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
-                parent.layer?.addSublayer(tintLayer)
-            }
-            
-            return parent
-        case .sheet:
-            let view = NSView(frame: .zero)
-            let bgColor = appModel.settings.tintedBackgroundColor()
-            view.wantsLayer = true
-            view.layer?.backgroundColor = bgColor.cgColor
-            return view
+            add(visualEffect, to: container)
+        }
+
+        if structure.hasTint {
+            let tint = TintView()
+            tint.identifier = Self.tintIdentifier
+            tint.wantsLayer = true
+            add(tint, to: container) // Added last: above the material.
+        }
+    }
+
+    private func add(_ material: NSView, to container: NSView) {
+        material.frame = container.bounds
+        material.autoresizingMask = [.width, .height]
+        container.addSubview(material)
+    }
+
+    /// Sets the colours that vary without changing which views exist.
+    private func refreshColors(in container: NSView, for structure: Structure) {
+        let color = appModel.settings.tintedBackgroundColor().cgColor
+        if structure.content == .sheet {
+            container.layer?.backgroundColor = color
+        } else if structure.hasTint {
+            container.subviews.first { $0.identifier == Self.tintIdentifier }?.layer?.backgroundColor = color
         }
     }
 }
@@ -852,7 +893,7 @@ struct AppIconView: View {
             // via any public macOS API, so this badge is the buildable interpretation of "patching".
             // `monochrome` + a single accent color matches the provenance badge's rendering mode.
             .overlay(alignment: .topLeading) {
-                if appModel.recentlyUpdatedPaths.contains(app.path) {
+                if appModel.library.iconSlot(for: app.path).isRecentlyUpdated {
                     // A white copy of the glyph rendered slightly larger behind the accent-color
                     // one fakes an outline/stroke — SF Symbols have no native border modifier —
                     // matching the running dot's white ring for legibility on colored app icons.
@@ -943,7 +984,7 @@ struct AppIconView: View {
         // Green is the conventional "running/online" color; on a colored app icon it stays
         // legible at small sizes without a ring.
         .overlay(alignment: .bottomLeading) {
-            if appModel.runningAppPaths.contains(app.path) {
+            if appModel.library.iconSlot(for: app.path).isRunning {
                 Circle()
                     .fill(Color.green)
                     .frame(width: runningDotSize, height: runningDotSize)
@@ -1061,8 +1102,7 @@ private class PressTrackingView: NSView {
 /// Place as an overlay on a view to track its pressed state
 /// without breaking .draggable or .onTapGesture.
 private struct PressTracker: NSViewRepresentable {
-    @Binding var pressedAppPath: String?
-    let appPath: String
+    @Binding var isPressed: Bool
 
     func makeNSView(context: Context) -> PressTrackingView {
         let view = PressTrackingView()
@@ -1079,21 +1119,101 @@ private struct PressTracker: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(pressedAppPath: $pressedAppPath, appPath: appPath)
+        Coordinator(isPressed: $isPressed)
     }
 
     class Coordinator: NSObject {
-        @Binding var pressedAppPath: String?
-        let appPath: String
+        @Binding var isPressed: Bool
 
-        init(pressedAppPath: Binding<String?>, appPath: String) {
-            _pressedAppPath = pressedAppPath
-            self.appPath = appPath
+        init(isPressed: Binding<Bool>) {
+            _isPressed = isPressed
         }
 
         func setPressed(_ pressed: Bool) {
-            pressedAppPath = pressed ? appPath : nil
+            isPressed = pressed
         }
+    }
+}
+
+/// One cell of the app grid, owning its own hover / press / drop-target state.
+///
+/// That state used to be `@State` on `ContentView`, shared by every cell: each pointer enter or exit
+/// re-evaluated `ContentView.body` and the `ForEach` content for all materialized cells. Held here,
+/// a hover change re-evaluates only this cell. Everything that needs `ContentView` — the tap action,
+/// the drop handling, the sheet bindings — comes in as a closure or binding.
+private struct AppGridCell: View {
+    let appModel: AppModel
+    let app: Application
+    let isSelected: Bool
+    let accessibilityText: (Application) -> String
+    let onTap: () -> Void
+    /// Called with the dropped items, the drop location, and this cell's width.
+    let onDrop: ([String], CGPoint, CGFloat) -> Bool
+    @Binding var selectedAppPathsForFolder: [String]
+    @Binding var newFolderName: String
+    @Binding var showCreateFolder: Bool
+
+    @State private var isHovered = false
+    @State private var isPressed = false
+    @State private var isDropTarget = false
+    // Grid cells are uniform width (columns are `.flexible()` and split the row evenly), so this
+    // cell's own width is what turns a drop's x-position into a leading/center/trailing zone. Used
+    // only at drop time; a stale value from before a window resize just means a drop this instant
+    // is misclassified by a few points, never wrong app or lost data.
+    @State private var cellWidth: CGFloat = 0
+
+    var body: some View {
+        let isLaunching = appModel.launchingAppPath == app.path
+
+        AppIconView(
+            appModel: appModel,
+            app: app,
+            isHovered: isHovered || isDropTarget,
+            isSelected: isSelected,
+            isPressed: (isDropTarget || isPressed) && appModel.pressFeedbackEnabled,
+            feedbackEnabled: appModel.pressFeedbackEnabled
+        )
+        .id(app.path)
+        .accessibilityLabel(accessibilityText(app))
+        .accessibilityAddTraits(.isButton)
+        .scaleEffect(isLaunching ? 0.95 : 1.0)
+        .opacity(isLaunching ? 0.7 : 1.0)
+        .animation(appModel.shouldReduceMotion ? .none : .easeInOut(duration: 0.2), value: isLaunching)
+        .overlay(
+            PressTracker(isPressed: $isPressed)
+        )
+        .onTapGesture {
+            onTap()
+        }
+        .contextMenu { AppContextMenu(appModel: appModel, app: app, selectedAppPathsForFolder: $selectedAppPathsForFolder, newFolderName: $newFolderName, showCreateFolder: $showCreateFolder) }
+        // Reports this cell's width so a later drop's x-position can be read as a fraction of the
+        // cell rather than raw points — `.background` keeps it out of layout and off the icon's
+        // own hit-testing, and it sits before `.draggable`/`.dropDestination` below so it measures
+        // the exact frame `location` in that drop closure is relative to.
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { cellWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, newWidth in cellWidth = newWidth }
+            }
+        )
+        .draggable(app.path)
+        .dropDestination(for: String.self) { items, location in
+            onDrop(items, location, cellWidth)
+        } isTargeted: { isTargeted in
+            isDropTarget = isTargeted
+        }
+        // .onHover must come after .draggable/.dropDestination — on macOS, a drag-enabled view's
+        // mouse-tracking setup otherwise suppresses the plain (non-drag) hover callback, which is
+        // why regular grid icons weren't highlighting on hover while the (non-draggable) Recent
+        // strip icons, using the same AppIconView, highlighted correctly.
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        // Same reasoning applies to .help(): a tooltip set inside AppIconView would be nested
+        // inside .draggable/.dropDestination above and wouldn't reliably show. Applied here,
+        // outside drag support, instead — carries the name plus the F-1 provenance warning, if any.
+        .help(app.provenanceWarning.map { "\(app.name) — \($0)" } ?? app.name)
     }
 }
 

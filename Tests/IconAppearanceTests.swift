@@ -118,6 +118,32 @@ final class IconAppearanceTests: XCTestCase {
         }
     }
 
+    /// PERF-7: the refresh prunes and lists stale candidates from a single enumeration.
+    func testCombinedPruneReturnsSurvivorsForAppearanceOnly() throws {
+        try requireCalculator()
+        IconCacheManager.shared.cacheIcon(swatch(.blue), for: calculator, appearance: .light)
+        IconCacheManager.shared.cacheIcon(swatch(.blue), for: calculator, appearance: .dark)
+
+        let kept = IconCacheManager.shared.pruneDeletedApps(
+            currentAppPaths: [calculator], keepingEntriesFor: .light)
+
+        XCTAssertEqual(kept.map(\.appPath), [calculator], "one entry per path, for the requested appearance")
+        XCTAssertNotNil(IconCacheManager.shared.cachedIcon(for: calculator, appearance: .dark),
+            "a surviving app's other variant must not be pruned")
+    }
+
+    func testCombinedPruneReclaimsDeletedAppAndReturnsNothingForIt() throws {
+        try requireCalculator()
+        IconCacheManager.shared.cacheIcon(swatch(.blue), for: calculator, appearance: .light)
+        IconCacheManager.shared.cacheIcon(swatch(.blue), for: calculator, appearance: .dark)
+
+        let kept = IconCacheManager.shared.pruneDeletedApps(
+            currentAppPaths: [], keepingEntriesFor: .light)
+
+        XCTAssertTrue(kept.isEmpty)
+        XCTAssertFalse(IconCacheManager.shared.allCachedAppPaths().contains(calculator))
+    }
+
     // MARK: - Rasterization Honors the Requested Appearance
 
     /// The decode must render the appearance it is told to, not the one the drawing thread

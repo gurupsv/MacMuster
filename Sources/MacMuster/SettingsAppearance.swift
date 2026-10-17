@@ -24,7 +24,7 @@ class SettingsAppearance {
     var launchMode: LaunchMode = .window {
         didSet {
             PreferencesStore.shared.saveLaunchMode(launchMode)
-            OverlayWindowManager.shared.applyCurrentMode()
+            applyLaunchModeIfLive()
         }
     }
     var glowEnabled: Bool = true {
@@ -52,7 +52,7 @@ class SettingsAppearance {
             if overlayOpacity < GlowMetrics.overlayOpacityMin { overlayOpacity = GlowMetrics.overlayOpacityMin }
             if overlayOpacity > GlowMetrics.overlayOpacityMax { overlayOpacity = GlowMetrics.overlayOpacityMax }
             PreferencesStore.shared.saveOverlayOpacity(overlayOpacity)
-            OverlayWindowManager.shared.refreshAppearance()
+            refreshOverlayIfLive()
         }
     }
     var showRecentApps: Bool = true {
@@ -119,14 +119,72 @@ class SettingsAppearance {
     var presentationMode: PresentationMode = .glass {
         didSet {
             PreferencesStore.shared.savePresentationMode(presentationMode.rawValue)
-            OverlayWindowManager.shared.refreshAppearance()
+            refreshOverlayIfLive()
         }
+    }
+
+    /// Which material the Glass presentation uses. `liquid` needs macOS 26; older systems (and a
+    /// restored backup naming it) fall back to `classic` at draw time via `effectiveGlassStyle`.
+    enum GlassStyle: String, CaseIterable {
+        case classic = "Classic"
+        case liquid = "Liquid Glass"
+
+        static var liquidGlassAvailable: Bool {
+            if #available(macOS 26.0, *) { return true }
+            return false
+        }
+    }
+
+    var glassStyle: GlassStyle = .classic {
+        didSet {
+            PreferencesStore.shared.saveGlassStyle(glassStyle.rawValue)
+            refreshOverlayIfLive()
+        }
+    }
+
+    var effectiveGlassStyle: GlassStyle {
+        glassStyle == .liquid && GlassStyle.liquidGlassAvailable ? .liquid : .classic
+    }
+
+    /// Low-GPU glass: drops the live behind-window blur for a flat material, which is what costs
+    /// GPU time on every frame the launcher is open (and on every display it covers).
+    var simpleGlass: Bool = false {
+        didSet {
+            PreferencesStore.shared.saveSimpleGlass(simpleGlass)
+            refreshOverlayIfLive()
+        }
+    }
+
+    // MARK: Activation
+
+    var globalHotkeyEnabled: Bool = false {
+        didSet { PreferencesStore.shared.saveGlobalHotkeyEnabled(globalHotkeyEnabled); syncActivation() }
+    }
+    var hotkeyKeyCode: Int = ActivationMetrics.defaultHotkeyKeyCode {
+        didSet { PreferencesStore.shared.saveHotkeyKeyCode(hotkeyKeyCode); syncActivation() }
+    }
+    var hotkeyModifiers: Int = ActivationMetrics.defaultHotkeyModifiers {
+        didSet { PreferencesStore.shared.saveHotkeyModifiers(hotkeyModifiers); syncActivation() }
+    }
+    var hotCornerEnabled: Bool = false {
+        didSet { PreferencesStore.shared.saveHotCornerEnabled(hotCornerEnabled); syncActivation() }
+    }
+    var hotCorner: HotCorner = .topRight {
+        didSet { PreferencesStore.shared.saveHotCorner(hotCorner.rawValue); syncActivation() }
+    }
+
+    private func syncActivation() {
+        guard !isLoadingPersistence else { return }
+        ActivationManager.shared.apply(
+            hotkeyEnabled: globalHotkeyEnabled, keyCode: hotkeyKeyCode, modifiers: hotkeyModifiers,
+            cornerEnabled: hotCornerEnabled, corner: hotCorner
+        )
     }
 
     var tintColor: Color = .blue {
         didSet {
             PreferencesStore.shared.saveTintColor(getHexColorValue())
-            OverlayWindowManager.shared.refreshAppearance()
+            refreshOverlayIfLive()
         }
     }
 
@@ -135,8 +193,25 @@ class SettingsAppearance {
             if tintStrength < 0 { tintStrength = 0 }
             if tintStrength > 1 { tintStrength = 1 }
             PreferencesStore.shared.saveTintStrength(tintStrength)
-            OverlayWindowManager.shared.refreshAppearance()
+            refreshOverlayIfLive()
         }
+    }
+
+    /// True while `reloadFromPersistence` is assigning values it just read. Those assignments trip
+    /// `didSet`s whose side effects (hotkey re-registration, overlay restyle) would each run once
+    /// per setting — ~5 Carbon unregister/register round trips and 7 window restyles per load,
+    /// which on a restore with the overlay visible really happened on the main actor. The effects
+    /// are suppressed here and applied once at the end of the load instead.
+    @ObservationIgnored private var isLoadingPersistence = false
+
+    private func refreshOverlayIfLive() {
+        guard !isLoadingPersistence else { return }
+        OverlayWindowManager.shared.refreshAppearance()
+    }
+
+    private func applyLaunchModeIfLive() {
+        guard !isLoadingPersistence else { return }
+        OverlayWindowManager.shared.applyCurrentMode()
     }
 
     init() {
@@ -148,9 +223,10 @@ class SettingsAppearance {
     /// Used by `init`, and again after a backup restore: `BackupManager.apply` writes straight to
     /// `PreferencesStore`, so without this the restored values sat on disk while the running app
     /// kept showing the old ones until relaunch. Each assignment trips its own `didSet`, which
-    /// re-saves the value just read — harmless, and it keeps `launchMode`'s side effect of
-    /// re-applying the window mode, which a restore wants anyway.
+    /// re-saves the value just read (cheap, and it persists clamped values). Window and hotkey side
+    /// effects are held back and run once at the end — a restore wants the window mode re-applied.
     func reloadFromPersistence() {
+        isLoadingPersistence = true
         loadPersistedPreferences()
         showRecentApps = PreferencesStore.shared.loadRecentAppsEnabled()
         pressFeedbackEnabled = PreferencesStore.shared.loadPressFeedbackEnabled()
@@ -161,6 +237,10 @@ class SettingsAppearance {
             launchAnimationDirection = LaunchAnimationDirection(rawValue: dirRaw) ?? .zoomOut
         }
         launchAnimationEnabled = PreferencesStore.shared.loadLaunchAnimationEnabled()
+        isLoadingPersistence = false
+        syncActivation()
+        OverlayWindowManager.shared.refreshAppearance()
+        OverlayWindowManager.shared.applyCurrentMode()
     }
 
     private func loadPersistedPreferences() {
@@ -185,6 +265,17 @@ class SettingsAppearance {
         if let modeRaw = PreferencesStore.shared.loadPresentationMode() { presentationMode = PresentationMode(rawValue: modeRaw) ?? .glass }
         if let tintHex = PreferencesStore.shared.loadTintColor() { tintColor = parseColor(from: tintHex) }
         if let strengthRaw = PreferencesStore.shared.loadTintStrength() { tintStrength = max(0, min(1, strengthRaw)) }
+        if let styleRaw = PreferencesStore.shared.loadGlassStyle() { glassStyle = GlassStyle(rawValue: styleRaw) ?? .classic }
+        simpleGlass = PreferencesStore.shared.loadSimpleGlass()
+        // A hand-edited or legacy value outside the key-code range falls back to the default
+        // rather than reaching `RegisterEventHotKey`, where it crashed on every launch (SEC-16).
+        if let keyCode = PreferencesStore.shared.loadHotkeyKeyCode() {
+            hotkeyKeyCode = ActivationManager.validKeyCodes.contains(keyCode) ? keyCode : ActivationMetrics.defaultHotkeyKeyCode
+        }
+        if let modifiers = PreferencesStore.shared.loadHotkeyModifiers() { hotkeyModifiers = modifiers }
+        globalHotkeyEnabled = PreferencesStore.shared.loadGlobalHotkeyEnabled()
+        if let cornerRaw = PreferencesStore.shared.loadHotCorner() { hotCorner = HotCorner(rawValue: cornerRaw) ?? .topRight }
+        hotCornerEnabled = PreferencesStore.shared.loadHotCornerEnabled()
         if let launchRaw = PreferencesStore.shared.loadLaunchMode() { launchMode = LaunchMode(rawValue: launchRaw) ?? .window }
     }
 

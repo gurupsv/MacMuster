@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 @testable import MacMuster
 
 final class IconCacheManagerTests: XCTestCase {
@@ -247,4 +248,10 @@ final class IconCacheManagerTests: XCTestCase {
         XCTAssertNil(IconCacheManager.shared.cachedMtime(for: path), "clearAll should reset the mtime cache")
     }
 
+
+    func testHexStringMatchesKnownSHA256Vector() {
+        let digest = SHA256.hash(data: Data("abc".utf8))
+        XCTAssertEqual(digest.hexString, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        XCTAssertEqual([UInt8]([0x00, 0x0f, 0xa0, 0xff]).hexString, "000fa0ff")
+    }
 }

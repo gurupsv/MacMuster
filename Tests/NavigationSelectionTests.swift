@@ -183,7 +183,7 @@ final class NavigationSelectionTests: XCTestCase {
         // Prime the cache with empty search term.
         _ = library.getDisplayedApps(searchTerm: "", showFoldersFirst: false,
                                     customOrder: [:], sortOption: .name,
-                                    selectedCategory: .all, columnCount: 4)
+                                    selectedCategory: .all)
 
         let oldVersion = library.dataVersion
         navigation.searchTerm = "T"

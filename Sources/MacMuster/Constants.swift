@@ -1,15 +1,5 @@
 import Foundation
 
-// MARK: - App Version
-
-enum AppVersion {
-    static let current = "1.0.0"
-    static let build: Int = {
-        let n = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0")
-        return n ?? 0
-    }()
-}
-
 // MARK: - Scan Metrics
 
 enum ScanMetrics {
@@ -224,4 +214,91 @@ enum SettingsLayoutMetrics {
     static let labelSpacing: CGFloat = 14
     static let labelSpacingVertical: CGFloat = 4
     static let hiddenAppsListPaddingVertical: CGFloat = 20
+}
+
+// MARK: - Activation Metrics
+
+enum ActivationMetrics {
+    /// How close (in points) the pointer must be to a screen corner to count as "in the corner".
+    /// Two points is what the system's own hot corners use in practice: the pointer physically
+    /// cannot go past the display edge, so a thin zone is enough, and a wider one would fire while
+    /// the user is just reaching for a menu-bar or Dock item near the corner.
+    static let hotCornerZonePoints: CGFloat = 2
+
+    /// Pointer must rest in the corner this long before the launcher opens, so sweeping across a
+    /// corner on the way elsewhere doesn't trigger it. Long enough to filter flicks, short enough
+    /// to feel immediate.
+    static let hotCornerDwell: TimeInterval = 0.25
+
+    /// How often the pointer is sampled while MacMuster is the active app. The global `mouseMoved`
+    /// monitor delivers nothing in that state (macOS only reports events bound for *other* apps),
+    /// and MacMuster stays active after its launcher hides, so the corner would go dead. 0.1 s is
+    /// well under the dwell time, so detection is not noticeably delayed, and the poll runs only in
+    /// that state: it is stopped as soon as another app is active and the monitor takes over.
+    static let hotCornerPollInterval: TimeInterval = 0.1
+
+    /// Default global shortcut: Control+Option+Space (virtual key code 49). Chosen because ⌘Space
+    /// (Spotlight), ⌥⌘Space (Finder search) and ⌥Space (common third-party launchers) are taken.
+    static let defaultHotkeyKeyCode = 49
+    /// `NSEvent.ModifierFlags` raw bits for Control (1 << 18) | Option (1 << 19); spelled out because
+    /// this file imports only Foundation.
+    static let defaultHotkeyModifiers = (1 << 18) | (1 << 19)
+}
+
+// MARK: - Import Limits
+
+/// Bounds on a backup or Launchie export the user opens (SEC-7). The file is untrusted: without
+/// these a multi-gigabyte file is read whole, and an archive of millions of tiny valid icon keys
+/// creates millions of cache files. Each is a multiple of what a very large real library produces
+/// (a backup with ~900 icons is ~25 MB; a few thousand apps), so a legitimate file never trips one.
+enum ImportLimits {
+    /// Largest file read at all. ~5× a typical full backup with its icon pack.
+    static let maxFileBytes = 128 * 1_048_576
+    static let maxFolders = 2_000
+    /// Applies to each of: total folder members, hidden apps, custom-order entries, known mtimes.
+    static let maxAppPaths = 50_000
+    /// Icon pack files (a PNG plus its `.meta` per app and appearance).
+    static let maxIconPackEntries = 20_000
+    static let maxIconPackBytes = 256 * 1_048_576
+}
+
+// MARK: - Wizard Metrics
+
+enum WizardMetrics {
+    /// Cap on how large an `Info.plist` the smart-folder bundle reader will load. Real Info.plist
+    /// files are a few kilobytes at most; this exists only to refuse a pathologically large (or
+    /// malicious) plist *before* reading it, so a hostile bundle can't force a multi-megabyte
+    /// allocation during classification. A megabyte is far above anything legitimate, so it never
+    /// truncates a real file — it is a guardrail, not a format constraint.
+    static let maxInfoPlistReadBytes = 1_048_576 // 1 MiB
+
+    // MARK: Window
+
+    /// The wizard window is a fixed-size panel: large enough to list the 9 categories with their
+    /// counts and a preview of assignments, but not resizable — the content is a simple, known
+    /// set of steps, so a fixed footprint avoids layout thrash. 560×520 fits that comfortably on
+    /// a 1280×800 display.
+    static let windowWidth: CGFloat = 560
+    static let windowHeight: CGFloat = 520
+
+    // MARK: Animation
+
+    /// The animation is only offered when the machine can spare the work: at least this many
+    /// active cores and not thermally pressed. Four cores is the floor where animating a couple
+    /// hundred lightweight dots off the main render path is comfortably cheap; below that the
+    /// preview (which always shows) is the better use of the frame budget.
+    static let minAnimatedCores = 4
+    /// Cap on how many app dots actually animate. Beyond this the extras simply fade in after the
+    /// animation; a few hundred animated dots is fine, but a full library of 2,000+ would not be.
+    static let maxAnimatedApps = 120
+    /// Per-app travel time once its (staggered) animation begins. Under a second keeps the whole
+    /// sequence snappy even with the stagger across a large batch.
+    static let animationDuration: Double = 0.9
+    /// Per-app start offset, so the dots move in a wave rather than all at once. Small enough that
+    /// the last of ~120 dots still finishes within a couple of seconds of the first.
+    static let animationStagger: Double = 0.02
+    /// Fraction of an app's travel spent moving from its loose position to its folder's cluster
+    /// center; the rest settles it into its final slot. Splitting the motion reads as "grouping"
+    /// rather than a single straight glide.
+    static let animationClusterPhase: Double = 0.4
 }

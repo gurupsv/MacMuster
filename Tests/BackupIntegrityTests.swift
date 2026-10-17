@@ -160,6 +160,53 @@ final class BackupIntegrityTests: XCTestCase {
         XCTAssertEqual(decoded?.hiddenAppPaths, ["/Applications/Legacy.app"], "Legacy archive contents should be preserved")
     }
 
+    // MARK: - SEC-7: size and cardinality bounds
+
+    private func tempFile(bytes: Int) -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        FileManager.default.createFile(atPath: url.path, contents: Data(count: bytes))
+        return url
+    }
+
+    func testBoundedReaderReadsFileWithinLimitAndRejectsOversizeOrEmpty() {
+        let small = tempFile(bytes: 100), exact = tempFile(bytes: 128), over = tempFile(bytes: 129), empty = tempFile(bytes: 0)
+        defer { [small, exact, over, empty].forEach { try? FileManager.default.removeItem(at: $0) } }
+        XCTAssertEqual(BoundedFileReader.read(small, maxBytes: 128)?.count, 100)
+        XCTAssertEqual(BoundedFileReader.read(exact, maxBytes: 128)?.count, 128)
+        XCTAssertNil(BoundedFileReader.read(over, maxBytes: 128), "one byte over the cap must be refused")
+        XCTAssertNil(BoundedFileReader.read(empty, maxBytes: 128))
+        XCTAssertNil(BoundedFileReader.read(URL(fileURLWithPath: "/nonexistent/\(UUID().uuidString)"), maxBytes: 128))
+    }
+
+    /// A symlink reports its own tiny size; the cap must apply to the bytes actually read.
+    func testBoundedReaderAppliesCapThroughASymlink() throws {
+        let target = tempFile(bytes: 1_000)
+        let link = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        defer { try? FileManager.default.removeItem(at: target); try? FileManager.default.removeItem(at: link) }
+        XCTAssertNil(BoundedFileReader.read(link, maxBytes: 500))
+        XCTAssertNotNil(BoundedFileReader.read(link, maxBytes: 2_000))
+    }
+
+    func testArchiveWithinLimitsIsAccepted() {
+        XCTAssertTrue(BackupManager.withinImportLimits(makeArchive(hiddenAppPaths: ["/Applications/A.app"])))
+    }
+
+    func testArchiveWithTooManyIconEntriesIsRejected() {
+        var entries: [String: Data] = [:]
+        for i in 0...ImportLimits.maxIconPackEntries { entries[String(format: "%064x", i)] = Data([1]) }
+        XCTAssertFalse(BackupManager.withinImportLimits(makeArchive(icons: .init(entries: entries))))
+    }
+
+    func testArchiveWithTooManyFoldersOrMembersIsRejected() {
+        let folders = (0...ImportLimits.maxFolders).map { AppFolder(name: "F\($0)", appPaths: []) }
+        XCTAssertFalse(BackupManager.withinImportLimits(makeArchive(appFolders: folders)))
+
+        let paths = (0...ImportLimits.maxAppPaths).map { "/Applications/A\($0).app" }
+        XCTAssertFalse(BackupManager.withinImportLimits(makeArchive(appFolders: [AppFolder(name: "Big", appPaths: paths)])))
+        XCTAssertFalse(BackupManager.withinImportLimits(makeArchive(hiddenAppPaths: Set(paths))))
+    }
+
     // MARK: - SEC-1: icon cache key validation
 
     func testIconCacheKeyValidationAcceptsRealCacheKeys() {
@@ -193,6 +240,19 @@ final class BackupIntegrityTests: XCTestCase {
     }
 
     // MARK: - SEC-1: restore must not write outside the cache directory
+
+    /// SEC-15: a `Character` range is an ordering test, so a digit plus a variation selector (one
+    /// grapheme, two scalars) used to pass as hex.
+    func testIconCacheKeyRejectsInRangeNonHexGraphemes() {
+        let base = String(repeating: "a", count: 63)
+        for suffix in ["0\u{FE0F}", "0\u{0301}", "a\u{200D}", "\u{0661}"] {
+            XCTAssertFalse(BackupManager.isValidIconCacheKey(base + suffix), "must reject \(suffix.unicodeScalars.map(\.value))")
+        }
+        XCTAssertFalse(BackupManager.isValidIconCacheKey(String(repeating: "a", count: 62) + "0\u{FE0F}"))
+        XCTAssertTrue(BackupManager.isValidIconCacheKey(String(repeating: "0123456789abcdef", count: 4)))
+        XCTAssertFalse(BackupManager.isValidIconCacheKey(String(repeating: "A", count: 64)))
+        XCTAssertFalse(BackupManager.isValidIconPackKey(base + "0\u{FE0F}.meta"))
+    }
 
     func testRestoreIgnoresTraversalKeysAndWritesNothingOutsideCache() async throws {
         // The end-to-end proof for SEC-1: drive a hostile archive through the real restore path
@@ -259,5 +319,62 @@ final class BackupIntegrityTests: XCTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: escape.path),
             "A checksummed archive carrying a traversal key must still write nothing outside the cache directory")
+    }
+
+    // MARK: - Smart category key
+
+    func testSmartCategoryKeyRoundTrips() throws {
+        let folder = AppFolder(name: "Development", appPaths: ["/Applications/Xcode.app"], smartCategoryKey: "development")
+        let data = try BackupManager.encodeArchive(makeArchive(appFolders: [folder]))
+
+        let decoded = BackupManager.decodeArchive(from: data)
+
+        XCTAssertEqual(decoded?.appFolders.first?.smartCategoryKey, "development",
+            "A valid smartCategoryKey must survive the export→restore round trip")
+    }
+
+    func testArchiveWithoutSmartCategoryKeyDecodesAsNil() throws {
+        // A folder with no key (the shape of every pre-wizard archive) must decode with a nil key,
+        // not fail — backward compatibility for old backups and UserDefaults.
+        let folder = AppFolder(name: "Design", appPaths: ["/Applications/Preview.app"])
+        let legacy = try JSONEncoder().encode(makeArchive(appFolders: [folder]))
+
+        let decoded = BackupManager.decodeArchive(from: legacy)
+
+        XCTAssertNotNil(decoded)
+        XCTAssertNil(decoded?.appFolders.first?.smartCategoryKey)
+    }
+
+    func testGarbageSmartCategoryKeyIsDroppedOnRestore() async throws {
+        // Drive a hostile archive (a legitimate folder carrying a garbage key) through the real
+        // restore path: the folder must be kept and the key dropped.
+        FolderStore.shared.folders.removeAll()
+        defer { FolderStore.shared.folders.removeAll() }
+
+        let hostile = AppFolder(name: "Kept", appPaths: [], smartCategoryKey: "totally-not-a-category")
+        let preview = BackupManager.BackupPreview(
+            archive: makeArchive(appFolders: [hostile]),
+            validAppPaths: [], missingAppPaths: [])
+
+        await BackupManager.shared.apply(preview: preview)
+
+        let restored = FolderStore.shared.folders.first
+        XCTAssertEqual(restored?.name, "Kept", "The folder must be kept")
+        XCTAssertNil(restored?.smartCategoryKey, "A garbage key must be dropped on restore")
+    }
+
+    func testValidSmartCategoryKeySurvivesRestore() async throws {
+        FolderStore.shared.folders.removeAll()
+        defer { FolderStore.shared.folders.removeAll() }
+
+        let folder = AppFolder(name: "Tools", appPaths: [], smartCategoryKey: "tools")
+        let preview = BackupManager.BackupPreview(
+            archive: makeArchive(appFolders: [folder]),
+            validAppPaths: [], missingAppPaths: [])
+
+        await BackupManager.shared.apply(preview: preview)
+
+        XCTAssertEqual(FolderStore.shared.folders.first?.smartCategoryKey, "tools",
+            "A known key must survive restore untouched")
     }
 }

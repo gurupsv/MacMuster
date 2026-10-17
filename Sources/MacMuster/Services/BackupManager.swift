@@ -58,6 +58,15 @@ final class BackupManager {
         let tintStrength: Double
         let showHiddenApps: Bool
         let launchMode: String
+        // Added after schema v2 shipped: optional so older archives, which lack these keys,
+        // still decode. Nil on restore leaves the current value untouched.
+        let glassStyle: String?
+        let simpleGlass: Bool?
+        let globalHotkeyEnabled: Bool?
+        let hotkeyKeyCode: Int?
+        let hotkeyModifiers: Int?
+        let hotCornerEnabled: Bool?
+        let hotCorner: String?
         // Schema v2: recently-updated badge state. The mtime baseline (`knownBundleMtimes`)
         // is long-lived; the badge membership (`recentlyUpdatedPaths`) is age-evicted. Both
         // round-trip so a restored backup continues badging apps that updated just before
@@ -96,6 +105,13 @@ final class BackupManager {
             tintStrength: Double = 0.0,
             showHiddenApps: Bool = false,
             launchMode: String = "Window",
+            glassStyle: String? = nil,
+            simpleGlass: Bool? = nil,
+            globalHotkeyEnabled: Bool? = nil,
+            hotkeyKeyCode: Int? = nil,
+            hotkeyModifiers: Int? = nil,
+            hotCornerEnabled: Bool? = nil,
+            hotCorner: String? = nil,
             knownBundleMtimes: [String: Date] = [:],
             recentlyUpdatedPaths: [String: Date] = [:],
             icons: IconPack
@@ -129,6 +145,13 @@ final class BackupManager {
             self.tintStrength = tintStrength
             self.showHiddenApps = showHiddenApps
             self.launchMode = launchMode
+            self.glassStyle = glassStyle
+            self.simpleGlass = simpleGlass
+            self.globalHotkeyEnabled = globalHotkeyEnabled
+            self.hotkeyKeyCode = hotkeyKeyCode
+            self.hotkeyModifiers = hotkeyModifiers
+            self.hotCornerEnabled = hotCornerEnabled
+            self.hotCorner = hotCorner
             self.knownBundleMtimes = knownBundleMtimes
             self.recentlyUpdatedPaths = recentlyUpdatedPaths
             self.icons = icons
@@ -254,6 +277,13 @@ final class BackupManager {
             tintStrength: tintStrength,
             showHiddenApps: showHiddenApps,
             launchMode: launchMode,
+            glassStyle: PreferencesStore.shared.loadGlassStyle() ?? SettingsAppearance.GlassStyle.classic.rawValue,
+            simpleGlass: PreferencesStore.shared.loadSimpleGlass(),
+            globalHotkeyEnabled: PreferencesStore.shared.loadGlobalHotkeyEnabled(),
+            hotkeyKeyCode: PreferencesStore.shared.loadHotkeyKeyCode() ?? ActivationMetrics.defaultHotkeyKeyCode,
+            hotkeyModifiers: PreferencesStore.shared.loadHotkeyModifiers() ?? ActivationMetrics.defaultHotkeyModifiers,
+            hotCornerEnabled: PreferencesStore.shared.loadHotCornerEnabled(),
+            hotCorner: PreferencesStore.shared.loadHotCorner() ?? HotCorner.topRight.rawValue,
             knownBundleMtimes: knownBundleMtimes,
             recentlyUpdatedPaths: recentlyUpdatedPaths,
             icons: IconPack(entries: iconEntries)
@@ -298,7 +328,7 @@ final class BackupManager {
     }
 
     nonisolated static func sha256Hex(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        SHA256.hash(data: data).hexString
     }
 
     // MARK: - Restore
@@ -310,10 +340,25 @@ final class BackupManager {
         await Task.detached(priority: .userInitiated) { Self.makePreview(from: url) }.value
     }
 
+    /// Whether a decoded archive's cardinalities are plausible (SEC-7). The decoder cannot bound
+    /// these, and each one drives work later: a stat per folder member in `makePreview`, a file per
+    /// icon-pack entry in `restoreIconPack`.
+    nonisolated static func withinImportLimits(_ archive: BackupArchive) -> Bool {
+        archive.appFolders.count <= ImportLimits.maxFolders
+            && archive.appFolders.reduce(0, { $0 + $1.appPaths.count }) <= ImportLimits.maxAppPaths
+            && archive.hiddenAppPaths.count <= ImportLimits.maxAppPaths
+            && archive.customOrder.count <= ImportLimits.maxAppPaths
+            && archive.knownBundleMtimes.count <= ImportLimits.maxAppPaths
+            && archive.recentlyUpdatedPaths.count <= ImportLimits.maxAppPaths
+            && archive.icons.entries.count <= ImportLimits.maxIconPackEntries
+            && archive.icons.entries.values.reduce(0, { $0 + $1.count }) <= ImportLimits.maxIconPackBytes
+    }
+
     nonisolated private static func makePreview(from url: URL) -> BackupPreview? {
-        guard let data = try? Data(contentsOf: url),
-              let archive = decodeArchive(from: data) else {
-            return nil // Not a backup, or failed integrity verification.
+        guard let data = BoundedFileReader.read(url, maxBytes: ImportLimits.maxFileBytes),
+              let archive = decodeArchive(from: data),
+              withinImportLimits(archive) else {
+            return nil // Not a backup, failed integrity verification, or implausibly large.
         }
 
         // Validate app paths against disk
@@ -362,7 +407,9 @@ final class BackupManager {
         // faithfully carried. Dropping apps that are no longer installed is a restore-time
         // adaptation, not a user edit, so `modifiedAt` is preserved too — the restored state
         // should read as the state that was backed up.
-        for folder in archive.appFolders {
+        // Sanitize the untrusted archive first: a `smartCategoryKey` that isn't a known category is
+        // dropped (the folder is kept) before it can reach the live stores.
+        for folder in SmartFolderCategory.sanitizedFolders(archive.appFolders) {
             var cleanedFolder = folder
             cleanedFolder.appPaths = folder.appPaths.filter { preview.validAppPaths.contains($0) }
             FolderStore.shared.folders.append(cleanedFolder)
@@ -404,6 +451,32 @@ final class BackupManager {
         PreferencesStore.shared.saveShowHiddenApps(archive.showHiddenApps)
         PreferencesStore.shared.saveLaunchMode(LaunchMode(rawValue: archive.launchMode) ?? .window)
 
+        // Glass style and activation triggers. Values are validated against their enums/ranges
+        // here because the file is untrusted; the hotkey additionally must satisfy
+        // `isValidShortcut` or it is dropped (and left disabled) rather than registered.
+        if let raw = archive.glassStyle, let style = SettingsAppearance.GlassStyle(rawValue: raw) {
+            PreferencesStore.shared.saveGlassStyle(style.rawValue)
+        }
+        if let simpleGlass = archive.simpleGlass { PreferencesStore.shared.saveSimpleGlass(simpleGlass) }
+        if let keyCode = archive.hotkeyKeyCode, let modifiers = archive.hotkeyModifiers,
+           (0...127).contains(keyCode), ActivationManager.isValidShortcut(modifiers: modifiers) {
+            let allowed = Int(bitPattern: ActivationManager.allowedModifiers.rawValue)
+            // SEC-8: a file must not claim a system-wide key the user did not choose. `RegisterEventHotKey`
+            // takes the chord from every other app, and the restore preview does not disclose it, so a
+            // restore (a) never switches the hotkey from off to on, and (b) leaves a hotkey that is
+            // already live pointing at its current chord. A disabled hotkey still gets the archived
+            // chord, inert until the user turns it on in Settings. Turning it off is always allowed.
+            if !PreferencesStore.shared.loadGlobalHotkeyEnabled() {
+                PreferencesStore.shared.saveHotkeyKeyCode(keyCode)
+                PreferencesStore.shared.saveHotkeyModifiers(modifiers & allowed)
+            }
+            if archive.globalHotkeyEnabled == false { PreferencesStore.shared.saveGlobalHotkeyEnabled(false) }
+        }
+        if let enabled = archive.hotCornerEnabled { PreferencesStore.shared.saveHotCornerEnabled(enabled) }
+        if let raw = archive.hotCorner, let corner = HotCorner(rawValue: raw) {
+            PreferencesStore.shared.saveHotCorner(corner.rawValue)
+        }
+
         // Schema v2: restore the recently-updated badge state. The mtime baseline is restored
         // verbatim so the next scan measures deltas against the backed-up baseline rather than
         // treating every app as freshly updated. The badge membership is restored too, but
@@ -428,12 +501,18 @@ final class BackupManager {
     /// is reachable that way. Matching the exact expected shape rejects path separators,
     /// `..`, absolute paths, and empty keys as a side effect of being strict, rather than
     /// trying to enumerate bad input.
-    /// Explicit ASCII ranges rather than `isHexDigit`/`isNumber`, which also accept uppercase
+    /// Explicit lowercase-hex membership rather than `isHexDigit`/`isNumber`, which also accept uppercase
     /// and non-ASCII digits (`isNumber` is true for "٣"). The cache only ever writes lowercase
     /// ASCII hex, so that is exactly what is accepted.
     nonisolated static func isValidIconCacheKey(_ key: String) -> Bool {
-        key.count == 64 && key.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
+        // Membership in the sixteen literal digits, not a `"0"..."9"` range: a `Character` range is
+        // a grapheme *ordering* test, so "0" plus a variation selector (one grapheme, two scalars)
+        // passed as hex (SEC-15). Scalars are counted too, so "64" means 64 hex digits.
+        key.unicodeScalars.count == 64
+            && key.unicodeScalars.allSatisfy { Self.hexDigitScalars.contains($0) }
     }
+
+    nonisolated private static let hexDigitScalars: Set<Unicode.Scalar> = Set("0123456789abcdef".unicodeScalars)
 
     nonisolated static let iconMetaSuffix = ".meta"
 
@@ -498,7 +577,12 @@ final class BackupManager {
             return
         }
 
+        // Re-bounded here as well as in `withinImportLimits`: this is the loop that writes files.
+        var written = 0
+        var writtenBytes = 0
         for (key, imageData) in iconPack.entries {
+            guard written < ImportLimits.maxIconPackEntries,
+                  writtenBytes + imageData.count <= ImportLimits.maxIconPackBytes else { break }
             // The key comes from an untrusted file and is about to become a write path.
             guard isValidIconPackKey(key) else { continue }
 
@@ -511,6 +595,8 @@ final class BackupManager {
 
             do {
                 try imageData.write(to: iconURL)
+                written += 1
+                writtenBytes += imageData.count
             } catch {
                 // Skip failed writes silently — icons are non-critical
             }

@@ -69,7 +69,7 @@ final class LibraryScanStateEdgeCaseTests: XCTestCase {
 
         _ = library.getDisplayedApps(searchTerm: "", showFoldersFirst: false,
                                     customOrder: [:], sortOption: .name,
-                                    selectedCategory: .all, columnCount: 4)
+                                    selectedCategory: .all)
 
         library.handleAppearanceChange()
 
