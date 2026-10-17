@@ -4,7 +4,13 @@ This document describes how to cut a release. The actual build, signing,
 notarization, packaging, and GitHub Release publication are automated by
 `.github/workflows/release.yml` — the manual steps below are the human parts.
 
-## One-time setup (CI signing secrets)
+## One-time setup (CI signing secrets, optional)
+
+Signing is optional. With no secrets the workflow publishes an ad-hoc-signed,
+un-notarized `.pkg` (users get a Gatekeeper warning). Set `P12_BASE64` +
+`P12_PASSWORD` to sign, and also `APPLE_ID` + `APPLE_TEAM_ID` +
+`APP_SPECIFIC_PASSWORD` to notarize; both need a paid Apple Developer Program
+membership. A partial set fails the run.
 
 Configure these as repository secrets under **Settings → Secrets and
 variables → Actions**:

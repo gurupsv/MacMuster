@@ -4,8 +4,12 @@ name: Release
 # publishes it as a GitHub Release asset. The resulting URL is stable and
 # content-addressed, which is what the Homebrew cask requires.
 #
-# Required repository secrets (configure once under Settings → Secrets and
-# variables → Actions):
+# Signing is OPTIONAL. With no secrets the workflow publishes an ad-hoc-signed,
+# un-notarized .pkg (Gatekeeper will warn). Set P12_BASE64 + P12_PASSWORD to sign,
+# and additionally APPLE_ID + APPLE_TEAM_ID + APP_SPECIFIC_PASSWORD to notarize
+# (all require a paid Apple Developer Program membership). Partial sets fail.
+#
+# Repository secrets (configure under Settings → Secrets and variables → Actions):
 #
 #   P12_BASE64            Developer ID Application certificate (.p12), base64-encoded:
 #                           base64 -i "Developer ID Application.p12" | pbcopy
@@ -54,6 +58,45 @@ jobs:
           fi
           echo "Releasing MacMuster $TAG"
 
+      - name: Detect available signing secrets
+        env:
+          P12_BASE64: ${{ secrets.P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_SPECIFIC_PASSWORD: ${{ secrets.APP_SPECIFIC_PASSWORD }}
+        run: |
+          # Signing is optional: without a paid Developer ID, build an ad-hoc-signed .pkg.
+          # A half-configured set is almost certainly a mistake, so fail loudly rather
+          # than silently shipping an unsigned release.
+          sign_missing=""
+          for name in P12_BASE64 P12_PASSWORD; do
+            if [ -z "${!name}" ]; then sign_missing="$sign_missing $name"; fi
+          done
+          notary_missing=""
+          for name in APPLE_ID APPLE_TEAM_ID APP_SPECIFIC_PASSWORD; do
+            if [ -z "${!name}" ]; then notary_missing="$notary_missing $name"; fi
+          done
+
+          if [ -n "$sign_missing" ] && [ "$sign_missing" != " P12_BASE64 P12_PASSWORD" ]; then
+            echo "::error::Partial signing config; missing:$sign_missing. Set both or neither."
+            exit 1
+          fi
+          if [ -z "$sign_missing" ]; then
+            echo "SIGN_APP=true" >> "$GITHUB_ENV"
+            if [ -z "$notary_missing" ]; then
+              echo "SIGN_NOTARIZE=true" >> "$GITHUB_ENV"
+              echo "Signing + notarization enabled."
+            elif [ "$notary_missing" = " APPLE_ID APPLE_TEAM_ID APP_SPECIFIC_PASSWORD" ]; then
+              echo "::warning::Signing enabled but notarization secrets are not set; the release will not be notarized."
+            else
+              echo "::error::Partial notarization config; missing:$notary_missing. Set all three or none."
+              exit 1
+            fi
+          else
+            echo "::warning::No signing secrets set; building an ad-hoc-signed, un-notarized .pkg. Users will see a Gatekeeper warning."
+          fi
+
       - name: Select Xcode
         run: |
           # macos-14 runners ship Xcode 15+; pick the latest installed.
@@ -61,6 +104,7 @@ jobs:
           xcodebuild -version
 
       - name: Import Developer ID Application certificate
+        if: env.SIGN_APP == 'true'
         env:
           P12_BASE64: ${{ secrets.P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
@@ -97,6 +141,7 @@ jobs:
           echo "SIGNING_KEYCHAIN_PWD=$KEYCHAIN_PWD" >> "$GITHUB_ENV"
 
       - name: Import Developer ID Installer certificate
+        if: env.SIGN_APP == 'true'
         env:
           INSTALLER_P12_BASE64: ${{ secrets.INSTALLER_P12_BASE64 }}
           INSTALLER_P12_PASSWORD: ${{ secrets.INSTALLER_P12_PASSWORD }}
@@ -124,6 +169,7 @@ jobs:
           echo "INSTALLER_ID=$IDENTITY" >> "$GITHUB_ENV"
 
       - name: Store notarytool credentials
+        if: env.SIGN_NOTARIZE == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -141,7 +187,7 @@ jobs:
             --keychain "$SIGNING_KEYCHAIN"
           echo "NOTARY_PROFILE=macmuster-notary" >> "$GITHUB_ENV"
 
-      - name: Build, sign, notarize, package
+      - name: Build, sign (if configured), package
         env:
           BUILD_UNIVERSAL: "1"
           DEVELOPER_ID: ${{ env.DEVELOPER_ID }}
@@ -152,7 +198,10 @@ jobs:
         run: |
           set -e
           # Ensure the build-time keychain is unlocked for codesign / productsign / notarytool.
-          security unlock-keychain -p "$SIGNING_KEYCHAIN_PWD" "$SIGNING_KEYCHAIN"
+          # Absent when signing is disabled; build_production.sh then signs ad-hoc.
+          if [ -n "$SIGNING_KEYCHAIN" ]; then
+            security unlock-keychain -p "$SIGNING_KEYCHAIN_PWD" "$SIGNING_KEYCHAIN"
+          fi
           ./build_production.sh
 
       - name: Rename artifact to include version
@@ -164,6 +213,8 @@ jobs:
 
       - name: Compute sha256
         id: sha
+        env:
+          SIGN_NOTARIZE: ${{ env.SIGN_NOTARIZE }}
         run: |
           set -e
           VERSION="$(cat version.txt)"
@@ -172,7 +223,12 @@ jobs:
           {
             echo "## MacMuster ${VERSION}"
             echo ""
-            echo "Universal (Apple Silicon + Intel), signed, notarized, and stapled."
+            if [ "${SIGN_NOTARIZE}" = "true" ]; then
+              echo "Universal (Apple Silicon + Intel), signed, notarized, and stapled."
+            else
+              echo "Universal (Apple Silicon + Intel). **Not signed or notarized**: macOS will warn on first launch."
+              echo "Right-click the app and choose Open, or run \`xattr -dr com.apple.quarantine /Applications/MacMuster.app\`."
+            fi
             echo ""
             echo "**Install via Homebrew (once the cask is published):**"
             echo '```bash'

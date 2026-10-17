@@ -252,7 +252,7 @@ Exceptions: `ApplicationScanner` and `IconCacheManager` are `nonisolated final c
 - **`create_app_bundle.sh`** — release-config build (so perf issues aren't masked), assembles `.app`, copies the `BUNDLE_RESOURCES` allowlist, ad-hoc signs with `entitlements.plist` (or `DEVELOPER_ID` if set).
 - **`build_production.sh`** (ask first) — optional universal build (`BUILD_UNIVERSAL=1`), `strip -x`, codesign (never `--deep`), optional notarization (`NOTARY_PROFILE`), `pkgbuild` (skip with `SKIP_PKG=1`).
 - **`build_common.sh`** — resource allowlist (a past `cp -R Resources/*` shipped 2.8 MB of junk) and `actool` compilation (SPM does not compile `.xcassets`).
-- **Release** (humans only): bump `version.txt`, push tag `X.Y.Z` matching it; `release.yml` builds, notarizes, staples, publishes. Runbook: `.github/workflows/release.md`.
+- **Release** (humans only): bump `version.txt`, push tag `X.Y.Z` matching it; `release.yml` builds and publishes; signing and notarization are optional (no secrets → ad-hoc-signed, un-notarized `.pkg`; a partial secret set fails the run). Runbook: `.github/workflows/release.md`.
 
 ## Security & privacy contract (do not regress)
 
