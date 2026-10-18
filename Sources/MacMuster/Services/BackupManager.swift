@@ -62,6 +62,7 @@ final class BackupManager {
         // still decode. Nil on restore leaves the current value untouched.
         let glassStyle: String?
         let simpleGlass: Bool?
+        let scrollEdgeEffect: Bool?
         let globalHotkeyEnabled: Bool?
         let hotkeyKeyCode: Int?
         let hotkeyModifiers: Int?
@@ -107,6 +108,7 @@ final class BackupManager {
             launchMode: String = "Window",
             glassStyle: String? = nil,
             simpleGlass: Bool? = nil,
+            scrollEdgeEffect: Bool? = nil,
             globalHotkeyEnabled: Bool? = nil,
             hotkeyKeyCode: Int? = nil,
             hotkeyModifiers: Int? = nil,
@@ -147,6 +149,7 @@ final class BackupManager {
             self.launchMode = launchMode
             self.glassStyle = glassStyle
             self.simpleGlass = simpleGlass
+            self.scrollEdgeEffect = scrollEdgeEffect
             self.globalHotkeyEnabled = globalHotkeyEnabled
             self.hotkeyKeyCode = hotkeyKeyCode
             self.hotkeyModifiers = hotkeyModifiers
@@ -279,6 +282,7 @@ final class BackupManager {
             launchMode: launchMode,
             glassStyle: PreferencesStore.shared.loadGlassStyle() ?? SettingsAppearance.GlassStyle.classic.rawValue,
             simpleGlass: PreferencesStore.shared.loadSimpleGlass(),
+            scrollEdgeEffect: PreferencesStore.shared.loadScrollEdgeEffect(),
             globalHotkeyEnabled: PreferencesStore.shared.loadGlobalHotkeyEnabled(),
             hotkeyKeyCode: PreferencesStore.shared.loadHotkeyKeyCode() ?? ActivationMetrics.defaultHotkeyKeyCode,
             hotkeyModifiers: PreferencesStore.shared.loadHotkeyModifiers() ?? ActivationMetrics.defaultHotkeyModifiers,
@@ -458,6 +462,7 @@ final class BackupManager {
             PreferencesStore.shared.saveGlassStyle(style.rawValue)
         }
         if let simpleGlass = archive.simpleGlass { PreferencesStore.shared.saveSimpleGlass(simpleGlass) }
+        if let scrollEdgeEffect = archive.scrollEdgeEffect { PreferencesStore.shared.saveScrollEdgeEffect(scrollEdgeEffect) }
         if let keyCode = archive.hotkeyKeyCode, let modifiers = archive.hotkeyModifiers,
            (0...127).contains(keyCode), ActivationManager.isValidShortcut(modifiers: modifiers) {
             let allowed = Int(bitPattern: ActivationManager.allowedModifiers.rawValue)

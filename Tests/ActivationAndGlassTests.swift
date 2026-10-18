@@ -5,7 +5,7 @@ import XCTest
 final class ActivationAndGlassTests: XCTestCase {
 
     nonisolated private static let keys = [
-        "glassStyle", "simpleGlass", "globalHotkeyEnabled", "hotkeyKeyCode",
+        "glassStyle", "simpleGlass", "scrollEdgeEffect", "globalHotkeyEnabled", "hotkeyKeyCode",
         "hotkeyModifiers", "hotCornerEnabled", "hotCorner"
     ]
 

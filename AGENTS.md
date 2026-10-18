@@ -81,6 +81,7 @@ Native macOS app launcher: Swift 6.2 + SwiftUI/AppKit, zero external dependencie
 | Keyboard / overlay window | `OverlayWindowManager`, `NavigationSelection` |
 | Global shortcut / hot corner | `ActivationManager` (Carbon hot key + global `mouseMoved` monitor, configured by value from `SettingsAppearance.syncActivation`) → `ActivationSettingsPanel` |
 | Glass material (Classic / Liquid Glass / low-GPU) | `VisualEffectBackground` (`ContentView.swift`: `structure` decides which views exist, `rebuild` only when it changes, `refreshColors` in place) + `OverlayWindowManager.applyBackgroundColor`; Liquid Glass is `#available(macOS 26)` only |
+| Scroll-edge fade/blur/taper | `ScrollEdgeEffect` (pure curve + `.scrollEdgeEffect(active:)` modifier, applied at the end of `AppGridCell`) → `ScrollEdgeMetrics` → `SettingsAppearance.isScrollEdgeEffectActive` (off under Low-GPU glass / Reduce Motion) |
 | Backup / import | `BackupManager`, `LaunchieImporter`, `RestorePreviewPanel`, entry points in `StatusBarManager` |
 | Magic number | matching case-less enum in `Constants.swift`, with a rationale comment |
 
@@ -155,6 +156,7 @@ Sources/MacMuster/
     ├── BundleInfoReader.swift       # off-main `Info.plist` → `BundleInfo` (size-capped, fails soft)
     ├── BoundedFileReader.swift      # capped `FileHandle` read for user-opened import files (`ImportLimits`)
     ├── SmartFolderPlanBuilder.swift # main-actor build: candidates → bundle read → classify
+    ├── ScrollEdgeEffect.swift       # row fade/shrink/blur near scroll edges (pure curve + modifier)
     ├── SmartFoldersAnimation.swift  # pure "apps grouping" motion math + CPU/thermal/reduce-motion gate
     └── AlertHelper.swift            # NSAlert.showError/showInfo
 Resources/                          # Bundle resources copied by the BUNDLE_RESOURCES allowlist in

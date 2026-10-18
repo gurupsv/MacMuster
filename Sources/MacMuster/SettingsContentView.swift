@@ -1127,6 +1127,18 @@ struct AppearanceSettingsPanel: View {
                       }
 
                       Divider()
+
+                      // Scroll edge effect: applies in every presentation mode, so it lives outside
+                      // the Glass-only block above.
+                      VStack(alignment: .leading, spacing: 8) {
+                          @Bindable var settings = appModel.settings
+                          Toggle("Fade apps at scroll edges", isOn: $settings.scrollEdgeEffect)
+                          Text("Rows blur, shrink and fade as they scroll out of view. Turned off automatically by Low-GPU glass and Reduce Motion.")
+                              .font(.system(size: 12))
+                              .foregroundStyle(.secondary)
+                      }
+
+                      Divider()
                       
                       // Tint section
                       VStack(alignment: .leading, spacing: 4) {
