@@ -1214,6 +1214,7 @@ private struct AppGridCell: View {
         // inside .draggable/.dropDestination above and wouldn't reliably show. Applied here,
         // outside drag support, instead — carries the name plus the F-1 provenance warning, if any.
         .help(app.provenanceWarning.map { "\(app.name) — \($0)" } ?? app.name)
+        .scrollEdgeEffect(active: appModel.settings.isScrollEdgeEffectActive)
     }
 }
 

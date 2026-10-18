@@ -109,6 +109,20 @@ enum GlowMetrics {
     static let overlayOpacityStep: Double = 0.05
 }
 
+// MARK: - Scroll Edge Effect Metrics
+
+enum ScrollEdgeMetrics {
+    /// Opacity of a row that has just reached the viewport edge. Not 0: the row is still partly
+    /// on screen, and a fully transparent row looks like a rendering gap rather than a taper.
+    static let minOpacity: Double = 0.25
+    /// Scale at the edge. A ~12% shrink reads as the row receding without the neighbouring
+    /// column gaps visibly opening up.
+    static let minScale: Double = 0.88
+    /// Blur radius (pt) at the edge. Kept small: the blur is an offscreen pass per affected cell,
+    /// and only the one row inside each transition band pays it.
+    static let maxBlurRadius: Double = 6
+}
+
 // MARK: - Icon Metrics
 
 enum IconMetrics {

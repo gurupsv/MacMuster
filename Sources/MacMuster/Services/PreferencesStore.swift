@@ -41,6 +41,7 @@ final class PreferencesStore {
         case showHiddenApps = "showHiddenApps"
         case glassStyle = "glassStyle"
         case simpleGlass = "simpleGlass"
+        case scrollEdgeEffect = "scrollEdgeEffect"
         case globalHotkeyEnabled = "globalHotkeyEnabled"
         case hotkeyKeyCode = "hotkeyKeyCode"
         case hotkeyModifiers = "hotkeyModifiers"
@@ -390,6 +391,11 @@ final class PreferencesStore {
 
     func saveSimpleGlass(_ enabled: Bool) { defaults.set(enabled, forKey: Keys.simpleGlass.rawValue) }
     func loadSimpleGlass() -> Bool { defaults.bool(forKey: Keys.simpleGlass.rawValue) }
+
+    /// Defaults to on: an unset key must read as enabled, so `bool(forKey:)` (false when absent)
+    /// is not usable here.
+    func saveScrollEdgeEffect(_ enabled: Bool) { defaults.set(enabled, forKey: Keys.scrollEdgeEffect.rawValue) }
+    func loadScrollEdgeEffect() -> Bool { defaults.object(forKey: Keys.scrollEdgeEffect.rawValue) as? Bool ?? true }
 
     func saveGlobalHotkeyEnabled(_ enabled: Bool) { defaults.set(enabled, forKey: Keys.globalHotkeyEnabled.rawValue) }
     func loadGlobalHotkeyEnabled() -> Bool { defaults.bool(forKey: Keys.globalHotkeyEnabled.rawValue) }

@@ -155,6 +155,20 @@ class SettingsAppearance {
         }
     }
 
+    /// Fades, shrinks and blurs grid rows as they scroll off the top or bottom edge. The setting is
+    /// the user's preference; `isScrollEdgeEffectActive` is what the grid actually obeys.
+    var scrollEdgeEffect: Bool = true {
+        didSet { PreferencesStore.shared.saveScrollEdgeEffect(scrollEdgeEffect) }
+    }
+
+    /// Off under Low-GPU glass or Reduce Motion regardless of the preference, since the effect adds
+    /// per-frame blur work and motion-dependent visuals those modes exist to avoid.
+    var isScrollEdgeEffectActive: Bool {
+        // `simpleGlass` is a glass-only option; a stale value must not disable the effect in Sheet mode.
+        ScrollEdgeEffect.isActive(enabled: scrollEdgeEffect, simpleGlass: simpleGlass && presentationMode == .glass,
+                                  reduceMotion: shouldReduceMotion)
+    }
+
     // MARK: Activation
 
     var globalHotkeyEnabled: Bool = false {
@@ -267,6 +281,7 @@ class SettingsAppearance {
         if let strengthRaw = PreferencesStore.shared.loadTintStrength() { tintStrength = max(0, min(1, strengthRaw)) }
         if let styleRaw = PreferencesStore.shared.loadGlassStyle() { glassStyle = GlassStyle(rawValue: styleRaw) ?? .classic }
         simpleGlass = PreferencesStore.shared.loadSimpleGlass()
+        scrollEdgeEffect = PreferencesStore.shared.loadScrollEdgeEffect()
         // A hand-edited or legacy value outside the key-code range falls back to the default
         // rather than reaching `RegisterEventHotKey`, where it crashed on every launch (SEC-16).
         if let keyCode = PreferencesStore.shared.loadHotkeyKeyCode() {
