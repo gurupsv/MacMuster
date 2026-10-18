@@ -40,9 +40,14 @@ swift package clean
 echo "Building release binary..."
 
 if [ "${BUILD_UNIVERSAL:-0}" = "1" ]; then
-    # Build universal binary for both Intel (x86_64) and Apple Silicon (arm64)
-    echo "Building universal binary for arm64 and x86_64..."
-    swift build -c release --arch arm64 --arch x86_64 -Xswiftc -O -Xswiftc -Osize
+    # Build each architecture separately with the native build system and merge with lipo below.
+    # `--arch` (one or several) selects the Xcode build system on the CI toolchain, whose
+    # xcstrings symbol generation rejects keys that differ only by case ("Search" /
+    # "Search (/)") and failed the 1.0.6 release build. `--triple` keeps the same build system
+    # as `swift build`, and gives each architecture its own .build/<triple>/release directory.
+    echo "Building arm64 and x86_64 separately..."
+    swift build -c release --build-system native --triple arm64-apple-macosx -Xswiftc -O -Xswiftc -Osize
+    swift build -c release --build-system native --triple x86_64-apple-macosx -Xswiftc -O -Xswiftc -Osize
 else
     # Build for the current architecture only (default behavior)
     echo "Building for current architecture..."
@@ -51,8 +56,8 @@ fi
 
 # Get the binary path
 if [ "${BUILD_UNIVERSAL:-0}" = "1" ]; then
-    # For universal build, get the arm64 binary (both will be merged)
-    BINARY_PATH=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/${APP_NAME}
+    # For universal build, start from the arm64 binary (the lipo merge below replaces it)
+    BINARY_PATH=$(swift build -c release --build-system native --triple arm64-apple-macosx --show-bin-path)/${APP_NAME}
 else
     BINARY_PATH=$(swift build -c release --show-bin-path)/${APP_NAME}
 fi
@@ -70,8 +75,8 @@ if [ "${BUILD_UNIVERSAL:-0}" = "1" ]; then
     echo "Merging arm64 and x86_64 binaries into universal binary..."
     
     # Get paths for both architecture-specific builds
-    ARM64_PATH=$(swift build -c release --arch arm64 --show-bin-path)/${APP_NAME}
-    X86_64_PATH=$(swift build -c release --arch x86_64 --show-bin-path)/${APP_NAME}
+    ARM64_PATH=$(swift build -c release --build-system native --triple arm64-apple-macosx --show-bin-path)/${APP_NAME}
+    X86_64_PATH=$(swift build -c release --build-system native --triple x86_64-apple-macosx --show-bin-path)/${APP_NAME}
     
     if [ ! -f "$ARM64_PATH" ] || [ ! -f "$X86_64_PATH" ]; then
         echo "Error: Architecture-specific binaries not found for universal merge"
