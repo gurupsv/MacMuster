@@ -109,4 +109,27 @@ final class IconResidencyTests: XCTestCase {
                 "The memory-cached copy of icon \(i) must be PNG-backed too")
         }
     }
+
+    func testIconStampedWithPreRasterMtimeIsStaleAfterBundleMoved() throws {
+        let path = try makeBundle()
+        // The bundle was read as older than it is now (an update landed during rasterization).
+        IconCacheManager.shared.cacheIcon(bitmap(px: 200, red: 0.5), for: path, appearance: .light,
+                                          bundleMtime: Date(timeIntervalSince1970: 1_000))
+
+        XCTAssertNil(IconCacheManager.shared.cachedIcon(for: path, appearance: .light),
+                     "An icon drawn from the old bundle must not be served as current")
+    }
+
+    func testCorruptCachedPngIsDeleted() throws {
+        let path = try makeBundle()
+        IconCacheManager.shared.cacheIcon(bitmap(px: 200, red: 0.5), for: path, appearance: .light)
+        let file = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches/MacMuster/icons-v4")
+            .appendingPathComponent(IconCacheManager.shared.cacheKey(for: path, appearance: .light))
+        try Data("not a png".utf8).write(to: file)
+        IconCacheManager.shared.evictMemoryVariants(for: [path], appearance: .light)
+
+        XCTAssertNil(IconCacheManager.shared.cachedIcon(for: path, appearance: .light))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "A corrupt PNG must be removed, not re-read every session")
+    }
 }

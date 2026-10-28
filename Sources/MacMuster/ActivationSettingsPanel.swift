@@ -54,6 +54,11 @@ struct ActivationSettingsPanel: View {
             }
         }
         .onDisappear { stopRecording() }
+        // Settings closes via `orderOut`, which does not fire `onDisappear`; without this the
+        // local monitor outlives the window and swallows every keyDown in the app until Esc.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+            stopRecording()
+        }
     }
 
     private func section<Content: View>(title: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {

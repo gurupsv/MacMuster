@@ -462,6 +462,9 @@ struct GeneralSettingsPanel: View {
                         isRefreshing = false
                         showRefreshComplete = true
                     }
+                    // Hold the toast long enough to be seen; clearing it in the same tick meant it
+                    // never rendered.
+                    try? await Task.sleep(nanoseconds: WindowMetrics.refreshToastNanoseconds)
                     await MainActor.run {
                         showRefreshComplete = false
                     }
@@ -1615,9 +1618,7 @@ struct AppDirectoriesSettingsPanel: View {
                             isPresented: $showClearAllConfirmation,
                             actions: {
                                 Button("Clear All", role: .destructive) {
-                                    for dir in appModel.customDirectories {
-                                        appModel.removeCustomDirectory(dir)
-                                    }
+                                    appModel.removeCustomDirectories(appModel.customDirectories)
                                 }
                                 Button("Cancel", role: .cancel) {}
                             },

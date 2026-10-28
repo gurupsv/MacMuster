@@ -29,7 +29,8 @@ final class FolderStore {
     }
     
     func createFolder(name: String, appPaths: [String]) -> AppFolder {
-        let folder = AppFolder(name: name, appPaths: appPaths)
+        // Same `.app` rule as `insert`: a folder UUID filed as a member is invisible and undeletable.
+        let folder = AppFolder(name: name, appPaths: appPaths.filter { $0.hasSuffix(".app") })
         folders.append(folder)
         return folder
     }

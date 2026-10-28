@@ -415,6 +415,12 @@
     "Export Complete" : {
       "extractionState" : "manual"
     },
+    "Export Failed" : {
+      "extractionState" : "manual"
+    },
+    "The backup could not be written to the chosen location." : {
+      "extractionState" : "manual"
+    },
     "Open" : {
       "extractionState" : "manual"
     },

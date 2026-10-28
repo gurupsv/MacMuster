@@ -630,7 +630,7 @@ spacing: LayoutMetrics.gridSpacing
     }
 
     // MARK: - Context Menu Extraction (Fixes compiler timeout)
-    // Extracted to AppContextMenu.swift and FolderContextMenu.swift
+    // Extracted to AppContextMenu.swift
 
     // MARK: - Category Tab Extraction (Fixes compiler timeout)
     // Extracted to CategoryTabView.swift
@@ -1197,7 +1197,13 @@ private struct AppGridCell: View {
                     .onChange(of: geo.size.width) { _, newWidth in cellWidth = newWidth }
             }
         )
-        .draggable(app.path)
+        .draggable(AppDragItem(path: app.path, isFolder: app.isFolder)) {
+            // The preview's lifetime is the drag's start signal: the SwiftUI drag API has no
+            // begin callback, and the overlay must get out of the Dock's way while it runs.
+            AppIconView(appModel: appModel, app: app, isHovered: false, isSelected: false, isPressed: false, feedbackEnabled: false)
+                .frame(width: 96, height: 96)
+                .onAppear { OverlayWindowManager.shared.dragBegan() }
+        }
         .dropDestination(for: String.self) { items, location in
             onDrop(items, location, cellWidth)
         } isTargeted: { isTargeted in

@@ -56,6 +56,14 @@ extension LibraryScanState {
         counts[.recentlyLaunched] = _recentApps.filter { filteredPaths.contains($0.path) }.count
         counts[.newlyInstalled] = filtered.filter { isNewlyInstalled($0) }.count
         if navigation?.categoryCounts != counts { navigation?.categoryCounts = counts }
+        // An emptied tab is disabled, so a selection left on it is an empty grid with no way to
+        // click out. Only when not searching: a query that matches nothing in a category is
+        // transient and should not throw the user off their tab. An empty library is left alone:
+        // "All" would be just as empty, so there is nowhere better to go.
+        if searchFilter.isEmpty, counts[.all, default: 0] > 0, let navigation, navigation.selectedCategory != .all,
+           counts[navigation.selectedCategory, default: 0] == 0 {
+            navigation.selectedCategory = .all
+        }
     }
 
     // MARK: Display Ordering

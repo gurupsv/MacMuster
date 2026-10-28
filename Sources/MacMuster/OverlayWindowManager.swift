@@ -194,7 +194,9 @@ class OverlayWindowManager {
         installCombinedEventMonitor()
         installDisplayChangeObserver()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + WindowMetrics.windowAnimationDelay) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + WindowMetrics.windowAnimationDelay) { [weak window] in
+            // Hidden again in the meantime: the reset would clobber a type-to-search in flight.
+            guard let window, window.isVisible else { return }
             NotificationCenter.default.post(name: .launcherDidShow, object: window)
         }
     }
@@ -307,7 +309,107 @@ class OverlayWindowManager {
         }
     }
     
+    // MARK: - Dragging to the Dock
+
+    private var dragPollTimer: Timer?
+    private var isFadedForDrag = false
+    private var isDockReleasedForDrag = false
+
+    private func endDrag() {
+        lastDragPollTime = nil
+        dragPollTimer?.invalidate()
+        dragPollTimer = nil
+        setFadedForDrag(false)
+        if isDockReleasedForDrag {
+            isDockReleasedForDrag = false
+            if savedPresentationOptions != nil { NSApp.presentationOptions.insert(.autoHideDock) }
+        }
+    }
+
+    /// Called when a grid-cell drag starts. In Full Screen and Maximized the launcher covers the Dock,
+    /// so while the pointer is near a screen edge the windows go fully transparent (they stay alive:
+    /// ordering a drag source out cancels the drag) and come back when it moves inward or the button
+    /// is released. The poll ends itself on release, so there is no separate drag-end hook to miss.
+    func dragBegan() {
+        guard dragPollTimer == nil, isWindowVisible else { return }
+        // `.common` rather than the default mode `scheduledTimer` uses: a drag session runs the run
+        // loop in event-tracking/dragging modes, where a default-mode timer can stop firing mid-drag.
+        let timer = Timer(timeInterval: WindowMetrics.dragPollSeconds, repeats: true) { _ in
+            MainActor.assumeIsolated { OverlayWindowManager.shared.pollDrag() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        dragPollTimer = timer
+        // Hand the Dock back to the system for the drag: with the launcher holding `.autoHideDock`, the
+        // Dock revealed on the first edge approach but not on later ones in the same drag.
+        if savedPresentationOptions != nil {
+            NSApp.presentationOptions.remove(.autoHideDock)
+            isDockReleasedForDrag = true
+        }
+    }
+
+    private var lastDragPollTime: TimeInterval?
+
+    /// Scrolls the grid while the pointer is in its top or bottom band. Time-based rather than
+    /// per-tick: the poll runs at a lower rate during a drag than requested, and a fixed step per tick
+    /// would crawl.
+    private func autoScrollGrid(at screenPoint: NSPoint) {
+        let now = ProcessInfo.processInfo.systemUptime
+        defer { lastDragPollTime = now }
+        guard let window, let dt = lastDragPollTime.map({ min(now - $0, 0.1) }),
+              let scrollView = Self.gridScrollView(in: window.contentView),
+              let document = scrollView.documentView else { return }
+        let local = scrollView.convert(window.convertPoint(fromScreen: screenPoint), from: nil)
+        guard scrollView.bounds.contains(NSPoint(x: local.x, y: min(max(local.y, 0), scrollView.bounds.height))) else { return }
+        let velocity = DragAutoScroll.velocity(y: local.y, height: scrollView.bounds.height)
+        guard velocity != 0 else { return }
+        let clip = scrollView.contentView
+        // The document view is flipped (origin at top) under SwiftUI, so a positive delta scrolls down.
+        let delta = (document.isFlipped ? velocity : -velocity) * CGFloat(dt)
+        var origin = clip.bounds.origin
+        origin.y = DragAutoScroll.clamped(offset: origin.y, delta: delta, contentHeight: document.frame.height, viewHeight: clip.bounds.height)
+        clip.scroll(to: origin)
+        scrollView.reflectScrolledClipView(clip)
+    }
+
+    /// The vertical grid's scroll view: the largest one, since the Recent strip's is a thin horizontal band.
+    private static func gridScrollView(in view: NSView?) -> NSScrollView? {
+        guard let view else { return nil }
+        var best: NSScrollView?
+        func visit(_ v: NSView) {
+            if let sv = v as? NSScrollView, sv.bounds.height > (best?.bounds.height ?? 0) { best = sv }
+            v.subviews.forEach(visit)
+        }
+        visit(view)
+        return best
+    }
+
+    private func pollDrag() {
+        guard NSEvent.pressedMouseButtons & 1 != 0, isWindowVisible else {
+            endDrag()
+            return
+        }
+        let point = NSEvent.mouseLocation
+        autoScrollGrid(at: point)
+        guard let frame = NSScreen.screens.first(where: { $0.frame.contains(point) })?.frame else { return }
+        let edgeDistance = min(point.x - frame.minX, frame.maxX - point.x, point.y - frame.minY)
+        if edgeDistance < WindowMetrics.dockRevealEdgePoints {
+            setFadedForDrag(true)
+        } else if edgeDistance > WindowMetrics.dockRestoreEdgePoints {
+            setFadedForDrag(false)
+        }
+    }
+
+
+    private func setFadedForDrag(_ faded: Bool) {
+        guard faded != isFadedForDrag else { return }
+        isFadedForDrag = faded
+        let alpha: CGFloat = faded ? 0 : 1
+        window?.alphaValue = alpha
+        backgroundWindows.forEach { $0.alphaValue = alpha }
+    }
+
     func hide() {
+        endDrag()
         window?.orderOut(nil)
         hideBackgroundWindows()
         exitLauncherPresentationMode()
@@ -417,12 +519,15 @@ class OverlayWindowManager {
     func handleReturn(_ event: NSEvent) -> Bool {
         if let appModel = appModel, !appModel.searchTerm.isEmpty {
             let displayedApps = appModel.getDisplayedApps()
-            if let first = displayedApps.first {
-                if first.isFolder, let folderId = first.folderId {
+            // Honor an arrow-key selection made after Escape left the field; otherwise the top match.
+            let idx = appModel.selectedAppIndex
+            let target = (idx >= 0 && idx < displayedApps.count) ? displayedApps[idx] : displayedApps.first
+            if let target {
+                if target.isFolder, let folderId = target.folderId {
                     appModel.openFolder(folderId)
                     return true
                 }
-                appModel.launchAndDismiss(first)
+                appModel.launchAndDismiss(target)
             }
         } else {
             if let appModel = appModel {

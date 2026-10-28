@@ -219,4 +219,17 @@ final class RecentAppsTrackerTests: XCTestCase {
         XCTAssertEqual(UniformTypeIdentifiers.UTType.json.identifier, "public.json", "JSON UTType identifier should be public.json")
     }
 
+    func testDisablingErasesPersistedHistory() {
+        let tracker = RecentAppsTracker.shared
+        tracker.isEnabled = true
+        tracker.recordAppLaunch(at: "/Applications/Safari.app")
+        tracker.persistRecentLaunchTimes()
+        XCTAssertNotNil(UserDefaults.standard.data(forKey: "recentAppLaunchTimes"))
+
+        tracker.isEnabled = false
+
+        let data = UserDefaults.standard.data(forKey: "recentAppLaunchTimes")
+        let times = data.flatMap { try? JSONDecoder().decode([String: Date].self, from: $0) } ?? [:]
+        XCTAssertTrue(times.isEmpty, "Disabling must erase history on disk, not only in memory")
+    }
 }

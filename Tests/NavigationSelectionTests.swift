@@ -372,4 +372,24 @@ final class NavigationSelectionTests: XCTestCase {
         XCTAssertEqual(navigation.selectedAppIndex, 2,
             "selectApp(at:) should set the exact index")
     }
+
+    func testNewSearchTermResetsSelection() {
+        navigation.selectedAppIndex = 3
+        navigation.searchTerm = "x"
+        XCTAssertEqual(navigation.selectedAppIndex, -1, "A stale index must not survive a new query")
+    }
+
+    func testSelectAppRightFromLastCellOfPartialRowStaysInRange() {
+        let apps = (0..<6).map { i in
+            Application(id: "/Applications/T\(i).app", name: "T\(i)", path: "/Applications/T\(i).app",
+                        icon: nil, installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
+        }
+        library.setApplications(apps)
+        settings.columnCount = 4
+
+        navigation.selectedAppIndex = 5 // last cell of the 2-cell second row
+        navigation.selectAppRight()
+
+        XCTAssertTrue((0..<6).contains(navigation.selectedAppIndex), "Selection must not run past the last app")
+    }
 }

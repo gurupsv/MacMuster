@@ -78,6 +78,7 @@ Native macOS app launcher: Swift 6.2 + SwiftUI/AppKit, zero external dependencie
 | Icon loading / caching | `IconService` (decode, folder composites), `IconCacheManager` (memory + disk), `applyLoadedIcons` in `LibraryScanState` |
 | Folders | `FolderStore` (CRUD) + folder methods on `LibraryScanState` |
 | Smart Folders wizard | `SmartFolderPlanBuilder` (build) → `SmartFoldersWizardViewModel` (steps/apply/undo) → `SmartFoldersWizardPanel` (UI) + `SmartFoldersAnimation` (motion + CPU/thermal/reduce-motion gate); entry points in `StatusBarManager` + `FoldersSettingsPanel`; apply/undo on `LibraryScanState` |
+| Drag an app to the Dock | `AppDragItem` (two representations; folder tiles string-only) → `.draggable` in `AppGridCell` → `OverlayWindowManager.dragBegan` (also drives grid auto-scroll via `DragAutoScroll`; fades the launcher near screen edges so the Dock can take the drop) |
 | Keyboard / overlay window | `OverlayWindowManager`, `NavigationSelection` |
 | Global shortcut / hot corner | `ActivationManager` (Carbon hot key + global `mouseMoved` monitor, configured by value from `SettingsAppearance.syncActivation`) → `ActivationSettingsPanel` |
 | Glass material (Classic / Liquid Glass / low-GPU) | `VisualEffectBackground` (`ContentView.swift`: `structure` decides which views exist, `rebuild` only when it changes, `refreshColors` in place) + `OverlayWindowManager.applyBackgroundColor`; Liquid Glass is `#available(macOS 26)` only |
@@ -124,6 +125,7 @@ Sources/MacMuster/
 ├── LibraryScanState.swift         # @Observable; catalog, icons, IconSlot, folders, custom order, refresh
 ├── LibraryScanState+Display.swift # Categories, cached display pipeline, search ranking
 ├── NavigationSelection.swift      # @Observable; keyboard nav, selection, search term, category
+├── AppDragItem.swift              # Grid-cell drag payload: path string (in-app reorder/merge) + file URL (Dock/Finder)
 ├── Types.swift                    # Application, AppFolder, AppCategory, LaunchMode, search/provenance
 ├── Constants.swift                # All magic numbers, in case-less rationale-documented enums
 ├── ContentView.swift              # Launcher grid, AppIconView, drag/drop, empty states
@@ -156,6 +158,7 @@ Sources/MacMuster/
     ├── BundleInfoReader.swift       # off-main `Info.plist` → `BundleInfo` (size-capped, fails soft)
     ├── BoundedFileReader.swift      # capped `FileHandle` read for user-opened import files (`ImportLimits`)
     ├── SmartFolderPlanBuilder.swift # main-actor build: candidates → bundle read → classify
+    ├── DragAutoScroll.swift         # pure velocity/clamp curve for scrolling the grid while dragging near its top/bottom
     ├── ScrollEdgeEffect.swift       # row fade/shrink/blur near scroll edges (pure curve + modifier)
     ├── SmartFoldersAnimation.swift  # pure "apps grouping" motion math + CPU/thermal/reduce-motion gate
     └── AlertHelper.swift            # NSAlert.showError/showInfo

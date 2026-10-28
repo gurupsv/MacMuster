@@ -790,4 +790,44 @@ final class FolderTests: XCTestCase {
 
         XCTAssertEqual(appModel.folders.count, 0) // No folders exist — operation does nothing
     }
+
+    func testCreateFolderDropsNonAppMembers() {
+        let folder = FolderStore.shared.createFolder(name: "T", appPaths: ["/Applications/A.app", UUID().uuidString])
+        defer { FolderStore.shared.deleteFolder(folderId: folder.id) }
+        XCTAssertEqual(folder.appPaths, ["/Applications/A.app"], "A folder UUID filed as a member is invisible and undeletable")
+    }
+
+    func testDeletingOpenFolderClosesIt() {
+        guard let folder = appModel.createFolder(name: "T", appPaths: ["/Applications/A.app"]) else {
+            return XCTFail("folder should be created")
+        }
+        appModel.library.currentFolderId = folder.id
+
+        appModel.deleteFolder(folderId: folder.id)
+
+        XCTAssertNil(appModel.library.currentFolderId, "A deleted folder must not stay open (or persisted as current)")
+    }
+
+    func testReloadDropsCurrentFolderIdNotInFolders() {
+        PreferencesStore.shared.saveFolders([])
+        PreferencesStore.shared.saveCurrentFolderId(UUID().uuidString)
+
+        appModel.library.reloadFromPersistence()
+
+        XCTAssertNil(appModel.library.currentFolderId, "A restored id with no matching folder must be discarded")
+    }
+
+    func testRemoveCustomDirectoriesRemovesAll() {
+        let root = (NSTemporaryDirectory() as NSString).resolvingSymlinksInPath
+        let dirs = (0..<2).map { (root as NSString).appendingPathComponent("MMBatchRemove-\(UUID().uuidString)-\($0)") }
+        dirs.forEach { try? FileManager.default.createDirectory(atPath: $0, withIntermediateDirectories: true) }
+        defer { dirs.forEach { try? FileManager.default.removeItem(atPath: $0) } }
+        dirs.forEach { appModel.library.addCustomDirectory($0) }
+        XCTAssertEqual(Set(appModel.library.customDirectories), Set(dirs), "setup")
+
+        appModel.removeCustomDirectories(appModel.library.customDirectories)
+
+        XCTAssertTrue(appModel.library.customDirectories.isEmpty)
+        XCTAssertFalse(appModel.library.allScanDirectories.contains { dirs.contains($0) })
+    }
 }

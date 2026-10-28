@@ -69,7 +69,8 @@ final class RecentAppsTracker {
     }
 
     func persistRecentLaunchTimes() {
-        guard isEnabled else { return }
+        // No `isEnabled` guard: clearing on disable must reach UserDefaults, or the erased
+        // history reloads on next launch. `recordAppLaunch` already refuses to record when off.
         if let data = try? JSONEncoder().encode(recentAppLaunchTimes) {
             defaults.set(data, forKey: Keys.recentAppLaunchTimes.rawValue)
         }

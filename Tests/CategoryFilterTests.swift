@@ -162,4 +162,13 @@ final class CategoryFilterTests: XCTestCase {
                 "Tab badge for \(category.rawValue) disagrees with the grid")
         }
     }
+
+    // MARK: - Emptied selected tab
+
+    func testSelectedCategoryFallsBackToAllWhenItEmptiesOut() {
+        loadMixedLibrary()
+        navigation.selectedCategory = .mostUsed // nothing launched, so this tab has no apps
+        library.updateFilteredApps()
+        XCTAssertEqual(navigation.selectedCategory, .all, "A disabled selected tab must not strand the user on an empty grid")
+    }
 }
