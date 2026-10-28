@@ -79,6 +79,15 @@ enum WindowMetrics {
     /// How long the Settings "Apps refreshed" toast stays up: long enough to read a one-line
     /// confirmation, short enough not to linger over the controls beneath it.
     static let refreshToastNanoseconds: UInt64 = 2_000_000_000
+    /// Drag-to-Dock pointer poll: 30 Hz tracks a hand-speed drag to the edge without a visible lag
+    /// before the launcher fades, and the timer only runs while a drag is in flight.
+    static let dragPollSeconds: TimeInterval = 1.0 / 30.0
+    /// Pointer within this many points of a screen edge fades the launcher so the Dock underneath can
+    /// take the drop (the Dock sits on the left, right or bottom edge).
+    static let dockRevealEdgePoints: CGFloat = 6
+    /// Back inside this distance the launcher returns. Wider than the reveal distance so the pointer
+    /// riding the Dock's edge doesn't flicker the windows.
+    static let dockRestoreEdgePoints: CGFloat = 120
     static let windowMinWidth: CGFloat = 900
     static let windowMinHeight: CGFloat = 700
 
@@ -124,6 +133,17 @@ enum ScrollEdgeMetrics {
     /// Blur radius (pt) at the edge. Kept small: the blur is an offscreen pass per affected cell,
     /// and only the one row inside each transition band pays it.
     static let maxBlurRadius: Double = 6
+}
+
+// MARK: - Drag Auto-Scroll Metrics
+
+enum DragScrollMetrics {
+    /// Height of the strip at the grid's top and bottom that scrolls while an icon is dragged there:
+    /// about one icon row, so the pointer is near a row's worth of content it can't yet reach.
+    static let edgeBandPoints: CGFloat = 110
+    /// Top speed at the very edge: roughly three grid rows a second, fast enough to cross a long
+    /// library in a few seconds without overshooting a folder on a short one.
+    static let maxPointsPerSecond: CGFloat = 900
 }
 
 // MARK: - Icon Metrics
