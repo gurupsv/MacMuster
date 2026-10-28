@@ -72,8 +72,9 @@ final class BackupManager {
         // is long-lived; the badge membership (`recentlyUpdatedPaths`) is age-evicted. Both
         // round-trip so a restored backup continues badging apps that updated just before
         // the backup was taken, and measures future deltas against the backed-up baseline.
-        let knownBundleMtimes: [String: Date]
-        let recentlyUpdatedPaths: [String: Date]
+        // Optional because schema v1 archives (1.0.1–1.0.2) predate them; nil restores as empty.
+        let knownBundleMtimes: [String: Date]?
+        let recentlyUpdatedPaths: [String: Date]?
         let icons: IconPack
 
         init(
@@ -194,7 +195,15 @@ final class BackupManager {
     /// Only the save panel and the preference reads run on the main actor. Reading the icon
     /// pack (every cached bitmap and sidecar), encoding it (~25 MB of base64 JSON), hashing and
     /// writing all run off it — together they froze the UI for about half a second.
-    func export() async -> URL? {
+    /// Cancelling the save panel and failing to write are different outcomes: only the second
+    /// deserves an alert.
+    enum ExportResult {
+        case saved(URL)
+        case cancelled
+        case failed
+    }
+
+    func export() async -> ExportResult {
         let jsonType = UniformTypeIdentifiers.UTType.json
 
         let panel = NSSavePanel()
@@ -203,7 +212,7 @@ final class BackupManager {
         panel.title = String(localized: "Export MacMuster Backup")
         panel.nameFieldStringValue = "MacMuster-Backup.json"
 
-        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        guard panel.runModal() == .OK, let url = panel.url else { return .cancelled }
 
         let folders = FolderStore.shared.folders
         let customOrder = PreferencesStore.shared.loadCustomOrder() ?? [:]
@@ -301,7 +310,7 @@ final class BackupManager {
                 return false
             }
         }.value
-        return written ? url : nil
+        return written ? .saved(url) : .failed
     }
 
     // MARK: - Encoding / Decoding
@@ -352,8 +361,8 @@ final class BackupManager {
             && archive.appFolders.reduce(0, { $0 + $1.appPaths.count }) <= ImportLimits.maxAppPaths
             && archive.hiddenAppPaths.count <= ImportLimits.maxAppPaths
             && archive.customOrder.count <= ImportLimits.maxAppPaths
-            && archive.knownBundleMtimes.count <= ImportLimits.maxAppPaths
-            && archive.recentlyUpdatedPaths.count <= ImportLimits.maxAppPaths
+            && (archive.knownBundleMtimes?.count ?? 0) <= ImportLimits.maxAppPaths
+            && (archive.recentlyUpdatedPaths?.count ?? 0) <= ImportLimits.maxAppPaths
             && archive.icons.entries.count <= ImportLimits.maxIconPackEntries
             && archive.icons.entries.values.reduce(0, { $0 + $1.count }) <= ImportLimits.maxIconPackBytes
     }
@@ -487,8 +496,8 @@ final class BackupManager {
         // treating every app as freshly updated. The badge membership is restored too, but
         // age-eviction on the next `loadFromDefaults` drops entries that expired while the
         // backup was on the shelf.
-        PreferencesStore.shared.saveKnownBundleMtimes(archive.knownBundleMtimes)
-        PreferencesStore.shared.saveRecentlyUpdatedPaths(archive.recentlyUpdatedPaths)
+        PreferencesStore.shared.saveKnownBundleMtimes(archive.knownBundleMtimes ?? [:])
+        PreferencesStore.shared.saveRecentlyUpdatedPaths(archive.recentlyUpdatedPaths ?? [:])
 
         // Restore icon cache — write PNGs from archive to disk cache
         let icons = archive.icons

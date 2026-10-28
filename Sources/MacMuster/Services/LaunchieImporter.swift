@@ -35,7 +35,7 @@ final class LaunchieImporter {
     /// app's. MacMuster has no such prefix: a folder's position lives under its bare UUID,
     /// because a folder's synthetic `Application.path` *is* its UUID
     /// (see `FolderStore.getFolderApplication`).
-    private static let folderPositionPrefix = "folder:"
+    nonisolated private static let folderPositionPrefix = "folder:"
 
     // MARK: - Preview
 
@@ -48,12 +48,18 @@ final class LaunchieImporter {
         var missingCount: Int { missingPaths.count }
     }
 
+    /// Off-main wrapper for UI callers: the read is up to 128 MiB and the existence checks stat
+    /// every folder member and layout position, which froze the UI on a large export.
+    func parseOffMain(from url: URL) async -> ImportPreview? {
+        await Task.detached(priority: .userInitiated) { [self] in self.parse(from: url) }.value
+    }
+
     /// Parses a Launchie export at `url` into MacMuster's model, or nil if it isn't one.
     ///
     /// Apps no longer on disk are dropped from their folder — mirroring
     /// `BackupManager.restore` — and returned in `missingPaths` so the caller can show them
     /// before the user commits.
-    func parse(from url: URL) -> ImportPreview? {
+    nonisolated func parse(from url: URL) -> ImportPreview? {
         guard let data = BoundedFileReader.read(url, maxBytes: ImportLimits.maxFileBytes),
               let archive = try? JSONDecoder().decode(LaunchieArchive.self, from: data),
               archive.folders.folders.count <= ImportLimits.maxFolders,
@@ -110,7 +116,7 @@ final class LaunchieImporter {
 
     /// Same existence/shape check `BackupManager.restore` uses: must exist, be a directory, and
     /// carry the `.app` suffix.
-    private static func appExists(at path: String) -> Bool {
+    nonisolated private static func appExists(at path: String) -> Bool {
         var isDir: ObjCBool = false
         return FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
             && isDir.boolValue

@@ -377,4 +377,20 @@ final class BackupIntegrityTests: XCTestCase {
         XCTAssertEqual(FolderStore.shared.folders.first?.smartCategoryKey, "tools",
             "A known key must survive restore untouched")
     }
+
+    // MARK: - Schema v1 archives
+
+    func testArchiveWithoutBadgeStateStillDecodes() throws {
+        // 1.0.1–1.0.2 archives predate `knownBundleMtimes` / `recentlyUpdatedPaths`.
+        let data = try JSONEncoder().encode(makeArchive())
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object.removeValue(forKey: "knownBundleMtimes")
+        object.removeValue(forKey: "recentlyUpdatedPaths")
+        let v1 = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = BackupManager.decodeArchive(from: v1)
+
+        XCTAssertNotNil(decoded, "A v1 archive without the badge-state keys must still restore")
+        XCTAssertTrue(BackupManager.withinImportLimits(try XCTUnwrap(decoded)))
+    }
 }

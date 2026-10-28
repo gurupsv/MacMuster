@@ -183,7 +183,9 @@ class LibraryScanState {
         hiddenAppPaths = PreferencesStore.shared.loadHiddenApps() ?? []
         folders = PreferencesStore.shared.loadFolders() ?? []
         customOrder = PreferencesStore.shared.loadCustomOrder() ?? [:]
-        currentFolderId = PreferencesStore.shared.loadCurrentFolderId()
+        // A restored id can name a folder the archive doesn't contain (or one re-keyed on load).
+        let restoredFolderId = PreferencesStore.shared.loadCurrentFolderId()
+        currentFolderId = folders.contains(where: { $0.id == restoredFolderId }) ? restoredFolderId : nil
         loadSortOption()
         loadCustomDirectories()
 
@@ -793,6 +795,22 @@ class LibraryScanState {
         if customDirectoryBookmarks.removeValue(forKey: path) != nil { PreferencesStore.shared.saveCustomDirectoryBookmarks(customDirectoryBookmarks) }
         // The rescan is driven by `allScanDirectories`'s observer, which the mutation above trips.
     }
+    /// Removes several directories with one write to each observed property (one rescan, one
+    /// persist), instead of N× `removeCustomDirectory` each tripping `didSet`.
+    func removeCustomDirectories(_ paths: [String]) {
+        let doomed = Set(paths)
+        guard !doomed.isEmpty else { return }
+        for path in doomed {
+            if let url = activeSecurityScopedURLs.removeValue(forKey: path) { url.stopAccessingSecurityScopedResource() }
+        }
+        var bookmarks = customDirectoryBookmarks
+        let hadBookmark = doomed.contains { bookmarks.removeValue(forKey: $0) != nil }
+        customDirectories = customDirectories.filter { !doomed.contains($0) }
+        if hadBookmark {
+            customDirectoryBookmarks = bookmarks
+            PreferencesStore.shared.saveCustomDirectoryBookmarks(bookmarks)
+        }
+    }
     func addCustomDirectory(_ path: String, bookmarkData: Data? = nil) {
         guard ApplicationScanner.isValidCustomDirectory(path), !customDirectories.contains(path) else { return }
         customDirectories.append(path)
@@ -846,6 +864,9 @@ class LibraryScanState {
     func deleteFolder(folderId: String) {
         FolderStore.shared.deleteFolder(folderId: folderId)
         folders = FolderStore.shared.folders
+        // Otherwise the user is stranded in an empty view of a folder that no longer exists, and
+        // the dangling id is persisted across relaunches.
+        if currentFolderId == folderId { currentFolderId = nil }
         rebuildAppPathIndex()
         cachedDisplayedApps = nil
     }

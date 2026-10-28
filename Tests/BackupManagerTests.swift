@@ -559,11 +559,11 @@ final class BackupManagerTests: XCTestCase {
         let decoded = try JSONDecoder().decode(BackupManager.BackupArchive.self, from: data)
 
         XCTAssertEqual(decoded.schemaVersion, 2, "Decoded schema version should be 2")
-        XCTAssertEqual(decoded.knownBundleMtimes.count, 1, "knownBundleMtimes should round-trip")
-        XCTAssertEqual(decoded.knownBundleMtimes["/Applications/Safari.app"], mtime,
+        XCTAssertEqual(decoded.knownBundleMtimes?.count, 1, "knownBundleMtimes should round-trip")
+        XCTAssertEqual(decoded.knownBundleMtimes?["/Applications/Safari.app"], mtime,
             "knownBundleMtimes values should be preserved exactly")
-        XCTAssertEqual(decoded.recentlyUpdatedPaths.count, 1, "recentlyUpdatedPaths should round-trip")
-        XCTAssertEqual(decoded.recentlyUpdatedPaths["/Applications/Safari.app"], detected,
+        XCTAssertEqual(decoded.recentlyUpdatedPaths?.count, 1, "recentlyUpdatedPaths should round-trip")
+        XCTAssertEqual(decoded.recentlyUpdatedPaths?["/Applications/Safari.app"], detected,
             "recentlyUpdatedPaths values should be preserved exactly")
     }
 
@@ -600,9 +600,9 @@ final class BackupManagerTests: XCTestCase {
         let decoded = try JSONDecoder().decode(BackupManager.BackupArchive.self, from: data)
 
         XCTAssertEqual(decoded.schemaVersion, 1, "Explicit v1 schema version should be honored")
-        XCTAssertTrue(decoded.knownBundleMtimes.isEmpty,
+        XCTAssertTrue(decoded.knownBundleMtimes?.isEmpty ?? true,
             "v1 archive should decode with empty knownBundleMtimes (backward-compatible default)")
-        XCTAssertTrue(decoded.recentlyUpdatedPaths.isEmpty,
+        XCTAssertTrue(decoded.recentlyUpdatedPaths?.isEmpty ?? true,
             "v1 archive should decode with empty recentlyUpdatedPaths (backward-compatible default)")
     }
 }

@@ -12,6 +12,8 @@ class NavigationSelection {
     var searchTerm: String = "" {
         didSet {
             guard searchTerm != oldValue else { return }
+            // A new query makes any earlier index point at a different result (or past the end).
+            selectedAppIndex = -1
             searchDebounceTask?.cancel()
             if searchTerm.isEmpty {
                 library?.dataVersion += 1
@@ -109,7 +111,14 @@ class NavigationSelection {
             }
         } else {
             selectedAppIndex += 1
-            scrollTargetAnchor = .center
+            if selectedAppIndex >= apps.count {
+                // Last cell of a partial row: one step right would land past the end, so wrap
+                // to the start like the full-row case does.
+                selectedAppIndex = 0
+                scrollTargetAnchor = .top
+            } else {
+                scrollTargetAnchor = .center
+            }
         }
         scrollTargetIndex = selectedAppIndex
     }

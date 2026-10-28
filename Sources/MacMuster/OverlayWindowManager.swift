@@ -194,7 +194,9 @@ class OverlayWindowManager {
         installCombinedEventMonitor()
         installDisplayChangeObserver()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + WindowMetrics.windowAnimationDelay) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + WindowMetrics.windowAnimationDelay) { [weak window] in
+            // Hidden again in the meantime: the reset would clobber a type-to-search in flight.
+            guard let window, window.isVisible else { return }
             NotificationCenter.default.post(name: .launcherDidShow, object: window)
         }
     }
@@ -417,12 +419,15 @@ class OverlayWindowManager {
     func handleReturn(_ event: NSEvent) -> Bool {
         if let appModel = appModel, !appModel.searchTerm.isEmpty {
             let displayedApps = appModel.getDisplayedApps()
-            if let first = displayedApps.first {
-                if first.isFolder, let folderId = first.folderId {
+            // Honor an arrow-key selection made after Escape left the field; otherwise the top match.
+            let idx = appModel.selectedAppIndex
+            let target = (idx >= 0 && idx < displayedApps.count) ? displayedApps[idx] : displayedApps.first
+            if let target {
+                if target.isFolder, let folderId = target.folderId {
                     appModel.openFolder(folderId)
                     return true
                 }
-                appModel.launchAndDismiss(first)
+                appModel.launchAndDismiss(target)
             }
         } else {
             if let appModel = appModel {

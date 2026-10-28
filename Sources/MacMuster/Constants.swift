@@ -76,6 +76,9 @@ enum LaunchMetrics {
 enum WindowMetrics {
     // Overlay window
     static let windowAnimationDelay: TimeInterval = 0.1
+    /// How long the Settings "Apps refreshed" toast stays up: long enough to read a one-line
+    /// confirmation, short enough not to linger over the controls beneath it.
+    static let refreshToastNanoseconds: UInt64 = 2_000_000_000
     static let windowMinWidth: CGFloat = 900
     static let windowMinHeight: CGFloat = 700
 

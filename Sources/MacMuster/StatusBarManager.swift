@@ -103,8 +103,14 @@ class StatusBarManager: NSObject {
     
     @objc func exportBackup() {
         Task { @MainActor in
-            guard let url = await BackupManager.shared.export() else { return }
-            NSAlert.showInfo(String(localized: "Export Complete"), String(localized: "Backup saved to:\n\(url.path)"))
+            switch await BackupManager.shared.export() {
+            case .saved(let url):
+                NSAlert.showInfo(String(localized: "Export Complete"), String(localized: "Backup saved to:\n\(url.path)"))
+            case .failed:
+                NSAlert.showError(String(localized: "Export Failed"), String(localized: "The backup could not be written to the chosen location."))
+            case .cancelled:
+                break
+            }
         }
     }
 
@@ -132,7 +138,7 @@ class StatusBarManager: NSObject {
             return
         }
 
-        if let preview = LaunchieImporter.shared.parse(from: url) {
+        if let preview = await LaunchieImporter.shared.parseOffMain(from: url) {
             importLaunchieBackup(preview)
             return
         }

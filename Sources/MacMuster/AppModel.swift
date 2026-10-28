@@ -285,6 +285,7 @@ class AppModel {
     func isNewlyInstalled(_ app: Application) -> Bool { library.isNewlyInstalled(app) }
     func matchesSelectedCategory(_ app: Application) -> Bool { library.matchesSelectedCategory(app, selectedCategory: selectedCategory) }
     func removeCustomDirectory(_ path: String) { library.removeCustomDirectory(path) }
+    func removeCustomDirectories(_ paths: [String]) { library.removeCustomDirectories(paths) }
     func addCustomDirectory(_ path: String, bookmarkData: Data? = nil) { library.addCustomDirectory(path, bookmarkData: bookmarkData) }
     func getDisplayedApps() -> [Application] { library.getDisplayedApps(searchTerm: searchTerm, showFoldersFirst: showFoldersFirst, customOrder: customOrder, sortOption: sortOption, selectedCategory: selectedCategory) }
     func getFolderApplication(_ folder: AppFolder) -> Application { library.getFolderApplication(folder) }

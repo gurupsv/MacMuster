@@ -159,20 +159,20 @@ final class IconService {
         let inFlightLimit = min(IconMetrics.maxConcurrentIconDecodes, missingPaths.count)
         return await withTaskGroup(of: (String, NSImage).self) { group in
             var iterator = missingPaths.makeIterator()
-            func enqueueBatch() {
-                for _ in 0..<inFlightLimit {
+            func enqueue(_ count: Int) {
+                for _ in 0..<count {
                     guard let path = iterator.next() else { return }
                     group.addTask(priority: .userInitiated) {
                         (path, Self.loadOrDecodeIcon(path, appearance: appearance))
                     }
                 }
             }
-            enqueueBatch()
+            enqueue(inFlightLimit)
             var results: [(String, NSImage)] = []
             results.reserveCapacity(missingPaths.count)
             while let pair = await group.next() {
                 results.append(pair)
-                enqueueBatch()
+                enqueue(1) // top up one per completion so in-flight never exceeds the cap
             }
             return results
         }
@@ -187,9 +187,11 @@ final class IconService {
             return cached
         }
 
+        // Read before rasterizing so the cache entry is stamped with the version actually drawn.
+        let mtimeBeforeRaster = IconCacheManager.shared.currentBundleModificationTime(for: path)
         let icon = Self.rasterize(path, pixelSize: IconMetrics.iconRasterPixelSizePx, appearance: appearance)
         // Keep what the cache hands back (PNG-backed, decoded lazily), not the rasterized bitmap.
-        return IconCacheManager.shared.cacheIcon(icon, for: path, appearance: appearance)
+        return IconCacheManager.shared.cacheIcon(icon, for: path, appearance: appearance, bundleMtime: mtimeBeforeRaster)
     }
     
     func updateIconsInPlace(for displayOrder: [Application], with loadedIcons: [(String, NSImage)]) -> [Application] {

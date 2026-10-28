@@ -208,6 +208,8 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
             let imageData = try Data(contentsOf: iconURL)
             guard let source = CGImageSourceCreateWithData(imageData as CFData, nil),
                   let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                // Corrupt PNG: drop it, or every session re-reads and fails to decode it.
+                deleteCache(for: appPath, appearance: appearance)
                 return nil
             }
             let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
@@ -235,12 +237,17 @@ nonisolated final class IconCacheManager: @unchecked Sendable {
     /// is lazy about a bitmap. Only the icons actually drawn get decoded. If the PNG cannot be
     /// produced, the original bitmap is kept: a larger icon beats a missing one.
     @discardableResult
-    func cacheIcon(_ icon: NSImage, for appPath: String, appearance: IconAppearance) -> NSImage {
+    ///
+    /// `bundleMtime` is the mtime read **before** the icon was rasterized. Stat-ing again here would
+    /// file an icon drawn from the old bundle under a newer mtime when an update lands in between,
+    /// and every later freshness check would then call the stale icon current. Callers that did
+    /// not read one first can omit it.
+    func cacheIcon(_ icon: NSImage, for appPath: String, appearance: IconAppearance, bundleMtime preRasterMtime: Date? = nil) -> NSImage {
         let memKey = memoryCacheKey(appPath, appearance: appearance)
 
         // Read the mtime before storing, not after: a memory entry with no recorded mtime cannot
         // be validated on the way back out, so it would be discarded on the next read.
-        guard let bundleMtime = currentBundleModificationTime(for: appPath) else {
+        guard let bundleMtime = preRasterMtime ?? currentBundleModificationTime(for: appPath) else {
             return icon
         }
 

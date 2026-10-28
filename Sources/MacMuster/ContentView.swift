@@ -630,7 +630,7 @@ spacing: LayoutMetrics.gridSpacing
     }
 
     // MARK: - Context Menu Extraction (Fixes compiler timeout)
-    // Extracted to AppContextMenu.swift and FolderContextMenu.swift
+    // Extracted to AppContextMenu.swift
 
     // MARK: - Category Tab Extraction (Fixes compiler timeout)
     // Extracted to CategoryTabView.swift

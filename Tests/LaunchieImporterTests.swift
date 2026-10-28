@@ -172,4 +172,13 @@ final class LaunchieImporterTests: XCTestCase {
 
         FolderStore.shared.folders = []
     }
+
+    func testParseOffMainMatchesParse() async {
+        let url = writeFixture(#"{"folders":{"folders":[]},"layout":{"positions":{}}}"#)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let preview = await LaunchieImporter.shared.parseOffMain(from: url)
+
+        XCTAssertEqual(preview?.folderCount, 0)
+    }
 }
