@@ -42,6 +42,9 @@ final class PreferencesStore {
         case glassStyle = "glassStyle"
         case simpleGlass = "simpleGlass"
         case scrollEdgeEffect = "scrollEdgeEffect"
+        case updateCheckEnabled = "updateCheckEnabled"
+        case lastUpdateCheck = "lastUpdateCheck"
+        case lastNotifiedUpdateVersion = "lastNotifiedUpdateVersion"
         case globalHotkeyEnabled = "globalHotkeyEnabled"
         case hotkeyKeyCode = "hotkeyKeyCode"
         case hotkeyModifiers = "hotkeyModifiers"
@@ -396,6 +399,17 @@ final class PreferencesStore {
     /// is not usable here.
     func saveScrollEdgeEffect(_ enabled: Bool) { defaults.set(enabled, forKey: Keys.scrollEdgeEffect.rawValue) }
     func loadScrollEdgeEffect() -> Bool { defaults.object(forKey: Keys.scrollEdgeEffect.rawValue) as? Bool ?? true }
+
+    /// Opt-in network access: absent reads as off. Deliberately not part of `BackupArchive`, so a
+    /// restored or imported file can never switch network access on.
+    func saveUpdateCheckEnabled(_ enabled: Bool) { defaults.set(enabled, forKey: Keys.updateCheckEnabled.rawValue) }
+    func loadUpdateCheckEnabled() -> Bool { defaults.bool(forKey: Keys.updateCheckEnabled.rawValue) }
+    func saveLastUpdateCheck(_ date: Date) { defaults.set(date.timeIntervalSince1970, forKey: Keys.lastUpdateCheck.rawValue) }
+    func loadLastUpdateCheck() -> Date? {
+        (defaults.object(forKey: Keys.lastUpdateCheck.rawValue) as? Double).map { Date(timeIntervalSince1970: $0) }
+    }
+    func saveLastNotifiedUpdateVersion(_ version: String) { defaults.set(version, forKey: Keys.lastNotifiedUpdateVersion.rawValue) }
+    func loadLastNotifiedUpdateVersion() -> String? { defaults.string(forKey: Keys.lastNotifiedUpdateVersion.rawValue) }
 
     func saveGlobalHotkeyEnabled(_ enabled: Bool) { defaults.set(enabled, forKey: Keys.globalHotkeyEnabled.rawValue) }
     func loadGlobalHotkeyEnabled() -> Bool { defaults.bool(forKey: Keys.globalHotkeyEnabled.rawValue) }

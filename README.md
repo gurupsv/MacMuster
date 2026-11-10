@@ -120,7 +120,7 @@ Badges are independent and stack freely — an app can be running, recently upda
 
 ### 🔒 Privacy & Security
 
-- **Zero network calls** — completely offline
+- **Offline by default** — no network calls unless you opt in to "Check for updates" (one anonymous request to GitHub Releases; nothing downloaded)
 - **Local storage only** — UserDefaults for preferences, declared in a `PrivacyInfo.xcprivacy`
   manifest (same-app-only access, no tracking, no collected data types)
 - **No analytics, no tracking**
@@ -181,7 +181,7 @@ MacMuster takes a different approach from other Mac launchers. Here's how it sta
 - **Visual, not textual** — A beautiful grid of app icons you can browse, not a command line you have to type into. See all your apps at a glance.
 - **Folders that feel like folders** — Drag apps onto each other to create folders. Each folder shows a live mini-grid of its contents. No other launcher does this.
 - **Zero distractions** — No AI, no extensions marketplace, no account sign-up, no cloud sync. Just launch your apps and get back to work.
-- **Your data stays yours** — Completely offline. No network calls. No analytics. No tracking. Your app usage history never leaves your Mac.
+- **Your data stays yours** — Offline by default (an optional, off-by-default update check is the only network access). No analytics. No tracking. Your app usage history never leaves your Mac.
 - **Free, forever** — MIT licensed. No subscriptions, no paid upgrades, no feature gates.
 
 ### Shy MacMuster?

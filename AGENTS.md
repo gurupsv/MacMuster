@@ -5,7 +5,7 @@ Native macOS app launcher: Swift 6.2 + SwiftUI/AppKit, zero external dependencie
 ## Critical rules (read these even if you read nothing else)
 
 1. `swift build && swift test` must pass before you report work as done. Report skipped tests honestly.
-2. **Zero network calls, zero analytics, zero third-party dependencies.** No `print`, no `os.Logger`.
+2. **Zero network calls, zero analytics, zero third-party dependencies.** No `print`, no `os.Logger`. The one exception is the opt-in `UpdateChecker` (see *Security & privacy contract*); add no other network code.
 3. Swift 6 strict concurrency: UI/state classes are `@MainActor`; background work gets values passed in by value. Never touch `NSApp` or main-actor state off-main.
 4. **No blocking work on the main actor** — file I/O, encoding, hashing, directory walks go through `Task.detached`.
 5. **Batch mutations of observed/persisted properties** into one assignment (copy → mutate → assign). N× `didSet` is a known past defect.
@@ -83,6 +83,7 @@ Native macOS app launcher: Swift 6.2 + SwiftUI/AppKit, zero external dependencie
 | Global shortcut / hot corner | `ActivationManager` (Carbon hot key + global `mouseMoved` monitor, configured by value from `SettingsAppearance.syncActivation`) → `ActivationSettingsPanel` |
 | Glass material (Classic / Liquid Glass / low-GPU) | `VisualEffectBackground` (`ContentView.swift`: `structure` decides which views exist, `rebuild` only when it changes, `refreshColors` in place) + `OverlayWindowManager.applyBackgroundColor`; Liquid Glass is `#available(macOS 26)` only |
 | Scroll-edge fade/blur/taper | `ScrollEdgeEffect` (pure curve + `.scrollEdgeEffect(active:)` modifier, applied at the end of `AppGridCell`) → `ScrollEdgeMetrics` → `SettingsAppearance.isScrollEdgeEffectActive` (off under Low-GPU glass / Reduce Motion) |
+| Update check (opt-in) | `UpdateChecker` (pure parse/compare helpers + fetch + alerts) → `updateCheckEnabled` in `SettingsAppearance` → "Updates" section in `GeneralSettingsPanel` → "Check for Updates…" in `StatusBarManager` → `UpdateCheckerTests` |
 | Backup / import | `BackupManager`, `LaunchieImporter`, `RestorePreviewPanel`, entry points in `StatusBarManager` |
 | Magic number | matching case-less enum in `Constants.swift`, with a rationale comment |
 
@@ -261,7 +262,7 @@ Exceptions: `ApplicationScanner` and `IconCacheManager` are `nonisolated final c
 
 ## Security & privacy contract (do not regress)
 
-- **Offline**: no network, no analytics. `PrivacyInfo.xcprivacy` declares UserDefaults-only API access.
+- **Offline by default**: no network, no analytics. The sole exception is `UpdateChecker`, enabled only by the user's "Check for updates" setting (default off): one anonymous `GET` to `api.github.com/repos/gurupsv/MacMuster/releases/latest` on an ephemeral session (≤ once/24 h on launch, plus the manual menu item), response capped at 1 MiB, release link must be `https://github.com/gurupsv/MacMuster/releases…`, nothing downloaded or installed. The setting is deliberately **not** in `BackupArchive`, so a restored file can never enable network access. Any further network use needs explicit user approval and a change here. `PrivacyInfo.xcprivacy` declares UserDefaults-only API access.
 - **Provenance badge** (a location heuristic, not verification — `/Applications` is admin-writable, so a planted bundle there reads as trusted; signature/notarization checks are not done): apps outside `/Applications` and `/System/Applications` (incl. the Preboot/Cryptexes path) are flagged, using the **fully resolved** path (`standardized` + `realpath`).
 - **Scanner hardening**: never follow symlinks, depth ≤ 4, `.app` must contain `Contents/`, dedup by resolved path; custom directories re-validated (absolute, not `/` or a reserved root such as `/Users`/`/System`/`/Library` or an ancestor of home, lexically normalized with no control characters — checked even for a not-yet-existing path — not a symlink, not world-writable) before **every** scan, including restored ones.
 - **Import limits** (`ImportLimits`): backup/Launchie files are read through `BoundedFileReader` (≤128 MiB) and rejected if folder/app-path/icon-pack counts exceed the caps (`BackupManager.withinImportLimits`); `restoreIconPack` re-bounds its writes.

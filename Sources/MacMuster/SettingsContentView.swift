@@ -279,6 +279,26 @@ struct GeneralSettingsPanel: View {
                 startAtLogin = SMAppService.mainApp.status == .enabled
             }
             
+            settingsSection(title: "Updates") {
+                @Bindable var settings = appModel.settings
+                HStack(alignment: .top, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                    VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                        Text("Check for updates")
+                            .font(.system(size: 14, weight: .medium))
+                        Text("Once a day, ask GitHub whether a newer release exists. This is MacMuster's only network access; it sends no personal data and is off by default.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $settings.updateCheckEnabled)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+                .padding(SettingsLayoutMetrics.sectionContentPadding)
+                .background(Color(nsColor: .textBackgroundColor))
+                .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
+            }
+
             // Launch Animation section
             settingsSection(title: "Launch Animation") {
                 VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacing) {
