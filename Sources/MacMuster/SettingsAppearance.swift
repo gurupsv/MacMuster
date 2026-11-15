@@ -169,6 +169,16 @@ class SettingsAppearance {
                                   reduceMotion: shouldReduceMotion)
     }
 
+    /// Opt-in (default off). Turning it on runs a check right away; see `UpdateChecker`.
+    var updateCheckEnabled: Bool = false {
+        didSet {
+            PreferencesStore.shared.saveUpdateCheckEnabled(updateCheckEnabled)
+            if updateCheckEnabled && !oldValue && !isLoadingPersistence {
+                UpdateChecker.shared.checkAutomaticallyIfDue(enabled: true)
+            }
+        }
+    }
+
     // MARK: Activation
 
     var globalHotkeyEnabled: Bool = false {
@@ -282,6 +292,7 @@ class SettingsAppearance {
         if let styleRaw = PreferencesStore.shared.loadGlassStyle() { glassStyle = GlassStyle(rawValue: styleRaw) ?? .classic }
         simpleGlass = PreferencesStore.shared.loadSimpleGlass()
         scrollEdgeEffect = PreferencesStore.shared.loadScrollEdgeEffect()
+        updateCheckEnabled = PreferencesStore.shared.loadUpdateCheckEnabled()
         // A hand-edited or legacy value outside the key-code range falls back to the default
         // rather than reaching `RegisterEventHotKey`, where it crashed on every launch (SEC-16).
         if let keyCode = PreferencesStore.shared.loadHotkeyKeyCode() {

@@ -97,6 +97,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         RunningAppTracker.shared.start()
 
+        UpdateChecker.shared.checkAutomaticallyIfDue(enabled: appModel.settings.updateCheckEnabled)
+
         // Show the overlay window only on the very first launch ever — see
         // `shouldShowOverlayOnLaunch`. Every later launch (including a silent "Start at Login"
         // relaunch) stays silent until the user clicks the menu-bar icon or the Dock/launcher icon.

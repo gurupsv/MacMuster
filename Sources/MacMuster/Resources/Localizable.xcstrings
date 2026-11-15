@@ -103,6 +103,48 @@
     "Folders" : {
       "extractionState" : "manual"
     },
+    "Updates" : {
+      "extractionState" : "manual"
+    },
+    "Check for updates" : {
+      "extractionState" : "manual"
+    },
+    "Once a day, ask GitHub whether a newer release exists. This is MacMuster's only network access; it sends no personal data and is off by default." : {
+      "extractionState" : "manual"
+    },
+    "Check for Updates…" : {
+      "extractionState" : "manual"
+    },
+    "Update Checks Are Off" : {
+      "extractionState" : "manual"
+    },
+    "MacMuster stays offline unless you turn on \"Check for updates\" in Settings > General." : {
+      "extractionState" : "manual"
+    },
+    "You're up to date" : {
+      "extractionState" : "manual"
+    },
+    "MacMuster %@ is the latest version." : {
+      "extractionState" : "manual"
+    },
+    "Update Check Failed" : {
+      "extractionState" : "manual"
+    },
+    "Could not reach GitHub. Check your connection and try again." : {
+      "extractionState" : "manual"
+    },
+    "MacMuster %@ is available" : {
+      "extractionState" : "manual"
+    },
+    "You're running %@. Open the release page to download the update." : {
+      "extractionState" : "manual"
+    },
+    "View Release" : {
+      "extractionState" : "manual"
+    },
+    "Later" : {
+      "extractionState" : "manual"
+    },
     "Startup" : {
       "extractionState" : "manual"
     },

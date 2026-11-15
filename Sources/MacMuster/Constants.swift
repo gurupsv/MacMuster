@@ -40,6 +40,18 @@ enum ScanMetrics {
 // MARK: - Update Metrics
 
 enum UpdateMetrics {
+    /// Public, unauthenticated "latest non-prerelease" endpoint for this project (UpdateChecker).
+    static let latestReleaseAPI = URL(string: "https://api.github.com/repos/gurupsv/MacMuster/releases/latest")!
+    /// A release link must live under this path on github.com, since it is opened in the browser.
+    static let releasePathPrefix = "/gurupsv/MacMuster/releases"
+    /// Automatic check cadence: once a day keeps traffic negligible and stays far under GitHub's
+    /// 60 requests/hour unauthenticated limit.
+    static let automaticCheckInterval: TimeInterval = 24 * 60 * 60
+    static let requestTimeout: TimeInterval = 10
+    /// A real release payload is a few KB; anything near this is not one.
+    static let maxResponseBytes = 1_048_576
+    static let maxVersionComponents = 4
+
     /// How long an app stays badged as "recently updated" after its bundle mtime jumped.
     /// Matches the `newlyInstalledWindowSeconds` window so the two badges (newly installed vs
     /// recently updated) retire on the same cadence — a user who notices one expects the other

@@ -40,6 +40,10 @@ class StatusBarManager: NSObject {
         smartFoldersItem.target = self
         menu.addItem(smartFoldersItem)
 
+        let updateItem = NSMenuItem(title: String(localized: "Check for Updates…"), action: #selector(checkForUpdates), keyEquivalent: "")
+        updateItem.target = self
+        menu.addItem(updateItem)
+
         menu.addItem(NSMenuItem.separator())
 
         let settingsItem = NSMenuItem(title: String(localized: "Settings"), action: #selector(showSettings), keyEquivalent: "")
@@ -198,6 +202,15 @@ class StatusBarManager: NSObject {
                 NSAlert.showInfo(String(localized: "Import Complete"), String(localized: "Folders imported. \(skippedCount) app(s) skipped (no longer on disk)."))
             }
         }
+    }
+
+    @objc func checkForUpdates() {
+        guard appModel?.settings.updateCheckEnabled == true else {
+            NSAlert.showInfo(String(localized: "Update Checks Are Off"),
+                             String(localized: "MacMuster stays offline unless you turn on \"Check for updates\" in Settings > General."))
+            return
+        }
+        UpdateChecker.shared.checkManually()
     }
 
     @objc func showSettings() {
