@@ -118,6 +118,21 @@ Small corner badges on each icon tell you an app's state at a glance, without op
 
 Badges are independent and stack freely — an app can be running, recently updated, both, or neither.
 
+### 🔔 Update Notifications (opt-in)
+
+MacMuster can tell you when a newer release is available. It is **off by default**; turn it on under **Settings → General → Updates → Check for updates**.
+
+<div align="center">
+
+<img src="Screenshots/MacMuster_Update_Available.png" alt="MacMuster update available alert" width="360">
+
+</div>
+
+- Checks the [GitHub Releases](https://github.com/gurupsv/MacMuster/releases) page at launch, at most once every 24 hours
+- **Check for Updates…** in the menu bar checks on demand
+- **View Release** opens the release page in your browser; nothing is downloaded or installed automatically
+- One anonymous request, no personal data sent — and the only network access MacMuster ever makes
+
 ### 🔒 Privacy & Security
 
 - **Offline by default** — no network calls unless you opt in to "Check for updates" (one anonymous request to GitHub Releases; nothing downloaded)
@@ -253,7 +268,7 @@ swift run MacMuster
 ### Menu Bar
 
 - **Left-click** menu bar icon → Show/hide launcher
-- **Right-click** menu bar icon → Full menu (Show MacMuster, Export/Restore Backup, Settings, Quit)
+- **Right-click** menu bar icon → Full menu (Show MacMuster, Export/Restore Backup, Smart Folders, Check for Updates…, Settings, Quit)
 - **Export Backup / Restore Backup** → Save or load folders, preferences, and hidden-app state as a JSON file (restore shows a preview of any apps no longer on disk before applying)
 
 ### Folders
@@ -266,7 +281,7 @@ swift run MacMuster
 ### Settings
 
 Open via **Gear icon** in launcher or **Settings** from menu bar:
-- General (start at login, launch animation, folders-first, press feedback, recent apps, refresh)
+- General (start at login, update check, launch animation, folders-first, press feedback, recent apps, refresh)
 - Appearance (glow effect, font, layout, icon size, overlay opacity, presentation mode, tint, launch mode)
 - Hidden Apps (toggle visibility)
 - App Directories (custom scan paths)
