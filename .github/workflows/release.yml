@@ -230,7 +230,7 @@ jobs:
               echo "Right-click the app and choose Open, or run \`xattr -dr com.apple.quarantine /Applications/MacMuster.app\`."
             fi
             echo ""
-            echo "**Install via Homebrew (once the cask is published):**"
+            echo "**Install via Homebrew:**"
             echo '```bash'
             echo "brew tap gurupsv/macmuster"
             echo "brew install --cask macmuster"

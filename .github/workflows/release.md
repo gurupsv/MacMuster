@@ -55,8 +55,30 @@ base64 -i "Developer ID Installer.p12"   | pbcopy    # → INSTALLER_P12_BASE64
    - prints the `sha256` in the release notes.
 5. **Watch the run** under the Actions tab. Notarization can take a few
    minutes; the job timeout is 30m.
-6. When it finishes, open the Release on GitHub and **copy the `sha256`**
-   from the release notes — the next phase (Homebrew cask) needs it.
+6. When it finishes, open the Release on GitHub and check the `.pkg` is
+   attached. The Homebrew cask updates itself (see
+   [Homebrew cask](#homebrew-cask-automatic)); no manual sha copy is needed.
+
+## Homebrew cask (automatic)
+
+The cask lives in a separate repo, `gurupsv/homebrew-macmuster`
+(`Casks/m/macmuster.rb`). Its workflow `.github/workflows/update-cask.yml`
+polls this repo's latest release hourly (at :17), downloads the `.pkg`,
+computes its sha256, and commits the new `version` and `sha256` to the tap's
+`main` branch. It uses the tap's own `GITHUB_TOKEN`, so this repo holds no
+token for it.
+
+- **Pre-releases are skipped.** Only a published, non-draft release with a
+  plain `X.Y.Z` tag counts; it never downgrades.
+- **To skip the wait**, run it by hand once the Release shows the `.pkg`:
+  tap repo → Actions → *Update cask* → *Run workflow*.
+- **If the `.pkg` is not uploaded yet**, the run fails and the next hour
+  retries.
+- **Verify** with `brew update && brew info --cask gurupsv/macmuster/macmuster`
+  (shows the new version).
+- GitHub pauses scheduled workflows after 60 days without repo activity; each
+  cask bump counts as activity. After a long gap, re-enable the workflow from
+  the tap's Actions tab.
 
 ## Local release build (fallback)
 
@@ -78,7 +100,7 @@ and record `shasum -a 256 MacMuster-<version>.pkg`.
 | File                          | Purpose                                                |
 |-------------------------------|--------------------------------------------------------|
 | `MacMuster-<version>.pkg`     | Signed+notarized installer; GitHub Release asset.      |
-| `sha256` (in release notes)   | Pasted into the Homebrew cask's `sha256` stanza.       |
+| `sha256` (in release notes)   | For manual verification; the tap workflow computes its own for the cask. |
 
 The release URL is stable and immutable:
 
