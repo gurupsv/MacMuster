@@ -103,6 +103,64 @@ final class CategoryFilterTests: XCTestCase {
             "With no launches recorded, Recently Launched must be empty rather than showing everything")
     }
 
+    // MARK: - Root vs. inside a folder
+
+    /// Regression: at root the grid was loose apps + folder tiles, so a recently launched app that
+    /// lived in a folder vanished from Recently Launched (and the tab count disagreed), while the
+    /// same tab inside the folder showed it.
+    func testHistoryCategoriesAtRootIncludeAppsInsideFolders() {
+        loadMixedLibrary()
+        let folder = library.createFolder(name: "Tools", appPaths: ["/Applications/UserOld.app"])
+        library.recordAppLaunch(at: "/Applications/UserOld.app")
+        library.recordAppLaunch(at: "/Applications/UserFresh.app")
+
+        XCTAssertEqual(displayed(.recentlyLaunched).sorted(), ["UserFresh", "UserOld"])
+        XCTAssertEqual(displayed(.mostUsed).sorted(), ["UserFresh", "UserOld"])
+        XCTAssertEqual(navigation.categoryCounts[.recentlyLaunched], 2)
+
+        library.currentFolderId = folder?.id
+        XCTAssertEqual(displayed(.recentlyLaunched), ["UserOld"])
+    }
+
+    func testNewlyInstalledAtRootIncludesAppsInsideFolders() {
+        loadMixedLibrary()
+        library.createFolder(name: "Tools", appPaths: ["/Applications/UserFresh.app"])
+        XCTAssertEqual(displayed(.newlyInstalled), ["UserFresh"])
+    }
+
+    // MARK: - Recent strip
+
+    /// Regression: the strip was deduped against the grid below it, so Home, each folder, a search
+    /// and each category tab all showed different "Recent" apps.
+    func testRecentStripIsIdenticalInEveryContext() {
+        loadMixedLibrary()
+        let folder = library.createFolder(name: "Tools", appPaths: ["/Applications/UserOld.app"])
+        library.recordAppLaunch(at: "/Applications/UserOld.app")
+        library.recordAppLaunch(at: "/Applications/UserFresh.app")
+
+        let atRoot = library.recentStripApps(limit: 6).map(\.name)
+        XCTAssertEqual(Set(atRoot), ["UserOld", "UserFresh"])
+
+        library.currentFolderId = folder?.id
+        XCTAssertEqual(library.recentStripApps(limit: 6).map(\.name), atRoot,
+            "Opening a folder must not change the Recent strip")
+        navigation.searchTerm = "zzz"
+        navigation.selectedCategory = .system
+        XCTAssertEqual(library.recentStripApps(limit: 6).map(\.name), atRoot,
+            "Search and category must not change the Recent strip")
+    }
+
+    func testRecentStripExcludesHiddenAppsAndHonorsLimit() {
+        loadMixedLibrary()
+        library.recordAppLaunch(at: "/Applications/UserOld.app")
+        library.recordAppLaunch(at: "/Applications/UserFresh.app")
+        XCTAssertEqual(library.recentStripApps(limit: 1).map(\.name), ["UserFresh"])
+        XCTAssertTrue(library.recentStripApps(limit: 0).isEmpty)
+
+        library.hiddenAppPaths = ["/Applications/UserFresh.app"]
+        XCTAssertEqual(library.recentStripApps(limit: 6).map(\.name), ["UserOld"])
+    }
+
     // MARK: - Categories the old code handled, but only sometimes
 
     func testSystemAndUserSplitTheLibrary() {

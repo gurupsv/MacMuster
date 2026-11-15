@@ -216,22 +216,20 @@ struct ContentView: View {
                             ))
                     }
                     
-                      // Recent Apps Section. At root, the main grid only shows folder icons for
-                      // foldered apps — never a foldered app's own path — so a recent app's path
-                      // collides with `displayedApps` only when it's a loose, top-level app that's
-                      // already sitting in the grid below. Deduping against that at root used to
-                      // hide most/all recently-launched apps for anyone who keeps apps loose rather
-                      // than foldered. Inside a folder, dedup still applies so a recent app that's a
-                      // member of *this* folder doesn't show twice on the same screen.
+                      // Recent Apps Section. The strip is a function of launch history alone
+                      // (`recentStripApps`): it used to drop whatever the grid below happened to be
+                      // showing, so Home, each folder, a search and each category tab all produced a
+                      // different strip. An app may now appear in both the strip and the grid.
                       if appModel.showRecentApps {
-                          let recentApps = appModel.getRecentApps()
-                          let displayedAppPaths = Set(displayedApps.map(\.path))
-                          let uniqueRecentApps = recentApps.filter { !displayedAppPaths.contains($0.path) }
-                          if !uniqueRecentApps.isEmpty {
-                              let recentAppsToShow = Array(uniqueRecentApps.prefix(appModel.columnCount))
+                          let recentAppsToShow = appModel.library.recentStripApps(limit: appModel.columnCount)
+                          if !recentAppsToShow.isEmpty {
                               SectionView(appModel: appModel, title: "Recent", apps: recentAppsToShow, columns: gridColumns) { app in
                                   appModel.launchAndDismiss(app)
                               }
+                              // The main grid sits inside `.padding()`; without the same inset the
+                              // Recent row's flexible columns were wider and its icons drifted off
+                              // the columns below.
+                              .padding(.horizontal)
                           }
                       }
                     
@@ -659,7 +657,7 @@ struct SectionView: View {
             
             LazyVGrid(
                 columns: columns,
-                spacing: 16
+                spacing: LayoutMetrics.gridSpacing
             ) {
                 ForEach(apps) { app in
                     AppIconView(appModel: appModel, app: app, isHovered: hoveredAppPath == app.path)

@@ -73,7 +73,7 @@ extension LibraryScanState {
                                  showFoldersFirst: showFoldersFirst, sortOption: sortOption,
                                  selectedCategory: selectedCategory)
         if let cached = cachedDisplayedApps, cached.query == query { return cached.apps }
-        let baseApps = getBaseAppsForCurrentContext()
+        let baseApps = getBaseAppsForCurrentContext(selectedCategory: selectedCategory)
         let appsWithFolderId = populateFolderIds(for: baseApps)
         let searchMatched = applySearchFilter(to: appsWithFolderId, searchTerm: searchTerm)
         let categoryMatched = applyCategoryFilter(to: searchMatched, selectedCategory: selectedCategory)
@@ -97,8 +97,15 @@ extension LibraryScanState {
         return result
     }
 
-    private func getBaseAppsForCurrentContext() -> [Application] {
+    private func getBaseAppsForCurrentContext(selectedCategory: AppCategory) -> [Application] {
         if let folderId = currentFolderId { return appsInFolder(for: folderId) }
+
+        // History/recency tabs answer "which apps did I use or install", not "what is on this
+        // shelf". Built from loose apps plus folder tiles, the root view dropped every such app
+        // that lived inside a folder (a folder tile never matches launch history) while the same
+        // tab opened inside the folder listed it, and the tab count — computed over the whole
+        // catalog — disagreed with the grid. Flat over the full visible catalog instead.
+        if AppCategory.flatCatalogCategories.contains(selectedCategory) { return visibleApplications }
 
         let appsInAnyFolder: Set<String> = {
             if let cached = cachedAppsInAnyFolder { return cached }

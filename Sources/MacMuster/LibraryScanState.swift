@@ -714,6 +714,16 @@ class LibraryScanState {
     func isRecentApp(_ path: String) -> Bool { return _recentApps.contains { $0.path == path } }
     func getRecentApps() -> [Application] { return _recentApps }
 
+    /// Apps for the "Recent" strip: most recently launched first, limited to apps the user can see.
+    /// Depends only on launch history and visibility — never on the open folder, search or category
+    /// — so the strip reads the same everywhere. Hidden apps are excluded here because `_recentApps`
+    /// is built from the full catalog and used to leak them into the strip.
+    func recentStripApps(limit: Int) -> [Application] {
+        guard limit > 0 else { return [] }
+        let visiblePaths = Set(visibleApplications.map(\.path))
+        return Array(_recentApps.filter { visiblePaths.contains($0.path) }.prefix(limit))
+    }
+
     /// Recomputes the launch-history lists and tab counts after "Show Recent Apps" is toggled.
     ///
     /// `RecentAppsTracker` starts or stops reporting history the instant the setting changes, but

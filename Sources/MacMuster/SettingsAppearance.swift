@@ -31,7 +31,7 @@ class SettingsAppearance {
         didSet { PreferencesStore.shared.saveGlowEnabled(glowEnabled) }
     }
     var glowColor: Color = .white {
-        didSet { PreferencesStore.shared.saveGlowColor(getHexColorValue()) }
+        didSet { PreferencesStore.shared.saveGlowColor(Self.hexString(for: glowColor)) }
     }
     var glowIntensity: Double = 0.3 {
         didSet {
@@ -207,7 +207,7 @@ class SettingsAppearance {
 
     var tintColor: Color = .blue {
         didSet {
-            PreferencesStore.shared.saveTintColor(getHexColorValue())
+            PreferencesStore.shared.saveTintColor(Self.hexString(for: tintColor))
             refreshOverlayIfLive()
         }
     }
@@ -346,8 +346,10 @@ class SettingsAppearance {
         return NSColor(red: r * tintStrength, green: g * tintStrength, blue: b * tintStrength, alpha: a * tintStrength)
     }
 
-    private func getHexColorValue() -> String {
-        let nsColor = NSColor(glowColor)
+    /// Takes the color explicitly: this used to read `glowColor` unconditionally, so the tint
+    /// color was persisted as the glow color and reset to it on every relaunch.
+    static func hexString(for color: Color) -> String {
+        let nsColor = NSColor(color)
         guard let rgb = nsColor.usingColorSpace(.sRGB) else { return "#ffffff" }
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         rgb.getRed(&r, green: &g, blue: &b, alpha: &a)

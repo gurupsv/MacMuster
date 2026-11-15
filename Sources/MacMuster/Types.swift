@@ -173,6 +173,9 @@ enum AppCategory: String, CaseIterable {
     /// turns "Show Recent Apps" off. Both the tab strip and the fallback-selection logic read
     /// this, so there is exactly one definition of what that setting governs.
     static let launchHistoryCategories: Set<AppCategory> = [.mostUsed, .recentlyLaunched]
+
+    /// Tabs that list matching apps from the whole catalog at root, including apps inside folders.
+    static let flatCatalogCategories: Set<AppCategory> = [.mostUsed, .recentlyLaunched, .newlyInstalled]
 }
 
 // MARK: - IconSize
