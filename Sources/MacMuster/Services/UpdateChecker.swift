@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 
 /// Opt-in update check — the app's only network access.
 ///
@@ -8,9 +9,20 @@ import AppKit
 /// or installed: a newer release only produces an alert with a button that opens the release page
 /// in the browser.
 @MainActor
+@Observable
 final class UpdateChecker {
     static let shared = UpdateChecker()
-    private init() {}
+
+    /// Restores the release a previous check found, re-validated: persisted values are data, and
+    /// the app may have been updated since, which makes the stored release stale.
+    private init() {
+        if let stored = PreferencesStore.shared.loadAvailableUpdate(),
+           let url = URL(string: stored.url), Self.isReleaseURL(url),
+           let current = currentVersion, Self.isNewer(latest: stored.version, than: current) {
+            availableRelease = Release(version: stored.version, pageURL: url)
+        }
+        dismissedVersion = PreferencesStore.shared.loadDismissedUpdateVersion()
+    }
 
     struct Release: Equatable, Sendable {
         let version: String
@@ -23,7 +35,29 @@ final class UpdateChecker {
         case failed
     }
 
-    private var isChecking = false
+    /// The newest known release when it is newer than the running app. Read by the launcher banner
+    /// and the Settings "Updates" section.
+    private(set) var availableRelease: Release?
+    private var dismissedVersion: String?
+    @ObservationIgnored private var isChecking = false
+
+    /// What the launcher banner should show: the available release, unless the user is opted out
+    /// or already closed the banner for this version.
+    func bannerRelease(enabled: Bool) -> Release? {
+        guard enabled, let release = availableRelease, release.version != dismissedVersion else { return nil }
+        return release
+    }
+
+    func dismissBanner() {
+        guard let release = availableRelease else { return }
+        dismissedVersion = release.version
+        PreferencesStore.shared.saveDismissedUpdateVersion(release.version)
+    }
+
+    func openReleasePage() {
+        guard let release = availableRelease else { return }
+        NSWorkspace.shared.open(release.pageURL)
+    }
 
     // MARK: - Pure helpers (unit-tested)
 
@@ -36,11 +70,13 @@ final class UpdateChecker {
               let tag = object["tag_name"] as? String,
               let version = normalizedVersion(tag),
               let link = object["html_url"] as? String,
-              let url = URL(string: link),
-              url.scheme == "https", url.host == "github.com",
-              url.path.hasPrefix(UpdateMetrics.releasePathPrefix)
+              let url = URL(string: link), isReleaseURL(url)
         else { return nil }
         return Release(version: version, pageURL: url)
+    }
+
+    nonisolated static func isReleaseURL(_ url: URL) -> Bool {
+        url.scheme == "https" && url.host == "github.com" && url.path.hasPrefix(UpdateMetrics.releasePathPrefix)
     }
 
     /// `"v1.0.13"` → `"1.0.13"`; nil unless every dot-separated component is a plain integer.
@@ -101,19 +137,23 @@ final class UpdateChecker {
         defer { isChecking = false }
         PreferencesStore.shared.saveLastUpdateCheck(Date())
         guard let release = await fetchLatest() else { return .failed }
-        return Self.isNewer(latest: release.version, than: current) ? .updateAvailable(release) : .upToDate
+        guard Self.isNewer(latest: release.version, than: current) else {
+            availableRelease = nil
+            PreferencesStore.shared.clearAvailableUpdate()
+            return .upToDate
+        }
+        availableRelease = release
+        PreferencesStore.shared.saveAvailableUpdate(version: release.version, url: release.pageURL.absoluteString)
+        return .updateAvailable(release)
     }
 
     // MARK: - UI
 
-    /// Launch-time check. Silent unless a release newer than the one already announced exists.
+    /// Launch-time check. Silent: a newer release surfaces as the launcher banner and in Settings,
+    /// not as a modal alert interrupting whatever the user launched the app to do.
     func checkAutomaticallyIfDue(enabled: Bool) {
         guard Self.isCheckDue(enabled: enabled, lastCheck: PreferencesStore.shared.loadLastUpdateCheck(), now: Date()) else { return }
-        Task { @MainActor in
-            guard case .updateAvailable(let release) = await self.check() else { return }
-            guard PreferencesStore.shared.loadLastNotifiedUpdateVersion() != release.version else { return }
-            self.present(release)
-        }
+        Task { @MainActor in _ = await self.check() }
     }
 
     /// Menu-driven check: always reports the result.
@@ -132,7 +172,6 @@ final class UpdateChecker {
     }
 
     private func present(_ release: Release) {
-        PreferencesStore.shared.saveLastNotifiedUpdateVersion(release.version)
         let alert = NSAlert()
         alert.messageText = String(localized: "MacMuster \(release.version) is available")
         alert.informativeText = String(localized: "You're running \(currentVersion ?? ""). Open the release page to download the update.")
@@ -141,6 +180,8 @@ final class UpdateChecker {
         alert.addButton(withTitle: String(localized: "Later"))
         if alert.runModal() == .alertFirstButtonReturn {
             NSWorkspace.shared.open(release.pageURL)
+            // Acted on; the banner would only repeat it. "Later" keeps the banner as a reminder.
+            dismissBanner()
         }
     }
 }

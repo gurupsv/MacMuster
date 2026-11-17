@@ -44,7 +44,9 @@ final class PreferencesStore {
         case scrollEdgeEffect = "scrollEdgeEffect"
         case updateCheckEnabled = "updateCheckEnabled"
         case lastUpdateCheck = "lastUpdateCheck"
-        case lastNotifiedUpdateVersion = "lastNotifiedUpdateVersion"
+        case availableUpdateVersion = "availableUpdateVersion"
+        case availableUpdateURL = "availableUpdateURL"
+        case dismissedUpdateVersion = "dismissedUpdateVersion"
         case globalHotkeyEnabled = "globalHotkeyEnabled"
         case hotkeyKeyCode = "hotkeyKeyCode"
         case hotkeyModifiers = "hotkeyModifiers"
@@ -408,8 +410,24 @@ final class PreferencesStore {
     func loadLastUpdateCheck() -> Date? {
         (defaults.object(forKey: Keys.lastUpdateCheck.rawValue) as? Double).map { Date(timeIntervalSince1970: $0) }
     }
-    func saveLastNotifiedUpdateVersion(_ version: String) { defaults.set(version, forKey: Keys.lastNotifiedUpdateVersion.rawValue) }
-    func loadLastNotifiedUpdateVersion() -> String? { defaults.string(forKey: Keys.lastNotifiedUpdateVersion.rawValue) }
+    /// The newest release the last successful check found, kept so the banner survives relaunches
+    /// between the once-a-day checks. Cleared when a check finds nothing newer.
+    func saveAvailableUpdate(version: String, url: String) {
+        defaults.set(version, forKey: Keys.availableUpdateVersion.rawValue)
+        defaults.set(url, forKey: Keys.availableUpdateURL.rawValue)
+    }
+    func loadAvailableUpdate() -> (version: String, url: String)? {
+        guard let version = defaults.string(forKey: Keys.availableUpdateVersion.rawValue),
+              let url = defaults.string(forKey: Keys.availableUpdateURL.rawValue) else { return nil }
+        return (version, url)
+    }
+    func clearAvailableUpdate() {
+        defaults.removeObject(forKey: Keys.availableUpdateVersion.rawValue)
+        defaults.removeObject(forKey: Keys.availableUpdateURL.rawValue)
+    }
+    /// The version whose banner the user closed; a newer release shows the banner again.
+    func saveDismissedUpdateVersion(_ version: String) { defaults.set(version, forKey: Keys.dismissedUpdateVersion.rawValue) }
+    func loadDismissedUpdateVersion() -> String? { defaults.string(forKey: Keys.dismissedUpdateVersion.rawValue) }
 
     func saveGlobalHotkeyEnabled(_ enabled: Bool) { defaults.set(enabled, forKey: Keys.globalHotkeyEnabled.rawValue) }
     func loadGlobalHotkeyEnabled() -> Bool { defaults.bool(forKey: Keys.globalHotkeyEnabled.rawValue) }

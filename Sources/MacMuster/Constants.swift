@@ -41,7 +41,14 @@ enum ScanMetrics {
 
 enum UpdateMetrics {
     /// Public, unauthenticated "latest non-prerelease" endpoint for this project (UpdateChecker).
-    static let latestReleaseAPI = URL(string: "https://api.github.com/repos/gurupsv/MacMuster/releases/latest")!
+    /// Built from components so no force-unwrap is needed; the empty-path fallback can only fail a request.
+    static let latestReleaseAPI: URL = {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "api.github.com"
+        components.path = "/repos/gurupsv/MacMuster/releases/latest"
+        return components.url ?? URL(fileURLWithPath: "/")
+    }()
     /// A release link must live under this path on github.com, since it is opened in the browser.
     static let releasePathPrefix = "/gurupsv/MacMuster/releases"
     /// Automatic check cadence: once a day keeps traffic negligible and stays far under GitHub's

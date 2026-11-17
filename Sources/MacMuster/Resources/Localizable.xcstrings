@@ -145,6 +145,15 @@
     "Later" : {
       "extractionState" : "manual"
     },
+    "Dismiss update notice" : {
+      "extractionState" : "manual"
+    },
+    "Dismiss" : {
+      "extractionState" : "manual"
+    },
+    "Not checked yet" : {
+      "extractionState" : "manual"
+    },
     "Startup" : {
       "extractionState" : "manual"
     },

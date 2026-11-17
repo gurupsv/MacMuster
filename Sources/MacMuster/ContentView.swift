@@ -96,6 +96,10 @@ struct ContentView: View {
                         .padding(.horizontal)
                     }
                     
+                    if let release = UpdateChecker.shared.bannerRelease(enabled: appModel.settings.updateCheckEnabled) {
+                        UpdateBannerView(release: release)
+                    }
+
                     // Breadcrumb or header
                     if let folder = appModel.currentFolder {
                         HStack(spacing: 4) {

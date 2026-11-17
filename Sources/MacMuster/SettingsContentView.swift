@@ -241,6 +241,33 @@ struct GeneralSettingsPanel: View {
     @State private var isRefreshing = false
     @State private var showRefreshConfirmation = false
     
+    /// Result of the last update check, so the Updates section answers "is there one?" without
+    /// waiting for the launcher banner.
+    @ViewBuilder
+    private func updateStatusRow() -> some View {
+        let checker = UpdateChecker.shared
+        HStack(spacing: 8) {
+            if let release = checker.availableRelease {
+                Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color.accentColor)
+                Text("MacMuster \(release.version) is available")
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+                Button("View Release") { checker.openReleasePage() }
+            } else {
+                Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
+                Text(PreferencesStore.shared.loadLastUpdateCheck() == nil
+                     ? String(localized: "Not checked yet")
+                     : String(localized: "You're up to date"))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+        }
+        .padding(SettingsLayoutMetrics.sectionContentPadding)
+        .background(Color(nsColor: .textBackgroundColor))
+        .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: SettingsLayoutMetrics.sectionSpacing) {
             // Startup section
@@ -297,6 +324,10 @@ struct GeneralSettingsPanel: View {
                 .padding(SettingsLayoutMetrics.sectionContentPadding)
                 .background(Color(nsColor: .textBackgroundColor))
                 .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
+
+                if settings.updateCheckEnabled {
+                    updateStatusRow()
+                }
             }
 
             // Launch Animation section
@@ -775,7 +806,7 @@ struct FoldersSettingsPanel: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(filteredFolders) { folder in
-                            FolderRow(folder: folder, appModel: appModel)
+                            FolderRow(folderId: folder.id, appModel: appModel)
                         }
                     }
                     .padding(8)
@@ -816,8 +847,14 @@ struct FoldersSettingsPanel: View {
 
 // MARK: - Folder Row
 struct FolderRow: View {
-    let folder: AppFolder
+    let folderId: String
     @Bindable var appModel: AppModel
+    /// Read live from the model: `AppFolder ==` compares ids only, so SwiftUI's field-wise diff of a
+    /// stored `let folder` saw a renamed folder as unchanged and skipped re-rendering the row.
+    private var folder: AppFolder {
+        appModel.folders.first { $0.id == folderId }
+            ?? AppFolder(name: "", appPaths: [])
+    }
     @State private var isEditing: Bool = false
     @State private var editedName: String = ""
     @State private var showDeleteAlert: Bool = false

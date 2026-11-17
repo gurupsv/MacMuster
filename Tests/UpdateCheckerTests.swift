@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class UpdateCheckerTests: XCTestCase {
 
-    private let keys = ["updateCheckEnabled", "lastUpdateCheck", "lastNotifiedUpdateVersion"]
+    private let keys = ["updateCheckEnabled", "lastUpdateCheck", "availableUpdateVersion", "availableUpdateURL", "dismissedUpdateVersion"]
     override func setUp() async throws { for k in keys { UserDefaults.standard.removeObject(forKey: k) } }
     override func tearDown() async throws { for k in keys { UserDefaults.standard.removeObject(forKey: k) } }
 
@@ -67,6 +67,25 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertFalse(UpdateChecker.isCheckDue(enabled: true, lastCheck: now.addingTimeInterval(-3600), now: now))
         XCTAssertTrue(UpdateChecker.isCheckDue(enabled: true, lastCheck: now.addingTimeInterval(-90_000), now: now))
         XCTAssertTrue(UpdateChecker.isCheckDue(enabled: true, lastCheck: now.addingTimeInterval(3600), now: now))
+    }
+
+    // MARK: - Banner state
+
+    func testBannerHiddenWhenOptedOut() {
+        XCTAssertNil(UpdateChecker.shared.bannerRelease(enabled: false))
+    }
+
+    func testPersistedUpdateRoundTripsAndClears() {
+        PreferencesStore.shared.saveAvailableUpdate(version: "9.9.9", url: "https://github.com/gurupsv/MacMuster/releases/tag/9.9.9")
+        XCTAssertEqual(PreferencesStore.shared.loadAvailableUpdate()?.version, "9.9.9")
+        PreferencesStore.shared.clearAvailableUpdate()
+        XCTAssertNil(PreferencesStore.shared.loadAvailableUpdate())
+    }
+
+    func testReleaseURLRule() {
+        XCTAssertTrue(UpdateChecker.isReleaseURL(URL(string: "https://github.com/gurupsv/MacMuster/releases/tag/1.1.1")!))
+        XCTAssertFalse(UpdateChecker.isReleaseURL(URL(string: "https://github.com/other/repo/releases")!))
+        XCTAssertFalse(UpdateChecker.isReleaseURL(URL(string: "http://github.com/gurupsv/MacMuster/releases")!))
     }
 
     // MARK: - Setting
