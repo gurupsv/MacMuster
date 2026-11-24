@@ -177,6 +177,12 @@ class OverlayWindowManager {
         let hostingView = NSHostingView(rootView: LaunchWrapperView(appModel: appModel))
         hostingView.frame = CGRect(origin: .zero, size: frame.size)
         hostingView.autoresizingMask = [.width, .height]
+        // The launcher draws edge to edge in every mode, so it never wants a safe area. Window
+        // mode restyles the borderless window to a titled one in `applyWindowMode`, and the
+        // title-bar inset then reached SwiftUI part-way through the launch zoom: the whole grid
+        // jumped up ~20 pt and eased back down (measured on a 60 fps recording). Opting the
+        // hosting view out removes the inset at the source instead of racing it per view.
+        hostingView.safeAreaRegions = []
         window?.contentView = hostingView
         
         window?.onKeyDown = { [weak self] event in
@@ -718,6 +724,17 @@ struct LaunchWrapperView: View {
     @State private var scale: CGFloat = 1.0
     @State private var blurRadius: CGFloat = 0
 
+    /// Where the launch animation starts. Pure so it is unit-testable. Blur is skipped under
+    /// Reduce Motion while the zoom still plays, per the existing behaviour.
+    nonisolated static func launchStart(direction: SettingsAppearance.LaunchAnimationDirection,
+                                        reduceMotion: Bool) -> (scale: CGFloat, blurRadius: CGFloat) {
+        let scale: CGFloat = switch direction {
+            case .zoomOut: WindowMetrics.launchZoomOutStartScale
+            case .zoomIn: WindowMetrics.launchZoomInEndScale
+        }
+        return (scale, reduceMotion ? 0 : WindowMetrics.launchBlurStartRadius)
+    }
+
     var body: some View {
         ZStack {
             // Background and glow remain at full screen size (not scaled or blurred)
@@ -732,16 +749,18 @@ struct LaunchWrapperView: View {
                 .scaleEffect(scale)
                 .blur(radius: blurRadius)
         }
+        // The whole wrapper ignores the safe area, not just `ContentView` inside the scale.
+        // While `scaleEffect` is not the identity, the `.ignoresSafeArea()` inside `ContentView`
+        // does not reach past the transform. The grid then laid out below the Window-mode
+        // title-bar inset (~28 pt) for the whole zoom and jumped up the moment the scale hit 1.0.
+        .ignoresSafeArea()
         .onAppear {
             let shouldAnimate = !appModel.hasShownLauncher || appModel.launchAnimationEnabled
             guard shouldAnimate else { return }
-            let startScale: CGFloat = switch appModel.launchAnimationDirection {
-                case .zoomOut: WindowMetrics.launchZoomOutStartScale
-                case .zoomIn: WindowMetrics.launchZoomInEndScale
-            }
-            scale = startScale
-            // Blur is skipped under Reduce Motion; zoom still plays per existing behaviour.
-            blurRadius = appModel.shouldReduceMotion ? 0 : WindowMetrics.launchBlurStartRadius
+            let start = Self.launchStart(direction: appModel.launchAnimationDirection,
+                                         reduceMotion: appModel.shouldReduceMotion)
+            scale = start.scale
+            blurRadius = start.blurRadius
             DispatchQueue.main.async {
                 withAnimation(.easeInOut(duration: WindowMetrics.launchZoomOutDuration)) {
                     scale = 1.0
