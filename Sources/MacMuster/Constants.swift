@@ -114,6 +114,9 @@ enum WindowMetrics {
     static let launchZoomOutStartScale: CGFloat = 2.0
     static let launchZoomInEndScale: CGFloat = 0.5
     static let launchZoomOutDuration: TimeInterval = 0.5
+    /// Blur radius (pt) at the start of the launch animation, animating down to 0 as the
+    /// zoom settles. Kept modest so the offscreen blur pass is short-lived and bounded.
+    static let launchBlurStartRadius: CGFloat = 12
 
     // Settings window
     static let settingsWindowWidth: CGFloat = 820

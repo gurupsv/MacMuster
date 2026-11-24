@@ -716,19 +716,21 @@ class OverlayWindowManager {
 struct LaunchWrapperView: View {
     let appModel: AppModel
     @State private var scale: CGFloat = 1.0
+    @State private var blurRadius: CGFloat = 0
 
     var body: some View {
         ZStack {
-            // Background and glow remain at full screen size (not scaled)
+            // Background and glow remain at full screen size (not scaled or blurred)
             VisualEffectBackground(appModel: appModel)
                 .ignoresSafeArea()
                 .opacity(appModel.overlayOpacity)
             GlowEffectView(appModel: appModel)
                 .ignoresSafeArea()
 
-            // Only content scales — zoom-out effect applied to UI grid
+            // Content scales and blurs together on launch; the blur fades out as the zoom settles.
             ContentView(appModel: appModel)
                 .scaleEffect(scale)
+                .blur(radius: blurRadius)
         }
         .onAppear {
             let shouldAnimate = !appModel.hasShownLauncher || appModel.launchAnimationEnabled
@@ -738,9 +740,12 @@ struct LaunchWrapperView: View {
                 case .zoomIn: WindowMetrics.launchZoomInEndScale
             }
             scale = startScale
+            // Blur is skipped under Reduce Motion; zoom still plays per existing behaviour.
+            blurRadius = appModel.shouldReduceMotion ? 0 : WindowMetrics.launchBlurStartRadius
             DispatchQueue.main.async {
                 withAnimation(.easeInOut(duration: WindowMetrics.launchZoomOutDuration)) {
                     scale = 1.0
+                    blurRadius = 0
                 }
             }
             appModel.hasShownLauncher = true
