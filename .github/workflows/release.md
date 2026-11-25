@@ -52,7 +52,10 @@ base64 -i "Developer ID Installer.p12"   | pbcopy    # → INSTALLER_P12_BASE64
    - builds and signs the `.pkg` with the Developer ID Installer cert,
    - creates a GitHub Release named `MacMuster <version>`,
    - attaches `MacMuster-<version>.pkg`,
-   - prints the `sha256` in the release notes.
+   - prints the `sha256` in the release notes,
+   - appends GitHub's auto-generated "What's Changed" list and a "Full Changelog"
+     compare link (previous tag → this tag). It is built from merged PRs, or commit
+     subjects for direct pushes, so keep subjects short and descriptive.
 5. **Watch the run** under the Actions tab. Notarization can take a few
    minutes; the job timeout is 30m.
 6. When it finishes, open the Release on GitHub and check the `.pkg` is
