@@ -252,5 +252,9 @@ jobs:
         with:
           name: MacMuster ${{ github.ref_name }}
           body_path: ${{ runner.temp }}/release_notes.md
+          # GitHub appends a "What's Changed" list (PRs/commits since the previous release tag)
+          # and a "Full Changelog" compare link after the install/sha256 template above. The
+          # range is computed server-side, so the shallow checkout is fine.
+          generate_release_notes: true
           fail_on_unmatched_files: true
           files: MacMuster-${{ github.ref_name }}.pkg

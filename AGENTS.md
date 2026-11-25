@@ -302,6 +302,7 @@ No dependencies (ask first). GitHub Actions are **pinned to full commit SHAs** w
 6. **Activation triggers**: neither needs Accessibility permission (Carbon hot keys; global `mouseMoved` monitors aren't gated). Shortcuts must include ⌘/⌃/⌥ (`isValidShortcut`) — also enforced on backup restore. Hot corner requires a 0.25 s dwell, ignores drags, and ignores corners shared with an adjoining display. Both default **off**.
 7. **Liquid Glass**: `NSGlassEffectView` under `#available(macOS 26.0, *)`; the window fill is cleared for it (a near-opaque black fill would hide the glass). "Low-GPU glass" (`simpleGlass`) overrides both materials with an inactive in-window effect view.
 8. **Icon cache versioning**: changing the key scheme → bump to `icons-v5` and add `icons-v4` to `supersededCacheDirNames`.
+9. **Launcher hosting view has no safe area**: `OverlayWindowManager.setup` sets `hostingView.safeAreaRegions = []`. Window mode restyles the borderless window to a titled one, and the title-bar inset reached SwiftUI mid-way through the launch zoom — the grid jumped ~20 pt up and eased back. Per-view `.ignoresSafeArea()` could not win that race under `scaleEffect`. Verify launch-animation changes with a 60 fps `screencapture -v` recording and track an icon's position per frame; 100+ ms screenshot bursts miss this.
 
 ## Git
 

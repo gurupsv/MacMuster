@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import MacMuster
 
@@ -46,6 +47,43 @@ final class OverlayWindowManagerTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "pressFeedbackEnabled")
         UserDefaults.standard.removeObject(forKey: "recentAppLaunchTimes")
         UserDefaults.standard.removeObject(forKey: "appLaunchCounts")
+    }
+
+    // MARK: - Launch animation
+
+    /// The launcher draws edge to edge, so its hosting view must never apply a safe area. Window
+    /// mode restyles the borderless window to a titled one, and the title-bar inset used to reach
+    /// SwiftUI mid-zoom, jumping the grid ~20 pt up. Fails if `safeAreaRegions` is left at default.
+    func testHostingViewOptsOutOfSafeArea() throws {
+        let hosting = try XCTUnwrap(manager.window?.contentView as? NSHostingView<LaunchWrapperView>)
+        XCTAssertTrue(hosting.safeAreaRegions.isEmpty)
+    }
+
+    func testLaunchStartScaleFollowsDirection() {
+        XCTAssertEqual(LaunchWrapperView.launchStart(direction: .zoomOut, reduceMotion: false).scale,
+                       WindowMetrics.launchZoomOutStartScale)
+        XCTAssertEqual(LaunchWrapperView.launchStart(direction: .zoomIn, reduceMotion: false).scale,
+                       WindowMetrics.launchZoomInEndScale)
+    }
+
+    func testLaunchStartBlursUnlessReduceMotion() {
+        for direction in [SettingsAppearance.LaunchAnimationDirection.zoomOut, .zoomIn] {
+            XCTAssertEqual(LaunchWrapperView.launchStart(direction: direction, reduceMotion: false).blurRadius,
+                           WindowMetrics.launchBlurStartRadius)
+            XCTAssertEqual(LaunchWrapperView.launchStart(direction: direction, reduceMotion: true).blurRadius, 0)
+        }
+    }
+
+    /// Reduce Motion must only drop the blur: the zoom start scale is unchanged.
+    func testReduceMotionKeepsZoomStartScale() {
+        XCTAssertEqual(LaunchWrapperView.launchStart(direction: .zoomOut, reduceMotion: true).scale,
+                       WindowMetrics.launchZoomOutStartScale)
+    }
+
+    func testLaunchBlurRadiusIsModestAndPositive() {
+        XCTAssertGreaterThan(WindowMetrics.launchBlurStartRadius, 0)
+        XCTAssertLessThanOrEqual(WindowMetrics.launchBlurStartRadius, 24,
+            "A large radius makes the offscreen blur pass expensive for the whole launch zoom")
     }
 
     // MARK: - Singleton Tests

@@ -29,6 +29,19 @@ final class ScrollEdgeEffectTests: XCTestCase {
         }
     }
 
+    /// The edge shrink is deep (`minScale`), so the squared easing must keep the first half of
+    /// the band close to full size; otherwise whole rows would look squashed as soon as they move.
+    func testMidBandRowIsOnlyMildlyShrunk() {
+        let v = ScrollEdgeEffect.values(phaseValue: 0.5)
+        XCTAssertEqual(v.scale, 1 - (1 - ScrollEdgeMetrics.minScale) * 0.25, accuracy: 1e-9)
+        XCTAssertGreaterThan(v.scale, (1 + ScrollEdgeMetrics.minScale) / 2)
+    }
+
+    func testEdgeScaleStaysPositiveAndShrinks() {
+        XCTAssertGreaterThan(ScrollEdgeMetrics.minScale, 0)
+        XCTAssertLessThan(ScrollEdgeMetrics.minScale, 1)
+    }
+
     func testTopAndBottomAreSymmetric() {
         XCTAssertEqual(ScrollEdgeEffect.values(phaseValue: -0.4), ScrollEdgeEffect.values(phaseValue: 0.4))
     }

@@ -114,6 +114,9 @@ enum WindowMetrics {
     static let launchZoomOutStartScale: CGFloat = 2.0
     static let launchZoomInEndScale: CGFloat = 0.5
     static let launchZoomOutDuration: TimeInterval = 0.5
+    /// Blur radius (pt) at the start of the launch animation, animating down to 0 as the
+    /// zoom settles. Kept modest so the offscreen blur pass is short-lived and bounded.
+    static let launchBlurStartRadius: CGFloat = 12
 
     // Settings window
     static let settingsWindowWidth: CGFloat = 820
@@ -146,9 +149,9 @@ enum ScrollEdgeMetrics {
     /// Opacity of a row that has just reached the viewport edge. Not 0: the row is still partly
     /// on screen, and a fully transparent row looks like a rendering gap rather than a taper.
     static let minOpacity: Double = 0.25
-    /// Scale at the edge. A ~12% shrink reads as the row receding without the neighbouring
-    /// column gaps visibly opening up.
-    static let minScale: Double = 0.88
+    /// Scale at the edge. A ~40% shrink makes the row clearly recede; the earlier 12% was too
+    /// subtle to notice. The gap this opens up reads as the grid curving away.
+    static let minScale: Double = 0.6
     /// Blur radius (pt) at the edge. Kept small: the blur is an offscreen pass per affected cell,
     /// and only the one row inside each transition band pays it.
     static let maxBlurRadius: Double = 6
