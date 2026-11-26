@@ -22,6 +22,7 @@ final class UpdateChecker {
             availableRelease = Release(version: stored.version, pageURL: url)
         }
         dismissedVersion = PreferencesStore.shared.loadDismissedUpdateVersion()
+        lastCheckDate = PreferencesStore.shared.loadLastUpdateCheck()
     }
 
     struct Release: Equatable, Sendable {
@@ -38,6 +39,10 @@ final class UpdateChecker {
     /// The newest known release when it is newer than the running app. Read by the launcher banner
     /// and the Settings "Updates" section.
     private(set) var availableRelease: Release?
+    /// When a check was last attempted (success or not). Mirrors the persisted value so the
+    /// Settings "Updates" section re-renders when a check finishes; `PreferencesStore` stays the
+    /// source of truth across launches.
+    private(set) var lastCheckDate: Date?
     private var dismissedVersion: String?
     @ObservationIgnored private var isChecking = false
 
@@ -135,7 +140,9 @@ final class UpdateChecker {
         guard !isChecking, let current = currentVersion else { return .failed }
         isChecking = true
         defer { isChecking = false }
-        PreferencesStore.shared.saveLastUpdateCheck(Date())
+        let attempted = Date()
+        PreferencesStore.shared.saveLastUpdateCheck(attempted)
+        lastCheckDate = attempted
         guard let release = await fetchLatest() else { return .failed }
         guard Self.isNewer(latest: release.version, than: current) else {
             availableRelease = nil

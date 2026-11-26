@@ -145,6 +145,12 @@ class LibraryScanState {
     /// count as a mutation.
     @ObservationIgnored private var iconSlots: [String: IconSlot] = [:]
     var isScanning = false
+    /// When the catalog was last checked for changes, by any trigger (launch scan, auto-refresh
+    /// tick, file-system event, Refresh Now). A tick that finds nothing stale still counts: it
+    /// did check. In memory only: the launch scan sets it, so it is never empty for long.
+    private(set) var lastRefreshDate: Date?
+    /// When the auto-refresh timer next fires; nil while it is not scheduled. Read by Settings.
+    private(set) var nextRefreshDate: Date?
     private var refreshTimer: Timer?
     private var cacheRefreshTimer: Timer?
     private var directoryWatcher: DirectoryWatcher?
@@ -220,6 +226,7 @@ class LibraryScanState {
         self.displayOrder = self.sortedApplications(result.apps)
         rebuildAppPathIndex()
         dataVersion += 1
+        lastRefreshDate = Date()
         self.updateFilteredApps()
         self.setupRefreshTimer()
         self.startWatchingScanDirectories()
@@ -293,10 +300,14 @@ class LibraryScanState {
         refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: settings?.refreshInterval ?? ScanMetrics.refreshIntervalDefault, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self, !self.isScanning else { return }
+                guard let self else { return }
+                // A repeating timer has already moved `fireDate` on to the next tick.
+                self.nextRefreshDate = self.refreshTimer?.fireDate
+                guard !self.isScanning else { return }
                 await self.refreshDisplayOrder()
             }
         }
+        nextRefreshDate = refreshTimer?.fireDate
     }
 
     /// The interval the live scan timer is currently firing at, or nil when it is not scheduled.
@@ -352,6 +363,7 @@ class LibraryScanState {
     func cleanupTimerAndObservers() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+        nextRefreshDate = nil
         cacheRefreshTimer?.invalidate()
         cacheRefreshTimer = nil
         pendingRescanTask?.cancel()
@@ -632,6 +644,7 @@ class LibraryScanState {
         guard !isScanning else { return }
         isScanning = true
         defer { isScanning = false }
+        lastRefreshDate = Date()
         let allDirs = currentScanDirectories
         var currentMtimes: [String: Date] = [:]
         for dir in allDirs {
@@ -709,6 +722,23 @@ class LibraryScanState {
         updateRecentApps()
         dataVersion += 1
         updateFilteredApps()
+        // Clicking an app is when the user is most likely to have just updated it — a new
+        // version can ship a new icon, and nothing re-decodes it until the six-hourly sweep:
+        // a scheduled rescan is skipped when the containing directory's mtime is unchanged
+        // (an in-place update leaves it untouched), and a rescan that does run preserves the
+        // already-loaded icon. Re-check this one app now so the grid shows the current icon
+        // on the next open instead of waiting hours. `force: true` re-reads the bundle's
+        // mtime from disk and only re-decodes when it moved, so an unchanged app costs one
+        // stat and a cache hit — cheap enough to run on every launch.
+        Task { @MainActor [weak self] in
+            guard let self, let app = self.appPathIndex[path] else { return }
+            guard let refreshed = await IconService.shared.loadMissingIcons(for: [app], force: true).first else { return }
+            // `force: true` hands back the same NSImage from the memory cache when the bundle is
+            // unchanged, and a fresh instance only when it re-decoded. Skip the apply — and the
+            // folder-composite regeneration it triggers — when nothing actually changed.
+            guard refreshed.1 !== app.icon else { return }
+            self.applyLoadedIcons([refreshed])
+        }
     }
 
     func isRecentApp(_ path: String) -> Bool { return _recentApps.contains { $0.path == path } }

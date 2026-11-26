@@ -246,26 +246,48 @@ struct GeneralSettingsPanel: View {
     @ViewBuilder
     private func updateStatusRow() -> some View {
         let checker = UpdateChecker.shared
-        HStack(spacing: 8) {
-            if let release = checker.availableRelease {
-                Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color.accentColor)
-                Text("MacMuster \(release.version) is available")
-                    .font(.system(size: 13, weight: .medium))
-                Spacer()
-                Button("View Release") { checker.openReleasePage() }
-            } else {
-                Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
-                Text(PreferencesStore.shared.loadLastUpdateCheck() == nil
-                     ? String(localized: "Not checked yet")
-                     : String(localized: "You're up to date"))
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                Spacer()
+        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+            HStack(spacing: 8) {
+                if let release = checker.availableRelease {
+                    Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color.accentColor)
+                    Text("MacMuster \(release.version) is available")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Button("View Release") { checker.openReleasePage() }
+                } else {
+                    Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
+                    Text(checker.lastCheckDate == nil
+                         ? String(localized: "Not checked yet")
+                         : String(localized: "You're up to date"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
             }
+            if let last = checker.lastCheckDate {
+                Text("Last checked: \(ScheduleTimestamps.display(last))")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            Text(nextUpdateCheckText(lastCheck: checker.lastCheckDate))
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(SettingsLayoutMetrics.sectionContentPadding)
         .background(Color(nsColor: .textBackgroundColor))
         .cornerRadius(SettingsLayoutMetrics.sectionContentCornerRadius)
+    }
+
+    /// The check only runs at launch (or when the setting is switched on), so the "next" time is
+    /// the earliest a launch would check, not a scheduled moment.
+    private func nextUpdateCheckText(lastCheck: Date?) -> String {
+        switch ScheduleTimestamps.nextUpdateCheck(lastCheck: lastCheck, now: Date()) {
+        case .nextLaunch:
+            String(localized: "Next check: next time MacMuster launches")
+        case .onLaunchAfter(let date):
+            String(localized: "Next check: at the first launch after \(ScheduleTimestamps.display(date))")
+        }
     }
 
     var body: some View {
@@ -493,6 +515,18 @@ struct GeneralSettingsPanel: View {
                             appModel.setRefreshInterval(appModel.refreshInterval)
                         }
                     }
+
+                    VStack(alignment: .leading, spacing: SettingsLayoutMetrics.labelSpacingVertical) {
+                        if let last = appModel.library.lastRefreshDate {
+                            Text("Last checked: \(ScheduleTimestamps.display(last))")
+                        }
+                        if let next = appModel.library.nextRefreshDate {
+                            Text("Next check: \(ScheduleTimestamps.display(next))")
+                        }
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(SettingsLayoutMetrics.sectionContentPadding)
                 .background(Color(nsColor: .textBackgroundColor))

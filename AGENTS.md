@@ -74,7 +74,7 @@ Native macOS app launcher: Swift 6.2 + SwiftUI/AppKit, zero external dependencie
 | What a grid cell shows | `AppIconView` (`ContentView.swift`); accessibility label in the same view |
 | New cell badge | tracker in `Services/` → property on `LibraryScanState` (no `dataVersion` bump) → per-path flag on `IconSlot`, synced from the set by `syncBadge` → `AppIconView` badge reading `slot.flag` (`accessibilityHidden`) + fold into cell label |
 | Search behavior | `Application.searchMatchRank` (`Types.swift`) → `applySearchFilter` (`LibraryScanState+Display`) |
-| Scanning / discovery | `ApplicationScanner` (keep hardening), `DirectoryWatcher`, `refreshDisplayOrder` |
+| Scanning / discovery | `ApplicationScanner` (keep hardening), `DirectoryWatcher`, `refreshDisplayOrder` (stamps `lastRefreshDate`; `rescheduleRefreshTimer` stamps `nextRefreshDate` — both in memory, shown under Auto Refresh in Settings) |
 | Icon loading / caching | `IconService` (decode, folder composites), `IconCacheManager` (memory + disk), `applyLoadedIcons` in `LibraryScanState` |
 | Folders | `FolderStore` (CRUD) + folder methods on `LibraryScanState` |
 | Smart Folders wizard | `SmartFolderPlanBuilder` (build) → `SmartFoldersWizardViewModel` (steps/apply/undo) → `SmartFoldersWizardPanel` (UI) + `SmartFoldersAnimation` (motion + CPU/thermal/reduce-motion gate); entry points in `StatusBarManager` + `FoldersSettingsPanel`; apply/undo on `LibraryScanState` |
@@ -83,7 +83,7 @@ Native macOS app launcher: Swift 6.2 + SwiftUI/AppKit, zero external dependencie
 | Global shortcut / hot corner | `ActivationManager` (Carbon hot key + global `mouseMoved` monitor, configured by value from `SettingsAppearance.syncActivation`) → `ActivationSettingsPanel` |
 | Glass material (Classic / Liquid Glass / low-GPU) | `VisualEffectBackground` (`ContentView.swift`: `structure` decides which views exist, `rebuild` only when it changes, `refreshColors` in place) + `OverlayWindowManager.applyBackgroundColor`; Liquid Glass is `#available(macOS 26)` only |
 | Scroll-edge fade/blur/taper | `ScrollEdgeEffect` (pure curve + `.scrollEdgeEffect(active:)` modifier, applied at the end of `AppGridCell`) → `ScrollEdgeMetrics` → `SettingsAppearance.isScrollEdgeEffectActive` (off under Low-GPU glass / Reduce Motion) |
-| Update check (opt-in) | `UpdateChecker` (pure parse/compare helpers + fetch + alerts) → `updateCheckEnabled` in `SettingsAppearance` → `UpdateBannerView` (top of `ContentView`) + "Updates" section in `GeneralSettingsPanel` → "Check for Updates…" in `StatusBarManager` → `UpdateCheckerTests` |
+| Update check (opt-in) | `UpdateChecker` (pure parse/compare helpers + fetch + alerts; `lastCheckDate` observable) → `updateCheckEnabled` in `SettingsAppearance` → `UpdateBannerView` (top of `ContentView`) + "Updates" section in `GeneralSettingsPanel` (last/next check lines via `ScheduleTimestamps`; the check runs only at launch, so "next" is "first launch after …") → "Check for Updates…" in `StatusBarManager` → `UpdateCheckerTests` |
 | Backup / import | `BackupManager`, `LaunchieImporter`, `RestorePreviewPanel`, entry points in `StatusBarManager` |
 | Magic number | matching case-less enum in `Constants.swift`, with a rationale comment |
 
@@ -161,6 +161,7 @@ Sources/MacMuster/
     ├── BoundedFileReader.swift      # capped `FileHandle` read for user-opened import files (`ImportLimits`)
     ├── SmartFolderPlanBuilder.swift # main-actor build: candidates → bundle read → classify
     ├── DragAutoScroll.swift         # pure velocity/clamp curve for scrolling the grid while dragging near its top/bottom
+    ├── ScheduleTimestamps.swift     # pure "last / next check" rules + display text for Settings
     ├── ScrollEdgeEffect.swift       # row fade/shrink/blur near scroll edges (pure curve + modifier)
     ├── SmartFoldersAnimation.swift  # pure "apps grouping" motion math + CPU/thermal/reduce-motion gate
     └── AlertHelper.swift            # NSAlert.showError/showInfo

@@ -39,6 +39,16 @@ final class LibraryScanStateEdgeCaseTests: XCTestCase {
                    installationDate: Date(), isFolder: false, containedApps: nil, bundleDescription: nil)
     }
 
+    /// Creates a temp directory that stands in for an app bundle. The icon cache only ever stats
+    /// the path, and `NSWorkspace` resolves an icon for it — owning the file lets a test move its
+    /// mtime to simulate an in-place update, which no system app would allow.
+    private func makeTempBundle(name: String) throws -> String {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(name)-\(UUID().uuidString).app", isDirectory: true).path
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        return path
+    }
+
     // MARK: - handleAppearanceChange
 
     func testHandleAppearanceChangeResetsIcons() {
@@ -270,6 +280,147 @@ final class LibraryScanStateEdgeCaseTests: XCTestCase {
 
         XCTAssert(library.dataVersion > versionBefore,
             "recordAppLaunch should bump dataVersion")
+    }
+
+    /// Regression: an app updated in place (new version, new icon, same path) kept its old icon
+    /// until the six-hourly sweep, because a scheduled rescan is skipped when the containing
+    /// directory's mtime is unchanged and a rescan that does run preserves the loaded icon.
+    /// Clicking the app must re-check its own icon now, so the grid shows the current icon on
+    /// the next open instead of waiting hours.
+    func testRecordAppLaunchRechecksIconAfterAnInPlaceUpdate() async throws {
+        let bundlePath = try makeTempBundle(name: "LaunchIcon")
+        defer {
+            IconCacheManager.shared.pruneDeletedApps(currentAppPaths: [])
+            try? FileManager.default.removeItem(atPath: bundlePath)
+        }
+
+        // Pin the mtime so the "update" below is an unambiguous whole-second jump.
+        let past = Date(timeIntervalSince1970: 1_600_000_000)
+        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: bundlePath)
+
+        let app = Application(id: bundlePath, name: "LaunchIcon", path: bundlePath, icon: nil,
+                              installationDate: past, isFolder: false, containedApps: nil)
+        library.setApplications([app])
+        await library.loadMissingIcons()
+        let originalIcon = library.appPathIndex[bundlePath]?.icon
+        XCTAssertNotNil(originalIcon, "Precondition: the icon should be loaded and cached")
+        let slot = library.iconSlot(for: bundlePath)
+        XCTAssertNotNil(slot.icon, "Precondition: the cell's slot should hold the icon")
+
+        // The app updates in place: same path, new mtime — exactly what an app update does.
+        try FileManager.default.setAttributes([.modificationDate: past.addingTimeInterval(5000)],
+                                              ofItemAtPath: bundlePath)
+
+        library.recordAppLaunch(at: bundlePath)
+
+        // The re-check runs on a detached MainActor task; poll until it lands or time out.
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if library.appPathIndex[bundlePath]?.icon !== originalIcon { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertNotIdentical(library.appPathIndex[bundlePath]?.icon, originalIcon,
+            "Launching an app whose bundle changed must re-decode its icon, not keep the stale one")
+        XCTAssertNotIdentical(slot.icon, originalIcon,
+            "The re-decoded icon must reach the cell's IconSlot, not just the catalog")
+    }
+
+    /// The re-check must be a no-op for the common case: an app whose bundle did not change
+    /// between launches. `force: true` re-validates the cached icon against the bundle mtime and
+    /// hands the *same* instance back, so the identity guard in `recordAppLaunch` skips the
+    /// apply — and with it the folder-composite regeneration and cell invalidation it would
+    /// otherwise trigger. Launching the same app twice must leave the icon instance untouched.
+    func testRecordAppLaunchKeepsTheSameIconWhenTheBundleIsUnchanged() async throws {
+        let bundlePath = try makeTempBundle(name: "LaunchIconUnchanged")
+        defer {
+            IconCacheManager.shared.pruneDeletedApps(currentAppPaths: [])
+            try? FileManager.default.removeItem(atPath: bundlePath)
+        }
+
+        let past = Date(timeIntervalSince1970: 1_600_000_000)
+        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: bundlePath)
+
+        let app = Application(id: bundlePath, name: "LaunchIconUnchanged", path: bundlePath, icon: nil,
+                              installationDate: past, isFolder: false, containedApps: nil)
+        library.setApplications([app])
+        await library.loadMissingIcons()
+        let originalIcon = library.appPathIndex[bundlePath]?.icon
+        XCTAssertNotNil(originalIcon, "Precondition: the icon should be loaded and cached")
+        let slot = library.iconSlot(for: bundlePath)
+        XCTAssertNotNil(slot.icon, "Precondition: the cell's slot should hold the icon")
+
+        // Launch the app twice, with the bundle untouched in between.
+        library.recordAppLaunch(at: bundlePath)
+        library.recordAppLaunch(at: bundlePath)
+
+        // The re-check is fire-and-forget on the main actor, so poll until it has had a chance
+        // to run — an unchanged bundle must not produce a new icon instance, ever.
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            if library.appPathIndex[bundlePath]?.icon !== originalIcon { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertTrue(library.appPathIndex[bundlePath]?.icon === originalIcon,
+            "A launch of an unchanged app must keep the cached icon instance — no re-decode, no new image")
+        XCTAssertTrue(slot.icon === originalIcon,
+            "The cell's slot must keep the same instance, so the cell is not invalidated for nothing")
+    }
+
+    /// A re-decoded icon must not only reach the catalog and the cell's slot — it must also
+    /// regenerate the composite of any folder the app belongs to, otherwise the folder tile
+    /// keeps drawing the member's old thumbnail until the next full pass.
+    func testRecordAppLaunchIconRefreshRegeneratesTheFolderComposite() async throws {
+        let bundlePath = try makeTempBundle(name: "LaunchIconFolder")
+        defer {
+            IconCacheManager.shared.pruneDeletedApps(currentAppPaths: [])
+            try? FileManager.default.removeItem(atPath: bundlePath)
+        }
+
+        let past = Date(timeIntervalSince1970: 1_600_000_000)
+        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: bundlePath)
+
+        let app = Application(id: bundlePath, name: "LaunchIconFolder", path: bundlePath, icon: nil,
+                              installationDate: past, isFolder: false, containedApps: nil)
+        library.setApplications([app])
+        await library.loadMissingIcons()
+        let originalIcon = library.appPathIndex[bundlePath]?.icon
+        XCTAssertNotNil(originalIcon, "Precondition: the icon should be loaded and cached")
+
+        let folder = library.createFolder(name: "Grouped", appPaths: [bundlePath])
+        XCTAssertNotNil(folder, "Precondition: the folder should be created")
+        let folderTile = library.getFolderApplication(folder!)
+        XCTAssertNotNil(folderTile.icon, "Precondition: the folder tile should have a composite")
+        let originalComposite = folderTile.icon
+        // The tile's slot is still empty at this point: the composite above was generated on
+        // demand for the display pipeline, and nothing has regenerated it yet — the re-check
+        // below is what must push the fresh one into the slot the cell reads.
+        let folderSlot = library.iconSlot(for: folder!.id)
+        XCTAssertNil(folderSlot.icon, "Precondition: the folder tile's slot is not filled yet")
+
+        // The app updates in place: same path, new mtime.
+        try FileManager.default.setAttributes([.modificationDate: past.addingTimeInterval(5000)],
+                                              ofItemAtPath: bundlePath)
+
+        library.recordAppLaunch(at: bundlePath)
+
+        // The re-check runs on a detached MainActor task; poll until it lands or time out.
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if library.appPathIndex[bundlePath]?.icon !== originalIcon { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertNotIdentical(library.appPathIndex[bundlePath]?.icon, originalIcon,
+            "Precondition: the app's own icon must have been re-decoded")
+
+        // The folder composite is cached per folder id in IconService, so a fresh tile reads the
+        // regenerated one — a stale cache would hand back the pre-update image.
+        let refreshedTile = library.getFolderApplication(folder!)
+        XCTAssertNotIdentical(refreshedTile.icon, originalComposite,
+            "The folder composite must be regenerated when a member's icon changes")
+        XCTAssertNotIdentical(folderSlot.icon, originalComposite,
+            "The regenerated composite must reach the folder tile's IconSlot, not just the cache")
     }
 
     // MARK: - Concurrent Refresh Handling

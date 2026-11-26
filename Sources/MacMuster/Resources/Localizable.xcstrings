@@ -154,6 +154,18 @@
     "Not checked yet" : {
       "extractionState" : "manual"
     },
+    "Last checked: %@" : {
+      "extractionState" : "manual"
+    },
+    "Next check: %@" : {
+      "extractionState" : "manual"
+    },
+    "Next check: next time MacMuster launches" : {
+      "extractionState" : "manual"
+    },
+    "Next check: at the first launch after %@" : {
+      "extractionState" : "manual"
+    },
     "Startup" : {
       "extractionState" : "manual"
     },
